@@ -12,7 +12,7 @@ import {
 import { aiGatewayService } from '../services/ai/aiGatewayInstance';
 import { AiProviderError } from '../services/ai/aiProvider.service';
 import { AiSettingsError, getAvailableAiModels } from '../services/ai/aiSettings.service';
-import { AiToolError, aiReadOnlyToolsService, type AiToolContext } from '../services/ai/aiReadOnlyTools.service';
+import { AiToolError, aiReadOnlyToolsService, type AiToolContext, type AiToolExecutionResult } from '../services/ai/aiReadOnlyTools.service';
 import { greetingResponseFor, isAiGreeting, resolveAiMessage, type AiIntentContextMessage } from '../services/ai/aiIntentRouter.service';
 import { getCachedDailyBriefing } from '../jobs/aiDailyBriefing.job';
 import { getBriefingDateKey, AI_DAILY_BRIEFING_TIMEZONE } from '../services/ai/aiDailyBriefing.service';
@@ -27,6 +27,14 @@ import { aiReliabilityObservabilityService, moduleForAiTool } from '../services/
 import { redactSensitiveData } from '../services/ai/aiRedaction';
 import { analyzeDocumentImage, type AiDocumentType } from '../services/ai/aiDocumentVision.service';
 import { buildLocalAiAnswer } from '../services/ai/aiLocalAnswer.service';
+import { buildSoldVehicleOperatorAnswer } from '../services/ai/soldVehicleOperatorAnswer.service';
+import {
+  AiResponseValidationError,
+  groundedDataClarificationFor,
+  requiresGroundedData,
+  validateAiGatewayResponse,
+  validateAiToolResult,
+} from '../services/ai/aiResponseValidation.service';
 
 const aiDocumentAssistSchema = z.object({
   documentType: z.enum(['RC', 'PAN', 'GST', 'FINANCE']),
@@ -76,7 +84,7 @@ const aiFeedbackBodySchema = z.object({
 export { aiGatewayService } from '../services/ai/aiGatewayInstance';
 
 const sendAiError = (error: unknown, res: Response, next: NextFunction) => {
-  if (error instanceof AiDisabledError || error instanceof AiGatewayError || error instanceof AiProviderError || error instanceof AiSettingsError || error instanceof AiToolError || error instanceof AiConversationError || error instanceof AiMemoryError) {
+  if (error instanceof AiDisabledError || error instanceof AiGatewayError || error instanceof AiProviderError || error instanceof AiSettingsError || error instanceof AiToolError || error instanceof AiConversationError || error instanceof AiMemoryError || error instanceof AiResponseValidationError) {
     const code = error.code;
     const contract = error instanceof AiToolError || error instanceof AiGatewayError
       ? error.contract
@@ -435,11 +443,12 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
     const conversationId = parsed.data.conversationId
       ? parsed.data.conversationId
       : (await aiConversationService.createConversation(req.user.id, parsed.data.message.slice(0, 160))).id;
-    const previousMessages = await aiConversationService.getMessages(req.user.id, conversationId);
+    const previousMessages = await aiConversationService.getMessages(req.user.id, conversationId, { includeToolContext: true });
     const intentContext: AiIntentContextMessage[] = previousMessages.slice(-8).map((message) => ({
       role: message.role,
       content: message.content,
       toolName: message.toolName,
+      ...(message.toolArguments ? { toolArguments: message.toolArguments } : {}),
     }));
     await aiConversationService.appendMessage(req.user.id, conversationId, {
       role: 'USER',
@@ -519,34 +528,71 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
       });
     }
     const resolvedTool = parsed.data.tool || (intentResolution?.kind === 'tool' ? intentResolution.request : null);
+    if (!resolvedTool && requiresGroundedData(parsed.data.message, parsed.data.pageContext)) {
+      const requestId = randomUUID();
+      const answer = groundedDataClarificationFor(parsed.data.message);
+      const contract = createAiDataErrorContractForCode('AI_INTENT_AMBIGUOUS');
+      await aiConversationService.appendMessage(req.user.id, conversationId, {
+        role: 'ASSISTANT',
+        content: answer,
+        requestId,
+        provider: 'INTERNAL',
+        modelAlias: 'grounding-guard',
+      });
+      return res.json({
+        success: true,
+        conversationId,
+        requestId,
+        provider: 'INTERNAL',
+        model: 'grounding-guard',
+        answer,
+        contract,
+        clarification: true,
+      });
+    }
     selectedToolName = resolvedTool?.name;
-    const toolResult = resolvedTool
-      ? await aiReadOnlyToolsService.execute(context, resolvedTool)
+    const toolResult: AiToolExecutionResult | null = resolvedTool
+      ? validateAiToolResult(await aiReadOnlyToolsService.execute(context, resolvedTool))
       : null;
     const toolFetchedAt = toolResult ? toolResult.contract.fetchedAt : null;
     const toolForecast = toolResult ? forecastMetadataFor(toolResult.data) : null;
     let result: { requestId: string; provider: string; model: string; answer: string };
     try {
-      result = await aiGatewayService.chat({
-        userId: req.user.id,
-        role: req.user.role as AiRole,
-        message: parsed.data.message,
-        ...(parsed.data.model ? { model: parsed.data.model } : {}),
-        conversationContext: previousMessages.slice(-8).map((message) => ({
-          role: message.role === 'USER' ? 'user' as const : 'assistant' as const,
-          content: message.content,
-        })),
-        memoryContext,
-        ...(toolResult && toolFetchedAt
-          ? {
-            toolContext: {
-              toolName: toolResult.toolName,
-              label: toolResult.label,
-              data: toolResult.contract,
-            },
-          }
-          : {}),
-      });
+      if (toolResult?.dataAvailability === 'UNAVAILABLE') {
+        result = {
+          requestId: randomUUID(),
+          provider: 'INTERNAL',
+          model: 'deterministic-read-only',
+          answer: buildLocalAiAnswer({
+            message: parsed.data.message,
+            label: toolResult.label,
+            data: toolResult.contract.data,
+            dataAvailability: toolResult.dataAvailability,
+            ...(toolResult.dataAvailabilityMessage ? { dataAvailabilityMessage: toolResult.dataAvailabilityMessage } : {}),
+          }),
+        };
+      } else {
+        result = await aiGatewayService.chat({
+          userId: req.user.id,
+          role: req.user.role as AiRole,
+          message: parsed.data.message,
+          ...(parsed.data.model ? { model: parsed.data.model } : {}),
+          conversationContext: previousMessages.slice(-8).map((message) => ({
+            role: message.role === 'USER' ? 'user' as const : 'assistant' as const,
+            content: message.content,
+          })),
+          memoryContext,
+          ...(toolResult && toolFetchedAt
+            ? {
+              toolContext: {
+                toolName: toolResult.toolName,
+                label: toolResult.label,
+                data: toolResult.contract,
+              },
+            }
+            : {}),
+        });
+      }
     } catch (providerError) {
       const providerCode = providerError instanceof AiGatewayError ? providerError.code : '';
       const canUseLocalReadOnlyAnswer = Boolean(toolResult)
@@ -569,6 +615,15 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
         }),
       };
     }
+    result = validateAiGatewayResponse(result);
+    const operatorAnswer = toolResult?.operatorData === undefined
+      ? null
+      : buildSoldVehicleOperatorAnswer({
+        message: parsed.data.message,
+        toolName: toolResult.toolName,
+        operatorData: toolResult.operatorData,
+      });
+    if (operatorAnswer) result = { ...result, answer: operatorAnswer };
     await aiConversationService.appendMessage(req.user.id, conversationId, {
       role: 'ASSISTANT',
       content: result.answer,
@@ -578,6 +633,7 @@ export const chatWithAi = async (req: Request, res: Response, next: NextFunction
       ...(toolResult && toolFetchedAt
         ? {
           toolName: toolResult.toolName,
+          ...(resolvedTool?.arguments ? { toolArguments: resolvedTool.arguments } : {}),
           toolSource: toolResult.contract.source,
           toolFetchedAt: new Date(toolFetchedAt),
         }

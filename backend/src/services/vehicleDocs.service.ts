@@ -12,6 +12,7 @@ import { readTaskDocuments, RTO_TRANSFER_TASK_DEFINITIONS } from './rtoTransferT
 import {
   buildSellAccountCreditNotePdf,
   buildSellAccountRefundAdvicePdf,
+  buildVehicleSaleDeliveryChallanPdf,
   buildVehicleSaleInvoicePdf,
   buildVehicleSalePaymentReceiptPdf,
 } from './vehicleSaleInvoice.service';
@@ -64,6 +65,7 @@ const SALE_DOCUMENT_SLOTS: Array<{ key: string; label: string; section: VehicleD
 const EXPECTED_DOCUMENTS: Array<{ key: string; label: string; section: VehicleDocSection }> = [
   ...SALE_DOCUMENT_SLOTS,
   { key: 'invoice', label: 'Bill of Supply (sale invoice)', section: 'Invoices & Payments' },
+  { key: 'delivery-challan', label: 'Delivery challan', section: 'Invoices & Payments' },
   { key: 'receipts', label: 'Money receipts', section: 'Invoices & Payments' },
   { key: 'website-payment', label: 'Website payment proof', section: 'Invoices & Payments' },
   { key: 'credit-note', label: 'Credit note', section: 'Invoices & Payments' },
@@ -223,6 +225,9 @@ const collectDocs = (vehicle: Loaded): VehicleDoc[] => {
     }
     if (sale.invoiceNumber) {
       docs.push(generatedDoc({ id: `sale-${sale.id}-invoice`, section: 'Invoices & Payments', checklistKey: 'invoice', label: `Bill of Supply ${sale.invoiceNumber}`, fileName: `Bill of Supply ${safeName(sale.invoiceNumber)}.pdf`, date: isoDate(sale.invoiceGeneratedAt), build: () => buildVehicleSaleInvoicePdf(sale.id) }));
+    }
+    if (sale.completedAt && !sale.cancelledAt && !sale.isDraft) {
+      docs.push(generatedDoc({ id: `sale-${sale.id}-delivery-challan`, section: 'Invoices & Payments', checklistKey: 'delivery-challan', label: `Delivery challan ${sale.recordNumber}`, fileName: `Delivery Challan ${safeName(sale.recordNumber)}.pdf`, date: isoDate(sale.completedAt), build: () => buildVehicleSaleDeliveryChallanPdf(sale.id) }));
     }
     for (const payment of sale.payments) {
       if (payment.side !== 'PURCHASER_RECEIPT' || payment.receiptStatus !== 'ISSUED' || !payment.receiptNumber) continue;

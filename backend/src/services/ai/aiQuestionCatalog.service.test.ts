@@ -57,6 +57,11 @@ test('catalog recognizes detail, status, comparison, trend, and forecast languag
   assert.equal(findSupportedQuestionMatches('agle 14 din ka sales forecast')[0]?.intent, 'forecast');
 });
 
+test('catalog maps Sold Vehicle questions to Sold Vehicle tools, not listing detail', () => {
+  const matches = findSupportedQuestionMatches('sold vehicles ka complete detail batao');
+  assert.ok(matches.some((match) => match.module === 'sold-vehicles' && match.toolName === 'sold.vehicle.detail'));
+});
+
 test('normalization keeps identifiers and user words usable for routing', () => {
   assert.equal(normalizeAiQuestion('  LISTNG   CNT: CG04NF0268  '), 'listing count cg04nf0268');
 });

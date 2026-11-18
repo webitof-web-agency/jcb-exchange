@@ -431,8 +431,19 @@ const MODULE_SPECS: readonly ModuleSpec[] = [
   {
     id: 'sold-vehicles',
     aliases: moduleAliases(['sold vehicles', 'sold vehicle', 'sales', 'sold'], ['बिके वाहन', 'बिक्री'], ['sold gaadi', 'bikri', 'sales hua'], ['sold', 'sales']),
-    tools: { summary: 'sold.vehicles', list: 'sold.vehicles', search: 'sold.vehicles', detail: 'listing.detail', status: 'sold.vehicles', history: 'sold.vehicles', activity: 'sold.vehicles', compare: 'sold.vehicles', trend: 'sold.vehicles', forecast: 'forecast.operations' },
-    plannedTools: allPlanned('sold-vehicles'),
+    tools: {
+      summary: 'sold.vehicles',
+      list: 'sold.vehicles',
+      search: 'sold.vehicle.search',
+      detail: 'sold.vehicle.detail',
+      status: 'sold.vehicles',
+      history: 'sold.vehicle.detail',
+      activity: 'sold.vehicle.detail',
+      compare: 'sold.vehicle.analytics',
+      trend: 'sold.vehicle.analytics',
+      forecast: 'sold.vehicle.analytics',
+    },
+    plannedTools: {},
   },
   {
     id: 'vehicle-docs',

@@ -62,6 +62,24 @@ test('detects registration, listing, invoice, and partner identifiers before gen
   });
 });
 
+test('routes Sold Vehicles registration and invoice identifiers to the canonical deal search', () => {
+  assert.deepEqual(routeAiMessage('CG-04-AB-1234 wali sold vehicle ka record batao'), {
+    name: 'sold.vehicle.search',
+    arguments: { vehicleNumber: 'CG04AB1234' },
+  });
+  assert.deepEqual(routeAiMessage('invoice no JCBX/SV/26-27/0001 kis sold deal ka hai?'), {
+    name: 'sold.vehicle.search',
+    arguments: { invoiceNumber: 'JCBX/SV/26-27/0001' },
+  });
+});
+
+test('routes an identifier on the Sold Vehicles page without widening to a generic listing lookup', () => {
+  assert.deepEqual(routeAiMessage('CG04AB1234 ka complete record batao', { moduleKey: 'sold-vehicles' }), {
+    name: 'sold.vehicle.search',
+    arguments: { vehicleNumber: 'CG04AB1234' },
+  });
+});
+
 test('routes a registration paper-pending question to the vehicle documents tool', () => {
   assert.deepEqual(routeAiMessage('CG-04-NF-0268 iske paper me kya pending hai?'), {
     name: 'vehicle.documents.detail',
@@ -274,6 +292,44 @@ test('routes Phase 3 detail and trend questions to safe read-only tools', () => 
   assert.deepEqual(routeAiMessage('show finance trend this month'), {
     name: 'finance.trend',
     arguments: { days: 30 },
+  });
+});
+
+test('routes an exact sold vehicle record request to sold.vehicle.detail', () => {
+  assert.deepEqual(routeAiMessage('SA-2026-0001 ka complete sold vehicle detail batao'), {
+    name: 'sold.vehicle.detail',
+    arguments: { recordNumber: 'SA-2026-0001' },
+  });
+  assert.deepEqual(routeAiMessage('deal id 550e8400-e29b-41d4-a716-446655440000 ke payments aur RTO batao'), {
+    name: 'sold.vehicle.detail',
+    arguments: { dealId: '550e8400-e29b-41d4-a716-446655440000' },
+  });
+});
+
+test('uses the selected Sold Vehicle detail/edit page record for generic follow-up questions', () => {
+  assert.deepEqual(routeAiMessage('is deal ka complete data batao', {
+    groupKey: 'accounts',
+    moduleKey: 'sold-vehicles',
+    recordId: '550e8400-e29b-41d4-a716-446655440000',
+  }), {
+    name: 'sold.vehicle.detail',
+    arguments: { dealId: '550e8400-e29b-41d4-a716-446655440000' },
+  });
+  assert.deepEqual(routeAiMessage('sold vehicles module me seller name batao', {
+    groupKey: 'accounts',
+    moduleKey: 'sold-vehicles',
+    recordId: '550e8400-e29b-41d4-a716-446655440000',
+  }), {
+    name: 'sold.vehicle.detail',
+    arguments: { dealId: '550e8400-e29b-41d4-a716-446655440000' },
+  });
+  assert.deepEqual(routeAiMessage('seller name batao', {
+    groupKey: 'accounts',
+    moduleKey: 'sold-vehicles',
+    recordId: 'sa-2026-001-cg11bn7867-jcb-india-limited-3dx-ee1142e4-224a',
+  }), {
+    name: 'sold.vehicle.detail',
+    arguments: { recordNumber: 'SA-2026-001' },
   });
 });
 
@@ -669,6 +725,29 @@ test('does not auto-route Phase 3 mutation requests', () => {
   assert.equal(routeAiMessage('update partner performance record'), null);
 });
 
+test('routes Sold Vehicle analytics questions to the exact analytics tool', () => {
+  assert.deepEqual(routeAiMessage('sold vehicle low margin deals batao'), {
+    name: 'sold.vehicle.analytics',
+    arguments: { metric: 'low_margin' },
+  });
+  assert.deepEqual(routeAiMessage('sold vehicles model wise performance last 90 days'), {
+    name: 'sold.vehicle.analytics',
+    arguments: { metric: 'model_performance', days: 90 },
+  });
+  assert.deepEqual(routeAiMessage('deal SA-2026-001 ka payment outstanding batao'), {
+    name: 'sold.vehicle.analytics',
+    arguments: { recordNumber: 'SA-2026-001', metric: 'payments' },
+  });
+  assert.deepEqual(routeAiMessage('sold vehicle revenue and cash flow forecast next 14 days'), {
+    name: 'sold.vehicle.analytics',
+    arguments: { metric: 'forecast', horizon: 14 },
+  });
+  assert.deepEqual(routeAiMessage('sold vehicle documents pending batao'), {
+    name: 'sold.vehicle.analytics',
+    arguments: { metric: 'documents' },
+  });
+});
+
 test('routes future operational questions to the forecast tool with metric and horizon', () => {
   assert.deepEqual(routeAiMessage('forecast inventory for the next 14 days'), {
     name: 'forecast.operations',
@@ -763,6 +842,25 @@ test('keeps a natural follow-up on the previous read-only tool and entity', () =
   assert.deepEqual(result, {
     kind: 'tool',
     request: { name: 'listing.detail', arguments: { query: 'jcb 3dx' } },
+  });
+});
+
+test('reuses persisted selected deal arguments when the original page query had no identifier', () => {
+  const context: AiIntentContextMessage[] = [
+    { role: 'USER', content: 'is deal ka complete data batao' },
+    {
+      role: 'ASSISTANT',
+      content: 'Sold vehicle details fetched.',
+      toolName: 'sold.vehicle.detail',
+      toolArguments: { recordNumber: 'SA-2026-0001' },
+    },
+  ];
+
+  const result = resolveAiMessage('payment aur RTO bhi batao', context);
+
+  assert.deepEqual(result, {
+    kind: 'tool',
+    request: { name: 'sold.vehicle.detail', arguments: { recordNumber: 'SA-2026-0001' } },
   });
 });
 

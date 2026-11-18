@@ -51,6 +51,10 @@ import { getFinanceHubPageData, type FinanceHubPageArguments } from './financeAi
 import { financePagePermissionsFor, SCOPED_FINANCE_PAGE_KEYS, type ScopedFinancePageKey } from './financeAiPage.service';
 import { getAdministrationAiPageData, type AdministrationPageArguments } from './administrationAiData.service';
 import { ADMINISTRATION_AI_PAGE_KEYS, administrationPagePermissionsFor } from './administrationAiPage.service';
+import { buildSoldVehicleDetail, type SoldVehicleDetailArguments } from './soldVehicleDetailAi.service';
+import { buildSoldVehicleDocumentActions } from './soldVehicleDocumentActions.service';
+import { buildSoldVehicleSearch, type SoldVehicleSearchArguments } from './soldVehicleSearchAi.service';
+import { getSoldVehicleAnalytics, type SoldVehicleAnalyticsArguments, type SoldVehicleAnalyticsMetric } from './soldVehicleAnalytics.service';
 
 export type { AiToolExecutionObservability } from './aiToolObservability.service';
 
@@ -86,6 +90,9 @@ export const AI_READ_ONLY_TOOL_NAMES = [
   'vehicle.identity',
   'vehicle.documents.detail',
   'sold.vehicles',
+  'sold.vehicle.search',
+  'sold.vehicle.detail',
+  'sold.vehicle.analytics',
   'inventory.trend',
   'revenue.summary',
   'partner.statistics',
@@ -245,6 +252,9 @@ export type AiReadOnlyToolDependencies = {
   vehicleIdentity: (context: AiToolContext, args: VehicleIdentityArguments) => Promise<unknown>;
   vehicleDocumentsDetail?: (context: AiToolContext, args: VehicleDocumentsArguments) => Promise<unknown>;
   soldVehicles: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
+  soldVehicleSearch?: (context: AiToolContext, args: SoldVehicleSearchArguments) => Promise<unknown>;
+  soldVehicleDetail?: (context: AiToolContext, args: SoldVehicleDetailArguments) => Promise<unknown>;
+  soldVehicleAnalytics?: (context: AiToolContext, args: SoldVehicleAnalyticsArguments) => Promise<unknown>;
   inventoryTrend: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   revenueSummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   partnerStatistics: (context: AiToolContext, args: EmptyArguments) => Promise<unknown>;
@@ -392,6 +402,46 @@ const rangeLimitArguments = z.object({
 }).strict();
 const sellAccountsSummaryArguments = rangeLimitArguments.extend({
   allRecords: z.boolean().optional(),
+});
+const soldVehicleDetailArguments = z.object({
+  dealId: z.string().uuid().optional(),
+  recordNumber: z.string().trim().min(3).max(100).optional(),
+}).strict().refine((value) => Boolean(value.dealId || value.recordNumber), {
+  message: 'Provide an exact sold-vehicle deal ID or record number.',
+});
+const validIsoDate = (value: string) => {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
+const soldVehicleAnalyticsArguments = z.object({
+  dealId: z.string().uuid().optional(),
+  recordNumber: z.string().trim().min(3).max(100).optional(),
+  from: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/u).refine(validIsoDate, 'Invalid from date.').optional(),
+  to: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/u).refine(validIsoDate, 'Invalid to date.').optional(),
+  days: z.number().int().min(1).max(365).optional(),
+  metric: z.enum(['overview', 'profit_loss', 'payments', 'refunds', 'rto_delay', 'documents', 'collection_risk', 'low_margin', 'model_performance', 'monthly_comparison', 'forecast', 'suggestions'] satisfies [SoldVehicleAnalyticsMetric, ...SoldVehicleAnalyticsMetric[]]).optional(),
+  horizon: z.number().int().min(1).max(30).optional(),
+  lowMarginThresholdPercent: z.number().min(-100).max(100).optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+}).strict()
+  .refine((value) => Boolean(value.dealId || value.recordNumber || value.from || value.to || value.days || value.metric), {
+    message: 'Provide a Sold Vehicle deal identifier, date range, or analytics metric.',
+  })
+  .refine((value) => !value.from || !value.to || value.from <= value.to, {
+    message: 'The from date cannot be after the to date.',
+  });
+const soldVehicleSearchArguments = z.object({
+  query: z.string().trim().min(3).max(100).optional(),
+  recordNumber: z.string().trim().min(3).max(100).optional(),
+  listingId: z.string().uuid().optional(),
+  invoiceNumber: z.string().trim().min(3).max(100).optional(),
+  vehicleNumber: z.string().trim().min(3).max(100).optional(),
+  chassisNumber: z.string().trim().min(3).max(100).optional(),
+  limit: z.number().int().min(1).max(20).optional(),
+}).strict().refine((value) => Boolean(
+  value.query || value.recordNumber || value.listingId || value.invoiceNumber || value.vehicleNumber || value.chassisNumber,
+), {
+  message: 'Provide a sold vehicle query or identifier.',
 });
 const modelSummaryArguments = rangeLimitArguments.extend({
   brandId: z.string().uuid().optional(),
@@ -840,6 +890,39 @@ const definitions: PermissionedDefinition[] = [
     available: false,
     schema: rangeLimitArguments,
     execute: (dependencies, context, args) => dependencies.soldVehicles(context, args as RangeLimitArguments),
+  },
+  {
+    name: 'sold.vehicle.search',
+    label: 'Sold vehicle search',
+    description: 'Resolves a registration, chassis, invoice, listing, record, or text query to safe sold-vehicle candidates. It reports ambiguity and never picks a record for full detail without an exact identifier.',
+    permissions: SOLD_VEHICLE_PERMISSIONS,
+    available: false,
+    schema: soldVehicleSearchArguments,
+    execute: (dependencies, context, args) => dependencies.soldVehicleSearch
+      ? dependencies.soldVehicleSearch(context, args as SoldVehicleSearchArguments)
+      : Promise.reject(new AiToolError('Sold vehicle search is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'sold.vehicle.detail',
+    label: 'Sold vehicle exact detail',
+    description: 'Returns the complete source-backed sold vehicle record for one exact deal ID or record number, including parties, vehicle, purchase/sale/expense/GST/profit reconciliation, real-versus-draft payments, refunds, status/lock history with actors and timestamps, refund maker-checker audit, bank/drawn-on details, internal notes, WhatsApp/SMS delivery logs, online advance/listing-payment mapping, duplicate prevention evidence, documents, RTO, CRM links, finance/accounting rows and a connectedModules graph that accepts only verified relationship keys. Wrong or duplicate connected records are excluded with warnings; it never guesses a record or treats draft data as settled money.',
+    permissions: SOLD_VEHICLE_PERMISSIONS,
+    available: false,
+    schema: soldVehicleDetailArguments,
+    execute: (dependencies, context, args) => dependencies.soldVehicleDetail
+      ? dependencies.soldVehicleDetail(context, args as SoldVehicleDetailArguments)
+      : Promise.reject(new AiToolError('Sold vehicle exact detail is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'sold.vehicle.analytics',
+    label: 'Sold vehicle analytics and forecast',
+    description: 'Returns exact source-backed Sold Vehicle profit/loss, payment/outstanding, seller payout, refunds, RTO delay, document status, collection risk, low-margin deals, model performance, monthly comparison, revenue/cash-flow forecast and evidence-based suggestions. Forecasts include date range, assumptions, confidence and limitations; no missing data is guessed.',
+    permissions: SOLD_VEHICLE_PERMISSIONS,
+    available: false,
+    schema: soldVehicleAnalyticsArguments,
+    execute: (dependencies, context, args) => dependencies.soldVehicleAnalytics
+      ? dependencies.soldVehicleAnalytics(context, args as SoldVehicleAnalyticsArguments)
+      : Promise.reject(new AiToolError('Sold vehicle analytics is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
   },
   {
     name: 'inventory.trend',
@@ -3090,6 +3173,96 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     };
   },
 
+  async soldVehicleDetail(_context, args) {
+    const data = await buildSoldVehicleDetail(prisma, args);
+    if (!data.found) return data;
+
+    const actions: AiFileAction[] = [];
+    const deal = asRecord(data.deal);
+    const vehicle = asRecord(data.vehicle);
+    const dealId = typeof deal.id === 'string' ? deal.id : null;
+    const vehicleNumber = typeof vehicle.number === 'string' ? vehicle.number : null;
+    if (dealId) {
+      const invoiceAction = buildAiFileAction({
+        label: `${String(deal.recordNumber || 'Sold vehicle')} · Invoice PDF`,
+        fileName: `${String(deal.invoiceNumber || deal.recordNumber || 'sold-vehicle')}.pdf`,
+        mimeType: 'application/pdf',
+        url: `/api/recruitment/admin/sell-accounts/${dealId}/invoice`,
+      });
+      if (invoiceAction) actions.push(invoiceAction);
+    }
+    if (vehicleNumber) {
+      const encodedVehicle = encodeURIComponent(vehicleNumber);
+      const detailsAction = buildAiFileAction({
+        label: `${vehicleNumber} · Vehicle details PDF`,
+        fileName: `${vehicleNumber} - Vehicle Details.pdf`,
+        mimeType: 'application/pdf',
+        url: `/api/vehicle-docs/${encodedVehicle}/details.pdf?inline=1`,
+      });
+      const archiveAction = buildAiFileAction({
+        label: `${vehicleNumber} · All vehicle documents`,
+        fileName: `${vehicleNumber} - Vehicle Documents.zip`,
+        mimeType: 'application/zip',
+        url: `/api/vehicle-docs/${encodedVehicle}/zip`,
+      });
+      if (detailsAction) actions.push(detailsAction);
+      if (archiveAction) actions.push(archiveAction);
+      const payments = asRecord(data.payments).items;
+      if (Array.isArray(payments)) {
+        for (const item of payments) {
+          const payment = asRecord(item);
+          if (payment.side !== 'PURCHASER_RECEIPT' || payment.receiptStatus !== 'ISSUED' || typeof payment.id !== 'string') continue;
+          const receiptAction = buildAiFileAction({
+            label: `${vehicleNumber} · Money receipt ${String(payment.receiptNumber || payment.id)}`,
+            fileName: `Money Receipt ${String(payment.receiptNumber || payment.id)}.pdf`,
+            mimeType: 'application/pdf',
+            url: `/api/vehicle-docs/${encodedVehicle}/files/${encodeURIComponent(`receipt-${payment.id}`)}`,
+          });
+          if (receiptAction) actions.push(receiptAction);
+        }
+      }
+    }
+    const listing = asRecord(data.listing);
+    const rto = asRecord(data.rto);
+    const rtoRecord = asRecord(rto.record);
+    const payments = asRecord(data.payments).items;
+    const refunds = asRecord(data.refunds).items;
+    const documents = asRecord(data.documents);
+    const phase8Actions = dealId
+      ? buildSoldVehicleDocumentActions({
+        dealId,
+        recordNumber: typeof deal.recordNumber === 'string' ? deal.recordNumber : null,
+        vehicleNumber: typeof vehicle.number === 'string' ? vehicle.number : null,
+        isDraft: deal.isDraft === true,
+        cancelledAt: deal.cancelledAt,
+        completedAt: deal.completedAt,
+        invoiceNumber: typeof deal.invoiceNumber === 'string' ? deal.invoiceNumber : null,
+        creditNoteNumber: typeof deal.creditNoteNumber === 'string' ? deal.creditNoteNumber : null,
+        payments: Array.isArray(payments) ? payments.map(asRecord) : [],
+        refunds: Array.isArray(refunds) ? refunds.map(asRecord) : [],
+        accountDocuments: Array.isArray(documents.accountDocuments) ? documents.accountDocuments.map(asRecord) : [],
+        rto: typeof rtoRecord.id === 'string' ? { id: rtoRecord.id, tasks: Array.isArray(rto.transferTasks) ? rto.transferTasks.map(asRecord) : [] } : null,
+        listingMedia: Array.isArray(listing.media) ? listing.media.map(asRecord) : [],
+        websitePayments: Array.isArray(listing.paymentSubmissions)
+          ? listing.paymentSubmissions.map((item) => ({ ...asRecord(item), hasReceipt: asRecord(item).hasReceipt === true }))
+          : [],
+      })
+      : [];
+    const mergedActions = [...actions];
+    for (const action of phase8Actions) {
+      if (!mergedActions.some((existing) => existing.url === action.url)) mergedActions.push(action);
+    }
+    return { data, uiActions: mergedActions };
+  },
+
+  async soldVehicleSearch(_context, args) {
+    return buildSoldVehicleSearch(prisma, args);
+  },
+
+  async soldVehicleAnalytics(_context, args) {
+    return getSoldVehicleAnalytics(prisma, args);
+  },
+
   async inventoryTrend(_context, args) {
     const periodDays = Math.min(90, Math.max(1, Math.floor(args.days ?? 30)));
     const from = daysBack(periodDays);
@@ -4439,7 +4612,9 @@ export class AiReadOnlyToolsService {
       if (error instanceof AiToolError) throw error;
       throw new AiToolError('The requested data is unavailable right now.', 503, 'AI_TOOL_DATA_UNAVAILABLE');
     }
-    const operatorPresentation = presentAiToolDataForOperator(data, context);
+    const exactSoldVehicleOperatorScope = definition.name === 'sold.vehicle.detail'
+      && (context.role === 'SUPER_ADMIN' || context.role === 'ADMIN' || context.permissions.some((permission) => SOLD_VEHICLE_PERMISSIONS.includes(permission as typeof SOLD_VEHICLE_PERMISSIONS[number])));
+    const operatorPresentation = presentAiToolDataForOperator(data, context, { allowOperationalPii: exactSoldVehicleOperatorScope });
     const secured = sanitizeAiToolData(data, context);
     data = secured.data;
     const availability = dataAvailabilityFor(data);
@@ -4474,7 +4649,7 @@ export class AiReadOnlyToolsService {
       toolName: definition.name,
       label: definition.label,
       data,
-      ...(canReadAiSensitiveField(context, 'mobile') ? { operatorData: operatorPresentation.data } : {}),
+      ...(canReadAiSensitiveField(context, 'mobile') || exactSoldVehicleOperatorScope ? { operatorData: operatorPresentation.data } : {}),
       contract,
       dataAvailability: availability.status,
       ...(availability.message ? { dataAvailabilityMessage: availability.message } : {}),

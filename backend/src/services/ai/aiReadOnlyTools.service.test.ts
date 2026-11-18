@@ -549,6 +549,19 @@ test('executes each Phase 3 read-only tool through its injected dependency', asy
   assert.deepEqual(calls, ['listing.detail', 'sold.vehicles', 'inventory.trend', 'partner.performance', 'finance.trend']);
 });
 
+test('executes the exact sold vehicle detail tool without widening the identifier', async () => {
+  const received: unknown[] = [];
+  const service = new AiReadOnlyToolsService({
+    ...dependencies,
+    soldVehicleDetail: async (_context, args) => { received.push(args); return { found: true, deal: { recordNumber: 'SA-2026-0001' } }; },
+  });
+
+  const result = await service.execute(context, { name: 'sold.vehicle.detail', arguments: { recordNumber: 'SA-2026-0001' } });
+
+  assert.equal(result.toolName, 'sold.vehicle.detail');
+  assert.deepEqual(received, [{ recordNumber: 'SA-2026-0001' }]);
+});
+
 test('executes Phase 2 vehicle identity and RTO documents tools through injected dependencies', async () => {
   const calls: string[] = [];
   const service = new AiReadOnlyToolsService({
@@ -721,6 +734,14 @@ test('unknown, malformed, and over-broad tool requests fail closed', async () =>
   );
   await assert.rejects(
     () => service.execute(context, { name: 'listing.search', arguments: { query: 'x'.repeat(101) } }),
+    (error: unknown) => error instanceof Error && error.message.includes('arguments'),
+  );
+  await assert.rejects(
+    () => service.execute(context, { name: 'sold.vehicle.analytics', arguments: { from: '2026-02-30', metric: 'overview' } }),
+    (error: unknown) => error instanceof Error && error.message.includes('arguments'),
+  );
+  await assert.rejects(
+    () => service.execute(context, { name: 'sold.vehicle.analytics', arguments: { from: '2026-11-30', to: '2026-11-01', metric: 'overview' } }),
     (error: unknown) => error instanceof Error && error.message.includes('arguments'),
   );
 });

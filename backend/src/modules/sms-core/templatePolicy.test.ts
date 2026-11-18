@@ -50,3 +50,18 @@ test('requires the complete payment receipt variable order when the SMS rule is 
     'customerName|vehicleTitle|amount|receiptNumber|balance|paymentMethod|receiptUrl',
   );
 });
+
+test('requires the complete invoice variable order when the SMS rule is enabled', () => {
+  assert.throws(
+    () => validateSmsTemplateConfiguration('VEHICLE_SALE_INVOICE', true, 'customerName|invoiceUrl'),
+    /must use this exact variable order/,
+  );
+  assert.equal(
+    validateSmsTemplateConfiguration(
+      'VEHICLE_SALE_INVOICE',
+      true,
+      'customerName|vehicleTitle|registrationNumber|invoiceNumber|invoiceAmount|invoiceUrl',
+    ),
+    'customerName|vehicleTitle|registrationNumber|invoiceNumber|invoiceAmount|invoiceUrl',
+  );
+});

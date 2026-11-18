@@ -35,6 +35,7 @@ import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { matchAiPageContext } from '@/lib/financeWorkspace';
+import { resolveAiPageContext } from '@/lib/aiPageContext.mjs';
 import { purifyAiHtml } from '@/lib/safeHtml';
 import { useAuthStore } from '@/store/authStore';
 import { notifyAiConversationUpdated, subscribeToAiConversationUpdates } from './aiConversationSync';
@@ -260,7 +261,7 @@ export default function AiCommandCenter() {
   const selectedTool = tools.find((tool) => tool.name === selectedToolName) || null;
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || null;
   const financePageContext = useMemo(() => {
-    return matchAiPageContext(pathname || '') || undefined;
+    return resolveAiPageContext(matchAiPageContext, pathname || '');
   }, [pathname]);
 
   useEffect(() => {

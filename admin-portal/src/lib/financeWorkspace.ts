@@ -260,8 +260,17 @@ export const matchFinanceAiPagePath = (pathname: string) => {
 export const matchFinanceAiPageContext = (pathname: string) => {
   const financePage = matchFinanceAiPagePath(pathname);
   if (financePage) return { groupKey: financePage.group.key, moduleKey: financePage.module.key, moduleLabel: financePage.module.label };
-  if (/^\/(?:admin|employee)\/accounts\/sell-accounts\/?$/u.test(pathname)) {
-    return { groupKey: 'accounts', moduleKey: 'sold-vehicles', moduleLabel: 'Sold Vehicles' };
+  const soldVehicleMatch = /^\/(?:admin|employee)\/accounts\/sell-accounts(?:\/([^/]+))?(?:\/(edit))?\/?$/u.exec(pathname);
+  if (soldVehicleMatch) {
+    const recordId = soldVehicleMatch[1];
+    if (!recordId) return { groupKey: 'accounts', moduleKey: 'sold-vehicles', moduleLabel: 'Sold Vehicles' };
+    if (recordId === 'new') return { groupKey: 'accounts', moduleKey: 'sold-vehicles', moduleLabel: 'New Sold Vehicle' };
+    return {
+      groupKey: 'accounts',
+      moduleKey: 'sold-vehicles',
+      moduleLabel: soldVehicleMatch[2] ? 'Sold Vehicle edit' : 'Sold Vehicle',
+      recordId,
+    };
   }
   return null;
 };

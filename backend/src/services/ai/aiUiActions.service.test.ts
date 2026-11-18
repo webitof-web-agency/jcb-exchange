@@ -33,6 +33,17 @@ test('builds a generated invoice action only for the allow-listed internal route
   assert.equal(action?.downloadable, true);
 });
 
+test('builds all Sold Vehicle document actions only for exact authenticated internal routes', () => {
+  const routes = [
+    '/api/recruitment/admin/sell-accounts/32e28d69-5b6e-41b8-a1dd-850528f6ad09/payments/42e28d69-5b6e-41b8-a1dd-850528f6ad09/receipt',
+    '/api/recruitment/admin/sell-accounts/32e28d69-5b6e-41b8-a1dd-850528f6ad09/credit-note',
+    '/api/recruitment/admin/sell-accounts/32e28d69-5b6e-41b8-a1dd-850528f6ad09/refunds/52e28d69-5b6e-41b8-a1dd-850528f6ad09/advice',
+    '/api/recruitment/admin/sell-accounts/32e28d69-5b6e-41b8-a1dd-850528f6ad09/delivery-challan',
+    '/api/recruitment/admin/rto-records/62e28d69-5b6e-41b8-a1dd-850528f6ad09/transfer-certificate',
+  ];
+  routes.forEach((url) => assert.equal(buildAiFileAction({ label: 'Sold Vehicle file', fileName: 'file.pdf', mimeType: 'application/pdf', url })?.downloadable, true));
+});
+
 test('builds vehicle document preview and download actions only for internal vehicle-doc routes', () => {
   const details = buildAiFileAction({
     label: 'Vehicle details',

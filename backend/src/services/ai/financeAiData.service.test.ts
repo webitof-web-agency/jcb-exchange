@@ -2,11 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildFinanceHubPageQuery } from './financeAiData.service';
 
+const expectedDateRange = (days: number) => {
+  const to = new Date();
+  const from = new Date(to);
+  from.setUTCDate(from.getUTCDate() - Math.max(0, days - 1));
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+  };
+};
+
 test('builds bounded page queries for scoped Overview and Purchases pages', () => {
-  assert.deepEqual(buildFinanceHubPageQuery('cash-flow-overview', { days: 7, limit: 50 }), {
-    from: '2026-11-11',
-    to: '2026-11-17',
-  });
+  assert.deepEqual(buildFinanceHubPageQuery('cash-flow-overview', { days: 7, limit: 50 }), expectedDateRange(7));
   assert.deepEqual(buildFinanceHubPageQuery('all-purchases', { query: 'JCB 3DX', limit: 20, includeDrafts: true }), {
     q: 'JCB 3DX',
     status: 'booked',
@@ -54,15 +61,13 @@ test('builds source-specific queries for selected Sales and Vehicle Finance page
   assert.deepEqual(buildFinanceHubPageQuery('all-sales', { days: 7, limit: 10 }), {
     status: 'sold',
     dateBasis: 'sale',
-    from: '2026-11-11',
-    to: '2026-11-17',
+    ...expectedDateRange(7),
     page: '1',
     pageSize: '10',
   });
   assert.deepEqual(buildFinanceHubPageQuery('customer-receipts', { query: 'UPI', days: 30, limit: 15 }), {
     q: 'UPI',
-    from: '2026-10-19',
-    to: '2026-11-17',
+    ...expectedDateRange(30),
     page: '1',
     pageSize: '15',
   });
@@ -149,12 +154,12 @@ test('builds source-specific queries for Banking & Cash and Accounting & Books p
   assert.deepEqual(buildFinanceHubPageQuery('bank-accounts', {}), {});
   assert.deepEqual(buildFinanceHubPageQuery('hdfc-virtual-bank-ledger', {}), { type: 'VIRTUAL' });
   assert.deepEqual(buildFinanceHubPageQuery('bank-statement-upload', { limit: 10 }), { page: '1', pageSize: '10' });
-  assert.deepEqual(buildFinanceHubPageQuery('bank-reconciliation', { bankId: 'bank-1', days: 7 }), { bankId: 'bank-1', from: '2026-11-11', to: '2026-11-17' });
-  assert.deepEqual(buildFinanceHubPageQuery('unmatched-transactions', { days: 30 }), { from: '2026-10-19', to: '2026-11-17' });
+  assert.deepEqual(buildFinanceHubPageQuery('bank-reconciliation', { bankId: 'bank-1', days: 7 }), { bankId: 'bank-1', ...expectedDateRange(7) });
+  assert.deepEqual(buildFinanceHubPageQuery('unmatched-transactions', { days: 30 }), expectedDateRange(30));
   assert.deepEqual(buildFinanceHubPageQuery('bank-transfers', { limit: 5 }), { types: 'CONTRA', page: '1', pageSize: '5' });
-  assert.deepEqual(buildFinanceHubPageQuery('cash-book-petty-cash', { days: 7 }), { from: '2026-11-11', to: '2026-11-17' });
+  assert.deepEqual(buildFinanceHubPageQuery('cash-book-petty-cash', { days: 7 }), expectedDateRange(7));
   assert.deepEqual(buildFinanceHubPageQuery('upi-gateway-settlement', { limit: 10 }), { page: '1', pageSize: '10' });
-  assert.deepEqual(buildFinanceHubPageQuery('master-general-ledger', { accountId: 'account-1', days: 7 }), { accountId: 'account-1', from: '2026-11-11', to: '2026-11-17' });
+  assert.deepEqual(buildFinanceHubPageQuery('master-general-ledger', { accountId: 'account-1', days: 7 }), { accountId: 'account-1', ...expectedDateRange(7) });
   assert.deepEqual(buildFinanceHubPageQuery('chart-of-accounts', {}), {});
   assert.deepEqual(buildFinanceHubPageQuery('day-book', { from: '2026-11-01', to: '2026-11-17', limit: 20 }), { from: '2026-11-01', to: '2026-11-17', page: '1', pageSize: '20' });
   assert.deepEqual(buildFinanceHubPageQuery('journal-entries', { limit: 10 }), { types: 'JOURNAL', page: '1', pageSize: '10' });
@@ -162,19 +167,19 @@ test('builds source-specific queries for Banking & Cash and Accounting & Books p
   assert.deepEqual(buildFinanceHubPageQuery('receipt-vouchers', { limit: 10 }), { types: 'RECEIPT', page: '1', pageSize: '10' });
   assert.deepEqual(buildFinanceHubPageQuery('contra-adjustment-vouchers', { limit: 10 }), { types: 'CONTRA,ADJUSTMENT', page: '1', pageSize: '10' });
   assert.deepEqual(buildFinanceHubPageQuery('trial-balance', { from: '2026-11-01', to: '2026-11-17' }), { from: '2026-11-01', to: '2026-11-17' });
-  assert.deepEqual(buildFinanceHubPageQuery('suspense-account', { days: 7 }), { from: '2026-11-11', to: '2026-11-17' });
+  assert.deepEqual(buildFinanceHubPageQuery('suspense-account', { days: 7 }), expectedDateRange(7));
   assert.deepEqual(buildFinanceHubPageQuery('opening-balances', { yearId: 'year-1' }), { yearId: 'year-1' });
 });
 
 test('builds source-specific queries for Expenses & Assets pages', () => {
   assert.deepEqual(buildFinanceHubPageQuery('expenses-transactions', { days: 30, limit: 10 }), {
-    from: '2026-10-19', to: '2026-11-17',
+    ...expectedDateRange(30),
   });
   assert.deepEqual(buildFinanceHubPageQuery('expense-register', { from: '2026-04-01', to: '2026-11-17', query: 'rent', limit: 5 }), {
     from: '2026-04-01', to: '2026-11-17', q: 'rent', page: '1', pageSize: '5',
   });
   assert.deepEqual(buildFinanceHubPageQuery('vendor-bills', { days: 30, limit: 10 }), {
-    types: 'PURCHASE_BILL,DEBIT_NOTE', from: '2026-10-19', to: '2026-11-17', page: '1', pageSize: '10',
+    types: 'PURCHASE_BILL,DEBIT_NOTE', ...expectedDateRange(30), page: '1', pageSize: '10',
   });
   assert.deepEqual(buildFinanceHubPageQuery('recurring-expenses', {}), {});
   assert.deepEqual(buildFinanceHubPageQuery('employee-reimbursements', { status: 'SUBMITTED' }), { status: 'SUBMITTED' });

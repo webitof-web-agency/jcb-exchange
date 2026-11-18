@@ -86,6 +86,7 @@ import {
   resendSellAccountInvoice,
   resendSellAccountPaymentReceipt,
   downloadSellAccountInvoice,
+  downloadSellAccountDeliveryChallan,
   issueSellAccountReceiptRecord,
   cancelSellAccountReceiptRecord,
   downloadSellAccountPaymentReceipt,
@@ -224,6 +225,7 @@ router.post('/admin/sell-accounts/:id/start-rto', canUpdateSell, canCreateRto, s
 router.post('/admin/sell-accounts/:id/complete', canUpdateSell, canUpdateRto, completeSellAccountSale);
 router.post('/admin/sell-accounts/:id/invoice/resend', canUpdateSell, resendSellAccountInvoice);
 router.get('/admin/sell-accounts/:id/invoice', canViewSell, downloadSellAccountInvoice);
+router.get('/admin/sell-accounts/:id/delivery-challan', canViewSell, downloadSellAccountDeliveryChallan);
 router.get('/admin/sell-accounts/:id/delete-impact', canDeleteSell, getSellAccountDeletionImpactRecord);
 router.delete('/admin/sell-accounts/:id', canDeleteSell, deleteSellAccountRecord);
 router.post('/admin/sell-accounts/:id/payments', canUpdateSell, addSellAccountPaymentRecord);

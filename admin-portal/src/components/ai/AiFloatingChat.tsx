@@ -33,6 +33,7 @@ import api from '@/lib/api';
 import { notifyAiModelUpdated, subscribeToAiModelUpdates } from '@/lib/aiModelSync';
 import { hasAnyPermission } from '@/lib/permissionUtils';
 import { matchAiPageContext } from '@/lib/financeWorkspace';
+import { resolveAiPageContext } from '@/lib/aiPageContext.mjs';
 import { purifyAiHtml } from '@/lib/safeHtml';
 import { useAuthStore } from '@/store/authStore';
 import { notifyAiConversationUpdated, subscribeToAiConversationUpdates } from './aiConversationSync';
@@ -174,7 +175,7 @@ export default function AiFloatingChat() {
     }
   });
   const financePageContext = useMemo(() => {
-    return matchAiPageContext(pathname || '') || undefined;
+    return resolveAiPageContext(matchAiPageContext, pathname || '');
   }, [pathname]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const activeConversationIdRef = useRef<string | null>(null);

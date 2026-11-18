@@ -26,6 +26,11 @@ import { hasPermission } from '@/lib/permissionUtils';
 import { useSiteLogo } from '@/hooks/useSiteLogo';
 import { useTranslation } from '@/hooks/useTranslation';
 import { whatsappPreviewLayout } from '@/lib/whatsappPreviewLayout.mjs';
+import { canRegisterWhatsAppTemplate, validateWhatsAppTemplateForm } from '@/lib/whatsappTemplateName.mjs';
+import {
+  shouldEnableVehicleSaleAutomationAfterSelection,
+  vehicleSaleWhatsAppTemplateName,
+} from '@/lib/vehicleSaleAutomationPolicy.mjs';
 import {
   getWhatsAppCredentialFieldState,
   mergeRevealedWhatsAppCredentials,
@@ -874,15 +879,18 @@ export default function SuperAdminWhatsAppPage() {
     const key = `rule-${rule.eventCode}`;
     setMarketplaceSaving(key);
     setError('');
+    setNotice('');
     try {
       const response = await api.put<{ message: string }>('/whatsapp/marketplace-automations', {
         eventCode: rule.eventCode,
         enabled: changes.enabled ?? rule.enabled,
         templateId: changes.templateId ?? rule.templateId,
       });
+      setError('');
       setNotice(response.data.message);
       await loadMarketplace();
     } catch (requestError) {
+      setNotice('');
       setError(axios.isAxiosError(requestError) ? requestError.response?.data?.error || 'Unable to save automation.' : 'Unable to save automation.');
     } finally {
       setMarketplaceSaving(null);
@@ -890,14 +898,35 @@ export default function SuperAdminWhatsAppPage() {
   };
 
   const saveTemplate = async () => {
+    if (!templateForm.name.trim()) {
+      setError('');
+      setNotice('');
+      return;
+    }
+
+    const validationError = validateWhatsAppTemplateForm(templateForm);
+    if (validationError) {
+      setNotice('');
+      setError(validationError);
+      return;
+    }
+
     setMarketplaceSaving('template');
     setError('');
+    setNotice('');
     try {
-      const response = await api.post<{ message: string }>('/whatsapp/marketplace-templates', templateForm);
+      const response = await api.post<{ message: string }>('/whatsapp/marketplace-templates', {
+        ...templateForm,
+        name: templateForm.name.trim(),
+        language: templateForm.language.trim(),
+        metaTemplateId: templateForm.metaTemplateId.trim(),
+      });
+      setError('');
       setNotice(response.data.message);
       setTemplateForm({ name: '', language: 'en_US', metaTemplateId: '', category: 'MARKETPLACE', status: 'APPROVED', bodyText: '' });
       await Promise.all([loadMarketplace(), loadRecruitment(), loadTemplates()]);
     } catch (requestError) {
+      setNotice('');
       setError(axios.isAxiosError(requestError) ? requestError.response?.data?.error || 'Unable to save template.' : 'Unable to save template.');
     } finally {
       setMarketplaceSaving(null);
@@ -908,15 +937,18 @@ export default function SuperAdminWhatsAppPage() {
     const key = `recruitment-${rule.eventCode}`;
     setMarketplaceSaving(key);
     setError('');
+    setNotice('');
     try {
       const response = await api.put<{ message: string }>('/whatsapp/recruitment-automations', {
         eventCode: rule.eventCode,
         enabled: changes.enabled ?? rule.enabled,
         templateId: changes.templateId ?? rule.templateId,
       });
+      setError('');
       setNotice(response.data.message);
       await loadRecruitment();
     } catch (requestError) {
+      setNotice('');
       setError(axios.isAxiosError(requestError) ? requestError.response?.data?.error || 'Unable to save recruitment automation.' : 'Unable to save recruitment automation.');
     } finally {
       setMarketplaceSaving(null);
@@ -1326,6 +1358,11 @@ export default function SuperAdminWhatsAppPage() {
                       value={templateForm.name}
                       onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))}
                       placeholder="e.g. jcb_listing_approved"
+                      maxLength={512}
+                      pattern="[a-z0-9_]+"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      title="Use lowercase letters, numbers, and underscores only."
                       className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm"
                     />
                   </div>
@@ -1381,7 +1418,7 @@ export default function SuperAdminWhatsAppPage() {
 
                 <button
                   type="button"
-                  disabled={marketplaceSaving === 'template' || !canManageWhatsApp}
+                  disabled={marketplaceSaving === 'template' || !canManageWhatsApp || !canRegisterWhatsAppTemplate(templateForm)}
                   onClick={() => void saveTemplate()}
                   className="w-full rounded-xl bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-black transition hover:bg-amber-400 disabled:opacity-60 shadow-xs"
                 >
@@ -1446,6 +1483,10 @@ export default function SuperAdminWhatsAppPage() {
                 <div className="space-y-3 p-5 sm:p-6">
                 {marketplace?.rules.map((rule) => {
                   const details = localizedMarketplaceEventDetails[rule.eventCode];
+                  const vehicleTemplateName = vehicleSaleWhatsAppTemplateName(rule.eventCode);
+                  const ruleTemplateOptions = vehicleTemplateName
+                    ? marketplaceSelectOptions.filter((option) => option.value === '' || option.label === vehicleTemplateName)
+                    : marketplaceSelectOptions;
                   return (
                     <div key={rule.eventCode} className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-xs transition hover:border-gray-300">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
@@ -1459,10 +1500,14 @@ export default function SuperAdminWhatsAppPage() {
                           <CustomSelect
                             ariaLabel={`${details?.title || rule.eventCode} template`}
                             value={rule.templateId || ''}
-                            options={marketplaceSelectOptions}
+                            options={ruleTemplateOptions}
                             disabled={marketplaceSaving === `rule-${rule.eventCode}` || !canManageWhatsApp}
                             onChange={(val) => {
-                              void saveMarketplaceRule(rule, { templateId: val || null, enabled: false });
+                              const selectedTemplateId = val || null;
+                              void saveMarketplaceRule(rule, {
+                                templateId: selectedTemplateId,
+                                enabled: shouldEnableVehicleSaleAutomationAfterSelection(rule.eventCode, selectedTemplateId),
+                              });
                               if (val) previewTemplateById(val);
                             }}
                             className="w-full lg:w-64"

@@ -14,6 +14,7 @@ export type AiIntentContextMessage = {
   role: 'USER' | 'ASSISTANT';
   content: string;
   toolName?: string | null;
+  toolArguments?: Record<string, unknown> | null | undefined;
 };
 
 export type AiIntentResolution =
@@ -148,6 +149,15 @@ export const greetingResponseFor = (_message: string): string =>
 
 const hasAny = (message: string, patterns: readonly RegExp[]) => patterns.some((pattern) => pattern.test(message));
 
+const selectedSoldVehicleArguments = (recordId: string) => {
+  const normalized = recordId.trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(normalized)) {
+    return { dealId: normalized };
+  }
+  const recordNumber = normalized.match(/^(sa-\d{4}-\d+)/iu)?.[1];
+  return recordNumber ? { recordNumber: recordNumber.toUpperCase() } : null;
+};
+
 const MUTATION_PATTERNS = [
   /\b(create|add|delete|remove|update|edit|approve|reject|assign|send|purchase|buy)\b/u,
   /\b(banao|bnao|hatao|bhejo|badlo|becho|kharido)\b/u,
@@ -227,6 +237,45 @@ const forecastRequest = (message: string): AiAutoToolRequest | null => {
       metric: forecastMetricFor(message),
       ...historyArguments,
       ...horizonArguments,
+    },
+  };
+};
+
+const soldVehicleAnalyticsMetricFor = (message: string): 'overview' | 'profit_loss' | 'payments' | 'refunds' | 'rto_delay' | 'documents' | 'collection_risk' | 'low_margin' | 'model_performance' | 'monthly_comparison' | 'forecast' | 'suggestions' => {
+  if (/\b(?:forecast|predict|prediction|future|cash\s*flow)\b/u.test(message)) return 'forecast';
+  if (/\b(?:model[-\s]?wise|model\s+performance|brand\s+performance)\b/u.test(message)) return 'model_performance';
+  if (/\b(?:month(?:ly)?\s+comparison|month\s+on\s+month|mom|compare\s+months?)\b/u.test(message)) return 'monthly_comparison';
+  if (/\b(?:low[-\s]?margin|loss\s+deal|losses?|profitability)\b/u.test(message)) return /\blow[-\s]?margin\b/u.test(message) ? 'low_margin' : 'profit_loss';
+  if (/\b(?:collection\s+risk|payment\s+risk|overdue|outstanding\s+risk|recover)\b/u.test(message)) return 'collection_risk';
+  if (/\b(?:rto|transfer)\b/u.test(message) && /\b(?:delay|delayed|late|pending|backlog|days?)\b/u.test(message)) return 'rto_delay';
+  if (/\b(?:document|documents|deed|kyc|file|files)\b/u.test(message) && /\b(?:status|missing|pending|ready|readiness|details?|data)\b/u.test(message)) return 'documents';
+  if (/\b(?:refund|refunded|forfeit)\b/u.test(message)) return 'refunds';
+  if (/\b(?:payment|payments|receipt|receipts|seller\s+payout|payout|outstanding|balance|collection)\b/u.test(message)) return 'payments';
+  if (/\b(?:profit|loss|margin|gst|expense|expenses|revenue|sale|purchase)\b/u.test(message)) return 'profit_loss';
+  if (/\b(?:suggestion|suggestions|recommendation|recommend|next\s+action|what\s+should)\b/u.test(message)) return 'suggestions';
+  return 'overview';
+};
+
+const soldVehicleAnalyticsRequest = (message: string, normalizedMessage = message): AiAutoToolRequest | null => {
+  if (!/\b(?:sold\s+vehicles?|sold\s+vehicle|sell\s+accounts?|sale\s+accounts?|deal)\b/u.test(message)) return null;
+  const metric = soldVehicleAnalyticsMetricFor(normalizedMessage);
+  const hasExplicitAnalyticsSignal = /\b(?:analytics?|cash\s*flow|collection\s+risk|compare\s+months?|document(?:s)?\s+(?:status|missing|pending|ready)|forecast|future|low[-\s]?margin|model[-\s]?wise|monthly\s+comparison|outstanding|overdue|payment\s+risk|payout|predict|profit(?:ability)?|refund|rto\s+(?:delay|pending|status)|seller\s+payout|suggest(?:ion|ions)?|what\s+should)\b/u.test(normalizedMessage);
+  if (metric === 'overview' || !hasExplicitAnalyticsSignal) return null;
+  const identifier = extractSoldVehicleDetailRequest(message);
+  const historyArguments = rangeArguments(normalizedMessage);
+  const horizonArguments = forecastHorizonArguments(normalizedMessage);
+  const isForwardOnlyRange = typeof horizonArguments.horizon === 'number'
+    && typeof historyArguments.days === 'number'
+    && historyArguments.days === horizonArguments.horizon
+    && /\b(?:next|coming|agle|agale)\s+\d{1,3}\s*(?:days?|din|weeks?|haft(?:e|on)|months?|mahine?)\b/u.test(normalizedMessage);
+  if (isForwardOnlyRange) delete historyArguments.days;
+  return {
+    name: 'sold.vehicle.analytics',
+    arguments: {
+      ...(identifier ?? {}),
+      metric,
+      ...historyArguments,
+      ...(metric === 'forecast' ? horizonArguments : {}),
     },
   };
 };
@@ -429,6 +478,18 @@ const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{
 
 const extractUuid = (message: string): string | null => message.match(UUID_PATTERN)?.[0] || null;
 
+const extractSoldVehicleDetailRequest = (message: string): Record<string, string> | null => {
+  const dealId = extractUuid(message);
+  if (dealId && /\b(?:deal|record|sell\s+account|sale\s+account)\b/iu.test(message)) return { dealId };
+  const labelled = /\b(?:deal|record|sell\s+account|sale\s+account)\s*(?:id|no\.?|number|record)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9./_-]{2,})\b/iu.exec(message);
+  if (labelled?.[1] && /[0-9./_-]/u.test(labelled[1]) && !/^(?:id|no|number|details?|detail|data|status|ka|ke|ki|batao|btao|dikhao|show)$/iu.test(labelled[1])) {
+    return { recordNumber: labelled[1].toUpperCase() };
+  }
+  const record = /\b(?:SA[-_/][A-Z0-9][A-Z0-9./_-]{2,}|SA\d[A-Z0-9./_-]{2,}|JCBX[/_-]SV[-_/]?[A-Z0-9][A-Z0-9./_-]{2,})\b/iu.exec(message);
+  if (/\b(?:invoice|bill)\b/iu.test(message)) return null;
+  return record?.[0] ? { recordNumber: record[0].toUpperCase() } : null;
+};
+
 const extractRegistrationNumber = (message: string): string | null => {
   const candidates = message.toUpperCase().match(/\b[A-Z]{2}[-\s]?\d{1,2}[-\s]?[A-Z]{1,3}[-\s]?\d{1,4}\b/g) || [];
   const candidate = candidates.find((value) => /[A-Z]/u.test(value) && /\d/u.test(value));
@@ -442,6 +503,27 @@ const extractInvoiceNumber = (message: string): string | null => {
   if (/^(?:batao|btao|show|tell|details?|info|information)$/iu.test(candidate)) return null;
   const hasExplicitLabel = /\b(?:invoice|bill)\s*(?:no\.?|number|id)\b/iu.test(message);
   return hasExplicitLabel || /[0-9./_-]/u.test(candidate) ? candidate : null;
+};
+
+const extractChassisNumber = (message: string): string | null => {
+  const match = /\bchassis\s*(?:number|no\.?|#)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9./_-]{2,})/iu.exec(message);
+  if (!match?.[1]) return null;
+  const candidate = match[1].trim();
+  return /^(?:ka|ke|ki|batao|btao|show|details?|detail|number|no)$/iu.test(candidate) ? null : candidate;
+};
+
+const extractSoldVehicleSearchRequest = (message: string, pageContext: FinancePageContext): Record<string, unknown> | null => {
+  const soldContext = pageContext.moduleKey === 'sold-vehicles' || /\b(?:sold\s+vehicle|sold\s+vehicles|sold\s+deal|sell\s+account|sale\s+account|deal)\b/iu.test(message);
+  if (!soldContext) return null;
+  const registration = extractRegistrationNumber(message);
+  if (registration) return { vehicleNumber: registration };
+  const chassisNumber = extractChassisNumber(message);
+  if (chassisNumber) return { chassisNumber: chassisNumber.toUpperCase() };
+  const invoiceNumber = extractInvoiceNumber(message);
+  if (invoiceNumber) return { invoiceNumber: invoiceNumber.toUpperCase() };
+  const listingId = extractUuid(message);
+  if (listingId && /\blisting\b/iu.test(message)) return { listingId };
+  return null;
 };
 
 const extractPartnerIdentifier = (message: string): { partnerId?: string; partnerCode?: string } | null => {
@@ -464,6 +546,7 @@ const rangeToolNames = new Set<AiReadOnlyToolName>([
   'analytics.summary',
   'listing.statistics',
   'sold.vehicles',
+  'sold.vehicle.analytics',
   'inventory.trend',
   'revenue.summary',
   'partner.performance',
@@ -565,6 +648,18 @@ const previousToolFor = (context: readonly AiIntentContextMessage[], previousReq
     : previousRequest?.name || null;
 };
 
+const previousArgumentsFor = (
+  context: readonly AiIntentContextMessage[],
+  previousRequest: AiAutoToolRequest | null,
+): Record<string, unknown> => {
+  const previousAssistant = [...context].reverse().find((message) => (
+    message.role === 'ASSISTANT' && isReadOnlyToolName(message.toolName)
+  ));
+  return previousAssistant?.toolArguments && typeof previousAssistant.toolArguments === 'object'
+    ? { ...previousAssistant.toolArguments }
+    : previousRequest?.arguments || {};
+};
+
 const followUpRequestFor = (
   message: string,
   context: readonly AiIntentContextMessage[],
@@ -574,7 +669,7 @@ const followUpRequestFor = (
   const previousRequest = previousRequestFor(context);
   const previousTool = previousToolFor(context, previousRequest);
   if (!previousTool) return null;
-  const previousArguments = previousRequest?.arguments || {};
+  const previousArguments = previousArgumentsFor(context, previousRequest);
   const continuation = hasAny(normalized, [
     /^\s*(and|also|aur|or|plus)\b/u,
     /\b(iska|iske|uska|uske|this|that|same|more|again|bhi|it|its|ye|yeh|woh|vo|owner|malik|status|details?|number|engine|chassis|rc)\b/u,
@@ -602,6 +697,10 @@ const followUpRequestFor = (
         arguments: inheritedListingId ? { listingId: inheritedListingId } : inheritedQuery ? { query: inheritedQuery } : {},
       };
     }
+  }
+
+  if (previousTool === 'sold.vehicle.detail' && continuation) {
+    return { name: 'sold.vehicle.detail', arguments: { ...previousArguments } };
   }
 
   // Preserve the previously selected entity for short detail follow-ups. The
@@ -653,8 +752,25 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
   ]);
   if (hasAny(normalized, MUTATION_PATTERNS) && (!financePageKey || explicitFinanceMutation)) return null;
 
+  const soldVehicleAnalytics = soldVehicleAnalyticsRequest(message, normalized);
+  if (soldVehicleAnalytics && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
+    return soldVehicleAnalytics;
+  }
+
   const forecast = forecastRequest(normalized);
   if (forecast) return forecast;
+
+  // A selected Sold Vehicle record is the authoritative scope for party-field
+  // follow-ups (seller, purchaser, owner, phone, address, etc.). Resolve it
+  // before the generic finance page router, which otherwise returns the
+  // intentionally limited sell.accounts.summary projection.
+  if (pageContext.moduleKey === 'sold-vehicles' && pageContext.recordId && !explicitFinanceMutation) {
+    const selectedSoldVehicle = selectedSoldVehicleArguments(pageContext.recordId);
+    const selectedRecordRead = hasAny(normalized, [
+      /\b(?:seller|sellor|purchaser|buyer|owner|party|phone|mobile|address|city|state|naam|name|number|contact)\b/u,
+    ]);
+    if (selectedRecordRead && selectedSoldVehicle) return { name: 'sold.vehicle.detail', arguments: selectedSoldVehicle };
+  }
 
   const financePageReadQuestion = hasAny(normalized, [
     /\b(show|tell|give|find|which|what|check|verify|how\s+many|complete|full|summary|status|details?|detail|data|report|reports|statement|statements?|analysis|analytics|count|total|batao|btao|dikhao|kitne|kitni|loss|profit|profitability|margin|sheet|cash\s+book|petty\s+cash|contra\s+and\s+adjustment\s+vouchers?|vault|closing|audit|queries|checklist|review|tally|export|exports|upload|history|download)\b/u,
@@ -662,6 +778,18 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
   const legacyAccountingSummary = /\baccounting\s+chart\s+of\s+accounts\s+summary\b/u.test(normalized);
   if (financePageKey && financePageReadQuestion && !explicitFinanceMutation && !legacyAccountingSummary) {
     return { name: 'finance.hub.page', arguments: { pageKey: financePageKey, ...rangeArguments(normalized) } };
+  }
+  const exactSoldVehicle = extractSoldVehicleDetailRequest(message);
+  if (exactSoldVehicle && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
+    return { name: 'sold.vehicle.detail', arguments: exactSoldVehicle };
+  }
+  const soldVehicleSearch = extractSoldVehicleSearchRequest(message, pageContext);
+  if (soldVehicleSearch && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
+    return { name: 'sold.vehicle.search', arguments: soldVehicleSearch };
+  }
+  if (pageContext.moduleKey === 'sold-vehicles' && pageContext.recordId && financePageReadQuestion && !explicitFinanceMutation) {
+    const selectedSoldVehicle = selectedSoldVehicleArguments(pageContext.recordId);
+    if (selectedSoldVehicle) return { name: 'sold.vehicle.detail', arguments: selectedSoldVehicle };
   }
   if (pageContext.moduleKey === 'sold-vehicles' && financePageReadQuestion && !explicitFinanceMutation) {
     return { name: 'sell.accounts.summary', arguments: { ...rangeArguments(normalized), allRecords: true } };
@@ -1299,11 +1427,17 @@ export const resolveAiMessage = (
   context: readonly AiIntentContextMessage[] = [],
   pageContext: FinancePageContext = {},
 ): AiIntentResolution => {
+  const contextualFollowUp = followUpRequestFor(message, context);
+  const normalized = normalizeMessage(message);
+  const shouldPreferContext = Boolean(contextualFollowUp) && hasAny(normalized, [
+    /^\s*(?:and|also|aur|or|plus)\b/u,
+    /\b(?:iska|iske|uska|uske|this|that|same|again|bhi|it|its|ye|yeh|woh|vo)\b/u,
+  ]);
+  if (shouldPreferContext && contextualFollowUp) return { kind: 'tool', request: contextualFollowUp };
   const request = routeAiMessage(message, pageContext);
   if (request) return { kind: 'tool', request };
-  const followUp = followUpRequestFor(message, context);
-  if (followUp) return { kind: 'tool', request: followUp };
-  if (hasMutationIntent(normalizeMessage(message))) return { kind: 'none' };
+  if (contextualFollowUp) return { kind: 'tool', request: contextualFollowUp };
+  if (hasMutationIntent(normalized)) return { kind: 'none' };
   const clarification = clarificationForMessage(message);
   return clarification ? { kind: 'clarification', message: clarification } : { kind: 'none' };
 };

@@ -30,6 +30,7 @@ const SMS_TEMPLATE_VARIABLES: Record<string, readonly string[]> = {
 } as const;
 
 const REQUIRED_SMS_TEMPLATE_VARIABLES: Record<string, readonly string[]> = {
+  VEHICLE_SALE_INVOICE: ['customerName', 'vehicleTitle', 'registrationNumber', 'invoiceNumber', 'invoiceAmount', 'invoiceUrl'],
   VEHICLE_SALE_PAYMENT_RECEIPT: ['customerName', 'vehicleTitle', 'amount', 'receiptNumber', 'balance', 'paymentMethod', 'receiptUrl'],
 };
 

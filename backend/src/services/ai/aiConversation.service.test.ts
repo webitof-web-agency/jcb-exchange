@@ -59,16 +59,19 @@ test('persists database source and fetch time with an assistant tool result', as
     toolName: 'listing.statistics',
     toolSource: 'database',
     toolFetchedAt: fetchedAt,
+    toolArguments: { recordNumber: 'SA-2026-0001' },
   });
 
   const created = repository.calls.appendMessage?.[0] as {
     toolName: string;
     toolSource: string;
     toolFetchedAt: Date;
+    toolArguments: { recordNumber: string };
   };
   assert.equal(created.toolName, 'listing.statistics');
   assert.equal(created.toolSource, 'database');
   assert.equal(created.toolFetchedAt.toISOString(), fetchedAt.toISOString());
+  assert.deepEqual(created.toolArguments, { recordNumber: 'SA-2026-0001' });
 });
 
 test('redacts internal identifiers when previously stored messages are read', async () => {
@@ -91,6 +94,30 @@ test('redacts internal identifiers when previously stored messages are read', as
   const [message] = await service.getMessages('user-1', 'conversation-1');
   assert.equal(message?.content.includes('32e28d69-5b6e-41b8-a1dd-850528f6ad09'), false);
   assert.match(message?.content ?? '', /\[REDACTED_INTERNAL_ID\]/);
+});
+
+test('does not expose internal tool selector context through public conversation history', async () => {
+  const repository = repositoryMock();
+  repository.listMessages = async () => [{
+    id: 'message-1',
+    conversationId: 'conversation-1',
+    role: 'ASSISTANT',
+    content: 'Sold vehicle details fetched.',
+    requestId: 'request-1',
+    provider: 'INTERNAL',
+    modelAlias: 'deterministic-read-only',
+    toolName: 'sold.vehicle.detail',
+    toolArguments: { recordNumber: 'SA-2026-0001' },
+    toolSource: 'database',
+    toolFetchedAt: new Date('2026-11-13T00:00:00.000Z'),
+    createdAt: new Date('2026-11-13T00:00:00.000Z'),
+  }];
+  const service = new AiConversationService(repository);
+
+  const [message] = await service.getMessages('user-1', 'conversation-1');
+  assert.equal('toolArguments' in (message ?? {}), false);
+  const [internalMessage] = await service.getMessages('user-1', 'conversation-1', { includeToolContext: true });
+  assert.deepEqual(internalMessage?.toolArguments, { recordNumber: 'SA-2026-0001' });
 });
 
 test('rejects appending to a conversation owned by another operator', async () => {

@@ -1,4 +1,5 @@
 import prisma from '../../lib/prisma';
+import { Prisma } from '@prisma/client';
 import { redactSensitiveData } from './aiRedaction';
 import { auditHmacHex, sha256Hex } from './aiSecurity.service';
 
@@ -23,6 +24,7 @@ export type AiConversationMessageRecord = {
   provider: string | null;
   modelAlias: string | null;
   toolName: string | null;
+  toolArguments?: Record<string, unknown> | null;
   toolSource: AiConversationToolSource | null;
   toolFetchedAt: Date | null;
   createdAt: Date;
@@ -52,6 +54,7 @@ export type AiConversationRepository = {
     provider?: string;
     modelAlias?: string;
     toolName?: string;
+    toolArguments?: Prisma.InputJsonValue;
     toolSource?: AiConversationToolSource;
     toolFetchedAt?: Date;
   }) => Promise<{ id: string }>;
@@ -147,6 +150,7 @@ const createPrismaRepository = (): AiConversationRepository => ({
         provider: true,
         modelAlias: true,
         toolName: true,
+        toolArguments: true,
         toolSource: true,
         toolFetchedAt: true,
         createdAt: true,
@@ -156,6 +160,9 @@ const createPrismaRepository = (): AiConversationRepository => ({
       ...message,
       role: message.role as AiConversationMessageRole,
       content: message.contentRedacted,
+      toolArguments: message.toolArguments && typeof message.toolArguments === 'object' && !Array.isArray(message.toolArguments)
+        ? message.toolArguments as Record<string, unknown>
+        : null,
     }));
   },
 
@@ -235,12 +242,13 @@ export class AiConversationService {
     }));
   }
 
-  async getMessages(actorUserId: string, conversationId: string) {
+  async getMessages(actorUserId: string, conversationId: string, options: { includeToolContext?: boolean } = {}) {
     await this.ensureOwnership(actorUserId, conversationId);
     const messages = await this.repository.listMessages(conversationId);
-    return messages.map((message) => ({
+    return messages.map(({ toolArguments, ...message }) => ({
       ...message,
       content: redactSensitiveData(message.content),
+      ...(options.includeToolContext && toolArguments ? { toolArguments } : {}),
     }));
   }
 
@@ -271,6 +279,7 @@ export class AiConversationService {
     provider?: string;
     modelAlias?: string;
     toolName?: string;
+    toolArguments?: Record<string, unknown>;
     toolSource?: AiConversationToolSource;
     toolFetchedAt?: Date;
   }) {
@@ -287,6 +296,7 @@ export class AiConversationService {
       ...(input.provider ? { provider: input.provider } : {}),
       ...(input.modelAlias ? { modelAlias: input.modelAlias } : {}),
       ...(input.toolName ? { toolName: input.toolName } : {}),
+      ...(input.toolArguments ? { toolArguments: input.toolArguments as Prisma.InputJsonValue } : {}),
       ...(input.toolSource ? { toolSource: input.toolSource } : {}),
       ...(input.toolFetchedAt ? { toolFetchedAt: input.toolFetchedAt } : {}),
     });

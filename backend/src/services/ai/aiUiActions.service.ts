@@ -1,5 +1,10 @@
 const SECURE_DOCUMENT_ROUTE = /^\/api\/documents\/secure\/[A-Za-z0-9._~%()-]+$/u;
 const GENERATED_INVOICE_ROUTE = /^\/api\/recruitment\/admin\/sell-accounts\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/invoice$/iu;
+const GENERATED_RECEIPT_ROUTE = /^\/api\/recruitment\/admin\/sell-accounts\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/payments\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/receipt$/iu;
+const GENERATED_CREDIT_NOTE_ROUTE = /^\/api\/recruitment\/admin\/sell-accounts\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/credit-note$/iu;
+const GENERATED_REFUND_ADVICE_ROUTE = /^\/api\/recruitment\/admin\/sell-accounts\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/refunds\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/advice$/iu;
+const GENERATED_DELIVERY_CHALLAN_ROUTE = /^\/api\/recruitment\/admin\/sell-accounts\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/delivery-challan$/iu;
+const GENERATED_RTO_TRANSFER_ROUTE = /^\/api\/recruitment\/admin\/rto-records\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/transfer-certificate$/iu;
 const VEHICLE_DETAILS_ROUTE = /^\/api\/vehicle-docs\/[A-Za-z0-9._~%()-]+\/details\.pdf(?:\?inline=1)?$/u;
 const VEHICLE_FILE_ROUTE = /^\/api\/vehicle-docs\/[A-Za-z0-9._~%()-]+\/files\/[A-Za-z0-9._~%()-]+$/u;
 const VEHICLE_ZIP_ROUTE = /^\/api\/vehicle-docs\/[A-Za-z0-9._~%()-]+\/zip$/u;
@@ -38,6 +43,11 @@ const safeFileName = (value: string) => safeText(value, 160)
 
 const isAllowedFileRoute = (url: string) => SECURE_DOCUMENT_ROUTE.test(url)
   || GENERATED_INVOICE_ROUTE.test(url)
+  || GENERATED_RECEIPT_ROUTE.test(url)
+  || GENERATED_CREDIT_NOTE_ROUTE.test(url)
+  || GENERATED_REFUND_ADVICE_ROUTE.test(url)
+  || GENERATED_DELIVERY_CHALLAN_ROUTE.test(url)
+  || GENERATED_RTO_TRANSFER_ROUTE.test(url)
   || VEHICLE_DETAILS_ROUTE.test(url)
   || VEHICLE_FILE_ROUTE.test(url)
   || VEHICLE_ZIP_ROUTE.test(url)

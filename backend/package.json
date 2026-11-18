@@ -9,6 +9,7 @@
     "generate": "prisma generate",
     "build": "prisma generate && tsc",
     "test:ai:phase7": "tsx --test src/services/ai/aiPhase7.matrix.test.ts",
+    "validate:ai:phase10": "tsx scripts/validate-sold-vehicle-phase10.ts",
     "start": "prisma migrate deploy && node dist/src/server.js",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",

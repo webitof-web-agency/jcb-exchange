@@ -23,6 +23,10 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { hasPermission } from '@/lib/permissionUtils';
 import { confirmDelete } from '@/store/confirmDeleteStore';
+import {
+  defaultVehicleSaleSmsVariables,
+  shouldEnableVehicleSaleAutomationAfterSelection,
+} from '@/lib/vehicleSaleAutomationPolicy.mjs';
 
 type SmsSettings = {
   enabled: boolean;
@@ -120,6 +124,7 @@ function RuleCard({
   onSave: (rule: SmsRule) => void;
 }) {
   const [draft, setDraft] = useState(rule);
+  const isVehicleSaleRule = rule.eventCode === 'VEHICLE_SALE_INVOICE' || rule.eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT';
 
   return (
     <section className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm transition hover:shadow-md sm:p-5 lg:p-6">
@@ -158,7 +163,20 @@ function RuleCard({
           </label>
           <input
             value={draft.messageId || ''}
-            onChange={(event) => setDraft((current) => ({ ...current, messageId: event.target.value.replace(/\D/g, '') }))}
+            onChange={(event) => setDraft((current) => {
+              const messageId = event.target.value.replace(/\D/g, '');
+              const defaultVariables = defaultVehicleSaleSmsVariables(rule.eventCode);
+              return {
+                ...current,
+                messageId,
+                ...(shouldEnableVehicleSaleAutomationAfterSelection(rule.eventCode, messageId)
+                  ? {
+                    enabled: true,
+                    variablesTemplate: current.variablesTemplate?.trim() || defaultVariables || current.variablesTemplate,
+                  }
+                  : {}),
+              };
+            })}
             disabled={!canManage || saving}
             inputMode="numeric"
             placeholder="Approved DLT ID (e.g. 1707161...)"
@@ -174,7 +192,7 @@ function RuleCard({
             value={draft.variablesTemplate || ''}
             onChange={(event) => setDraft((current) => ({ ...current, variablesTemplate: event.target.value }))}
             disabled={!canManage || saving}
-            placeholder="Optional: customerName|listingTitle|status"
+            placeholder={defaultVehicleSaleSmsVariables(rule.eventCode) || 'Optional: customerName|listingTitle|status'}
             className="mt-1.5 h-11 w-full rounded-xl border border-gray-300 bg-white px-3.5 text-sm outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:bg-gray-100 disabled:text-gray-400"
           />
         </div>
@@ -194,6 +212,11 @@ function RuleCard({
 
       <div className="mt-3 space-y-1 text-xs leading-relaxed text-gray-500">
         <p>{variableHelp}</p>
+        {isVehicleSaleRule && !draft.enabled ? (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 font-semibold text-amber-800">
+            This Sold Vehicle SMS is not active. Enter the approved DLT Message ID and save this rule; the required variable order will be validated before activation.
+          </p>
+        ) : null}
         {rule.variableOptions?.length ? (
           <p>
             Allowed event values:{' '}

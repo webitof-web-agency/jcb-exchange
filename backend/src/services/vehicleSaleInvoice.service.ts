@@ -1,11 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import prisma from '../lib/prisma';
 import { getAppSettings } from '../utils/appSettings';
 import { numberToWordsInr } from '../utils/customerPrimeInvoice';
 import { renderSellAccountVoucherPdf } from '../utils/sellAccountVoucherPdf';
-import { renderBillOfSupplyPdf, renderMoneyReceiptPdf } from '../utils/vehicleSaleDocumentsPdf';
+import { renderBillOfSupplyPdf, renderDeliveryChallanPdf, renderMoneyReceiptPdf } from '../utils/vehicleSaleDocumentsPdf';
 import { fillBillOfSupplyTemplate, fillMoneyReceiptTemplate } from '../utils/vehicleSaleDocxTemplate';
 import { financialYearLabel, nextVehicleSaleInvoiceNumber, vehicleSaleInvoicePrefix } from '../utils/vehicleSaleInvoice';
 import { loadInvoiceLogo } from './customerPrimeInvoice.service';
@@ -89,8 +89,18 @@ export const vehicleTitleOf = (record: { listingTitle?: string | null; brandName
   || record.vehicleNumber
   || 'Vehicle';
 
+const resolveVehicleSaleAssetPath = (fileName: string, environmentVariable?: string): string => {
+  if (environmentVariable && process.env[environmentVariable]?.trim()) return process.env[environmentVariable]!.trim();
+  const candidates = [
+    path.resolve(process.cwd(), 'templates', 'vehicle-sale', fileName),
+    path.resolve(process.cwd(), 'backend', 'templates', 'vehicle-sale', fileName),
+    path.resolve(__dirname, '..', '..', 'templates', 'vehicle-sale', fileName),
+  ];
+  return candidates.find((c) => existsSync(c)) ?? candidates[0]!;
+};
+
 const templatePath = (environmentVariable: string, fileName: string) =>
-  process.env[environmentVariable]?.trim() || path.resolve(process.cwd(), 'templates', 'vehicle-sale', fileName);
+  resolveVehicleSaleAssetPath(fileName, environmentVariable);
 
 const readTemplate = async (environmentVariable: string, fileName: string) => {
   const sourcePath = templatePath(environmentVariable, fileName);
@@ -180,7 +190,12 @@ export const buildVehicleSaleInvoicePdf = async (sellAccountId: string) => {
   const balance = summary.purchaserBalance;
   const identity = vehicleIdentityLine(record);
   const invoiceDate = record.invoiceGeneratedAt || record.completedAt || new Date();
-  const logo = await loadInvoiceLogo(appSettings.siteLogo.darkLogoUrl || appSettings.siteLogo.imageUrl);
+  let logo = await loadInvoiceLogo(appSettings.siteLogo.darkLogoUrl || appSettings.siteLogo.imageUrl);
+  if (!logo) {
+    try {
+      logo = await fs.readFile(resolveVehicleSaleAssetPath('jcb-exchange-logo.jpg'));
+    } catch {}
+  }
   const company = appSettings.companyInvoice;
   const invoiceNumber = record.invoiceNumber;
   const description = [vehicleTitleOf(record), record.chassisNumber ? `Chassis No. ${record.chassisNumber}` : ''].filter(Boolean).join(' - ');
@@ -194,11 +209,12 @@ export const buildVehicleSaleInvoicePdf = async (sellAccountId: string) => {
     record.creditNoteNumber ? `CANCELLED vide Credit Note ${record.creditNoteNumber}.` : '',
     company.termsAndConditions,
   ].filter(Boolean).join(' ');
+
   const buffer = await renderWithTemplateFallback('Bill of Supply', async () => {
     const template = await readTemplate('VEHICLE_SALE_BILL_OF_SUPPLY_TEMPLATE_PATH', 'JCB_EXCHANGE_BILL OF SUPPLY 01.docx');
     const docx = fillBillOfSupplyTemplate(template, {
       companyName: company.companyName || 'JCB Exchange',
-      cin: company.cin || '-',
+      cin: '',
       companyAddressLine: companyAddressLine(company),
       companyGstin: company.gstin || '-',
       invoiceNumber,
@@ -221,7 +237,7 @@ export const buildVehicleSaleInvoicePdf = async (sellAccountId: string) => {
     }, logo);
     return convertDocxToPdf(docx, `JCB-Exchange-Bill-of-Supply-${invoiceNumber}.pdf`);
   }, () => renderBillOfSupplyPdf({
-    company: { name: company.companyName || 'JCB Exchange', addressLine: companyAddressLine(company), cin: company.cin, gstin: company.gstin, state: company.state },
+    company: { name: company.companyName || 'JCB Exchange', addressLine: companyAddressLine(company), cin: null, gstin: company.gstin, state: company.state },
     invoiceNumber,
     invoiceDate: formatDocumentDate(invoiceDate),
     customerName: record.purchaserName || 'Customer',
@@ -240,7 +256,7 @@ export const buildVehicleSaleInvoicePdf = async (sellAccountId: string) => {
 
   return {
     buffer,
-    fileName: `JCB-Exchange-Bill-of-Supply-${record.invoiceNumber.replace(/[^A-Za-z0-9-]+/g, '-')}.pdf`,
+    fileName: `Invoice-${record.invoiceNumber.replace(/[^A-Za-z0-9-]+/g, '_')}_${(record.vehicleNumber || 'VEHICLE').replace(/[^A-Za-z0-9-]+/g, '_')}.pdf`,
     invoiceNumber: record.invoiceNumber,
   };
 };
@@ -364,6 +380,36 @@ const sellAccountDocumentContext = async (sellAccountId: string) => {
     party: { label: 'PAID TO', name: record.purchaserName || 'Customer', mobile: record.purchaserNumber, place: [record.purchaserCity, record.purchaserState].filter(Boolean).join(', ') },
     vehicle: { title: vehicleTitleOf(record), registrationNumber: record.vehicleNumber, chassisNumber: record.chassisNumber, recordNumber: record.recordNumber },
   };
+};
+
+/** Generates the internal vehicle handover document for a completed, non-cancelled deal. */
+export const buildVehicleSaleDeliveryChallanPdf = async (sellAccountId: string) => {
+  const record = await prisma.sellAccount.findUnique({
+    where: { id: sellAccountId },
+    include: { listing: { select: { engineNumber: true } } },
+  });
+  if (!record || record.deletedAt) throw new Error('Sold Vehicle record was not found for delivery challan generation.');
+  if (record.isDraft || record.cancelledAt || !record.completedAt) throw new Error('Delivery challan is available only for a completed, non-cancelled Sold Vehicle deal.');
+
+  const appSettings = await getAppSettings();
+  const company = appSettings.companyInvoice;
+  const challanNumber = `JCBX/DC/${record.recordNumber}`;
+  const buffer = await renderDeliveryChallanPdf({
+    company: { name: company.companyName || 'JCB Exchange', addressLine: companyAddressLine(company), gstin: company.gstin },
+    challanNumber,
+    challanDate: formatDocumentDate(record.completedAt),
+    sellerName: record.sellerName || record.ownerName || 'Seller',
+    purchaserName: record.purchaserName || 'Customer',
+    purchaserAddress: customerAddressLine({ purchaserCity: record.purchaserCity, purchaserState: record.purchaserState }),
+    vehicleTitle: vehicleTitleOf(record),
+    registrationNumber: record.vehicleNumber || '-',
+    chassisNumber: record.chassisNumber || '-',
+    engineNumber: record.listing?.engineNumber || '-',
+    purpose: 'Vehicle handover against completed Sold Vehicle deal.',
+    remarks: record.invoiceNumber ? `Related Bill of Supply: ${record.invoiceNumber}. Internal delivery challan; not a tax invoice.` : 'Internal delivery challan; not a tax invoice.',
+    signatory: { name: authorisedSignatoryName(company), designation: authorisedSignatoryDesignation(company) },
+  });
+  return { buffer, fileName: `JCB-Exchange-Delivery-Challan-${record.recordNumber.replace(/[^A-Za-z0-9-]+/g, '-')}.pdf`, challanNumber };
 };
 
 const REFUND_REASON_LABEL: Record<string, string> = {

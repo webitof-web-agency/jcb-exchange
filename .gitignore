@@ -170,6 +170,8 @@ whatsappfront/
 !backend/src/services/whatsappCredentialCrypto.ts
 !backend/src/services/whatsappCredentialCrypto.test.ts
 !backend/src/services/whatsappIntegration.service.ts
+!backend/src/services/vehicleSaleInvoiceWhatsAppTemplate.ts
+!backend/src/services/vehicleSaleInvoiceWhatsAppTemplate.test.ts
 !backend/src/controllers/whatsapp.controller.ts
 !backend/src/controllers/whatsappWebhook.controller.ts
 !backend/src/routes/whatsapp.routes.ts
@@ -203,8 +205,16 @@ whatsappfront/
 # Local Codex handoff/audit documents; do not commit or push.
 /docs/
 
+# Persistent AI discovery/progress registry is intentionally tracked.
+!/docs/
+/docs/*
+!/docs/ai/
+!/docs/ai/**
+
 # Local vehicle-sale document templates contain business stationery and are provisioned separately.
 /backend/templates/vehicle-sale/*.docx
+!/backend/templates/vehicle-sale/JCB_EXCHANGE_BILL OF SUPPLY 01.docx
+!/backend/templates/vehicle-sale/JCB_Exchange_OPC_Private_Limited_Money_Receipt.docx
 
 # GST verification source templates contain official/provider document artwork and are provisioned separately.
 /gstverification.pdf

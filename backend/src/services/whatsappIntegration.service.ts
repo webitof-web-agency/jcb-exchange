@@ -28,6 +28,7 @@ import { resolveNotificationPreference } from './notificationRecipient.service';
 import { extractDriveFileId, streamFileFromDrive } from './googleDrive.service';
 import { buildCustomerPrimeInvoicePdfForSubscription } from './customerPrimeInvoice.service';
 import { buildVehicleSaleInvoicePdf, buildVehicleSalePaymentReceiptPdf } from './vehicleSaleInvoice.service';
+import { validateVehicleSaleInvoiceWhatsAppTemplate } from './vehicleSaleInvoiceWhatsAppTemplate';
 import { validateVehicleSalePaymentReceiptWhatsAppTemplate } from './vehicleSalePaymentReceiptWhatsAppTemplate';
 import { provisionAutomationRules } from './notificationAutomationProvisioning.service';
 
@@ -251,6 +252,9 @@ const saveWhatsAppAutomationRule = async ({
     : null;
   if (selectedTemplate && !isWhatsAppTemplatePurposeAllowed(resolveWhatsAppTemplatePurpose(selectedTemplate.name, selectedTemplate.category), allowedTemplatePurposes)) {
     throw new Error('Selected template does not belong to this WhatsApp module.');
+  }
+  if (selectedTemplate && eventCode === 'VEHICLE_SALE_INVOICE') {
+    validateVehicleSaleInvoiceWhatsAppTemplate(selectedTemplate);
   }
   if (selectedTemplate && eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT') {
     validateVehicleSalePaymentReceiptWhatsAppTemplate(selectedTemplate);
@@ -796,7 +800,17 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
       return { queued: false, reason: decision.shouldQueue ? 'AUTOMATION_CONFIGURATION_INVALID' : decision.reason };
     }
 
-    if (input.eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT') {
+    if (input.eventCode === 'VEHICLE_SALE_INVOICE') {
+      try {
+        validateVehicleSaleInvoiceWhatsAppTemplate(rule.template);
+      } catch (error) {
+        return {
+          queued: false,
+          reason: 'INVALID_TEMPLATE_CONFIGURATION',
+          error: error instanceof Error ? error.message : 'Vehicle sale invoice WhatsApp template is invalid.',
+        };
+      }
+    } else if (input.eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT') {
       try {
         validateVehicleSalePaymentReceiptWhatsAppTemplate(rule.template);
       } catch (error) {

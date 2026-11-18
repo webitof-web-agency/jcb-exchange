@@ -1,0 +1,155 @@
+{
+  "registryVersion": 1,
+  "auditDate": "2026-11-18",
+  "scope": "sold-vehicles-first",
+  "statusDefinitions": {
+    "discovered": "Repository source surface found; implementation completeness not implied.",
+    "partial": "Some AI read access exists, but the complete verified contract is not implemented.",
+    "verified_sample": "Configured database comparison and local regression tests passed; production browser/provider evidence is still pending.",
+    "pending": "Required integration is not yet implemented or tested.",
+    "verified": "Actual database comparison and regression tests passed."
+  },
+  "phase2Artifacts": {
+    "fieldSourceMap": "docs/ai/PHASE_2_FIELD_SOURCE_MAP.md",
+    "questionToolMap": "docs/ai/AI_QUESTION_TOOL_MAP.md",
+    "relationshipGraph": "docs/ai/MODULE_RELATIONSHIPS.md"
+  },
+  "canonicalIdentity": {
+    "deal": "SellAccount.id",
+    "dealBusinessKey": "SellAccount.recordNumber",
+    "listing": "Listing.id via SellAccount.listingId",
+    "customer": "Lead.customerId or ListingPaymentSubmission.buyerId only when explicitly linked",
+    "partner": "Listing.partnerId -> User.id -> PartnerProfile.userId",
+    "vehicle": "No standalone Vehicle.id; use resolved listing plus registration/chassis keys"
+  },
+  "modules": [
+    {
+      "key": "sold-vehicles",
+      "label": "Sold Vehicles / Sell Accounts",
+      "status": "verified_sample",
+      "pages": [
+        "/employee/accounts/sell-accounts",
+        "/employee/accounts/sell-accounts/new",
+        "/employee/accounts/sell-accounts/[id]",
+        "/employee/accounts/sell-accounts/[id]/edit",
+        "/admin/accounts/sell-accounts",
+        "/admin/accounts/sell-accounts/new",
+        "/admin/accounts/sell-accounts/[id]",
+        "/admin/accounts/sell-accounts/[id]/edit"
+      ],
+      "apiPrefix": "/api/recruitment/admin/sell-accounts",
+      "models": [
+        "SellAccount",
+        "SellAccountPayment",
+        "SellAccountRefund",
+        "SellAccountStatusHistory",
+        "SellAccountLockHistory",
+        "SellAccountDeedWorkflow",
+        "VehicleRtoRecord",
+        "VehicleRtoStatusLog",
+        "RtoTransferTask"
+      ],
+      "aiTools": [
+        "sold.vehicles",
+        "sold.vehicle.search",
+        "sold.vehicle.detail",
+        "sold.vehicle.analytics",
+        "sell.accounts.summary",
+        "margin.summary",
+        "payment.summary",
+        "refund.summary",
+        "invoice.summary",
+        "rto.pending.tasks",
+        "rto.documents.summary",
+        "listing.detail",
+        "vehicle.documents.detail"
+      ],
+      "connectedModuleProjection": "sold.vehicle.detail.connectedModules",
+      "documentActionProjection": "sold.vehicle.detail.uiActions.documents",
+      "documentFamilies": [
+        "money-receipt",
+        "sale-invoice-bill-of-supply",
+        "purchase-sale-deed",
+        "credit-note",
+        "refund-advice",
+        "delivery-challan",
+        "rto-forms-and-task-files",
+        "kyc-files",
+        "vehicle-media",
+        "website-advance-proof"
+      ],
+      "missingTargetTools": [],
+      "sourceFiles": [
+        "backend/src/services/sellAccount.service.ts",
+        "backend/src/services/sellAccountFinance.ts",
+        "backend/src/services/sellAccountRefund.service.ts",
+        "backend/src/services/sellAccountLookup.ts",
+        "backend/src/controllers/sellAccount.controller.ts",
+        "admin-portal/src/components/accounts/sold-vehicle/SoldVehicleForm.tsx",
+        "admin-portal/src/components/accounts/sold-vehicle/soldVehicleModel.ts"
+      ]
+    },
+    {
+      "key": "listings-inventory",
+      "label": "Listings / Inventory",
+      "status": "partial",
+      "models": ["Listing", "SaleRecord", "ListingPaymentSubmission", "ListingBill", "Media", "ListingVehicleVerification"],
+      "aiTools": ["listing.detail", "listing.search", "listing.statistics", "inventory.trend", "sold.vehicles"],
+      "joinKeys": ["SellAccount.listingId = Listing.id", "SaleRecord.listingId = Listing.id", "ListingPaymentSubmission.listingId = Listing.id", "Listing.partnerId = User.id"]
+    },
+    {
+      "key": "crm",
+      "label": "CRM / Customers / Leads",
+      "status": "partial",
+      "models": ["Lead", "LeadActivity", "CrmContactProfile", "CrmContactActivity", "CrmFollowUp"],
+      "aiTools": ["crm.lead.detail", "crm.won.customers.summary", "crm.followups", "crm.dashboard.summary"],
+      "joinKeys": ["Lead.wonSellAccountId = SellAccount.id", "Lead.listingId = Listing.id", "Lead.customerId = User.id", "Lead.dealerId = User.id", "CrmFollowUp.leadId = Lead.id"],
+      "sourceFiles": ["backend/src/modules/crm/services/soldVehicleLink.ts"]
+    },
+    {
+      "key": "partners",
+      "label": "Partners / Dealers",
+      "status": "partial",
+      "models": ["PartnerProfile", "User", "FinPartnerSettlement"],
+      "aiTools": ["partner.performance", "partner.statistics", "partner.copilot"],
+      "joinKeys": ["Listing.partnerId = User.id", "FinVehicleDealExt.partnerPartyId = FinParty.id"]
+    },
+    {
+      "key": "rto-work",
+      "label": "RTO Work",
+      "status": "partial",
+      "models": ["VehicleRtoRecord", "VehicleRtoStatusLog", "RtoTransferTask"],
+      "aiTools": ["rto.pending.tasks", "rto.documents.summary", "rto.copilot"],
+      "joinKeys": ["VehicleRtoRecord.sellAccountId = SellAccount.id", "VehicleRtoRecord.listingId = Listing.id", "RtoTransferTask.rtoRecordId = VehicleRtoRecord.id"]
+    },
+    {
+      "key": "finance-hub",
+      "label": "Finance Hub / Accounting",
+      "status": "partial",
+      "models": ["FinVoucher", "FinVoucherLine", "FinDocument", "FinDocumentLine", "FinVehicleDealExt", "FinPaymentSchedule", "FinWriteOff", "FinanceTransaction"],
+      "aiTools": ["finance.hub.page", "finance.trend", "finance.workspace.summary", "invoice.summary", "payment.summary", "margin.summary"],
+      "joinKeys": ["FinVoucher.sellAccountId = SellAccount.id", "FinVoucherLine.sellAccountId = SellAccount.id", "FinDocument.sellAccountId = SellAccount.id", "FinVehicleDealExt.sellAccountId = SellAccount.id", "FinPaymentSchedule.sellAccountId = SellAccount.id", "FinWriteOff.sellAccountId = SellAccount.id", "FinPartyLink.linkType+linkId = exact deal party key"]
+    },
+    {
+      "key": "documents",
+      "label": "Documents / PDFs / KYC",
+      "status": "partial",
+      "models": ["SellAccount.documents JSON", "SellAccountDeedWorkflow", "RtoTransferTask.documents", "FinDocument"],
+      "aiTools": ["ai.documents.search", "vehicle.documents.detail", "finance.hub.page"],
+      "targetActions": ["preview", "download", "metadata", "availability", "delivery attachment verification"]
+    },
+    {
+      "key": "communications",
+      "label": "WhatsApp / SMS",
+      "status": "partial",
+      "models": ["SellAccount.invoiceDelivery JSON", "SellAccountPayment.receiptDelivery JSON", "WhatsApp delivery/log models", "SMS delivery/log models"],
+      "aiTools": ["finance.hub.page", "invoice.summary", "payment.summary"],
+      "targetActions": ["delivery status", "failure reason", "attempt history", "correct PDF mapping"]
+    }
+  ],
+  "securityBoundary": {
+    "allowedByRole": ["authorized business fields", "authorized operational analytics", "authorized document metadata and file actions"],
+    "neverExpose": ["passwords", "API keys", "provider tokens", "OTP", "auth tokens", "encryption secrets", "private document-link tokens"],
+    "requiresFieldPermission": ["identity numbers", "phone/email", "bank details", "KYC files", "internal notes", "audit actor details"]
+  }
+}

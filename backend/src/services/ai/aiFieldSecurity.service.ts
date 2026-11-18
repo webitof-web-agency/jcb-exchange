@@ -4,6 +4,7 @@ import type { AiToolContext } from './aiReadOnlyTools.service';
 export const AI_SENSITIVE_FIELD_PERMISSIONS = ['ai.sensitive.read', 'identity.sensitive.read'] as const;
 
 type AiFieldSecurityContext = Pick<AiToolContext, 'role' | 'permissions'>;
+type OperatorPresentationOptions = { allowOperationalPii?: boolean };
 type SensitiveFieldKind = 'documentUrl' | 'secret' | 'mobile' | 'email' | 'pii' | null;
 
 type AiSecurityAuditPayloadInput = {
@@ -113,7 +114,7 @@ const OPERATOR_ALWAYS_MASK_PATTERN = /(?:^|_)(?:pan|aadhaar|gstin|account|ifsc|u
  * details needed for operations, but credentials, payment identifiers,
  * government identifiers, and document locators never leave masked form.
  */
-export const presentAiToolDataForOperator = (value: unknown, context: AiFieldSecurityContext): SanitizedAiToolData => {
+export const presentAiToolDataForOperator = (value: unknown, context: AiFieldSecurityContext, options: OperatorPresentationOptions = {}): SanitizedAiToolData => {
   const maskedFields = new Set<string>();
   const visit = (current: unknown, path: string): unknown => {
     if (current === null || current === undefined) return current;
@@ -132,7 +133,7 @@ export const presentAiToolDataForOperator = (value: unknown, context: AiFieldSec
       } else if (kind === 'secret' || kind === 'documentUrl') {
         output[key] = maskValueForKind(child, kind);
         maskedFields.add(childPath);
-      } else if (kind && !canReadAiSensitiveField(context, key)) {
+      } else if (kind && !options.allowOperationalPii && !canReadAiSensitiveField(context, key)) {
         output[key] = maskValueForKind(child, kind);
         maskedFields.add(childPath);
       } else {

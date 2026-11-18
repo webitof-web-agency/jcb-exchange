@@ -16,7 +16,7 @@ export default function AiOperatorData({ data }: AiOperatorDataProps) {
   if (!serialized) return null;
 
   return (
-    <details className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-2.5">
+    <details open className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-2.5">
       <summary className="cursor-pointer text-[11px] font-bold text-amber-900">
         Authorized operational details
       </summary>

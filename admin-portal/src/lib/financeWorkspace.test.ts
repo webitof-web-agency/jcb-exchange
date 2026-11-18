@@ -77,7 +77,23 @@ test('AI page context identifies the legacy Sold Vehicles module route', () => {
     moduleKey: 'sold-vehicles',
     moduleLabel: 'Sold Vehicles',
   });
-  assert.equal(matchFinanceAiPageContext('/employee/accounts/sell-accounts/vehicle-id'), null);
+  assert.deepEqual(matchFinanceAiPageContext('/employee/accounts/sell-accounts/vehicle-id'), {
+    groupKey: 'accounts',
+    moduleKey: 'sold-vehicles',
+    moduleLabel: 'Sold Vehicle',
+    recordId: 'vehicle-id',
+  });
+  assert.deepEqual(matchFinanceAiPageContext('/admin/accounts/sell-accounts/vehicle-id/edit'), {
+    groupKey: 'accounts',
+    moduleKey: 'sold-vehicles',
+    moduleLabel: 'Sold Vehicle edit',
+    recordId: 'vehicle-id',
+  });
+  assert.deepEqual(matchFinanceAiPageContext('/employee/accounts/sell-accounts/new'), {
+    groupKey: 'accounts',
+    moduleKey: 'sold-vehicles',
+    moduleLabel: 'New Sold Vehicle',
+  });
 });
 
 test('AI page context identifies Analytics and every Recruitment page route', () => {

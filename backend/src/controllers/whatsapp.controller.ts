@@ -26,6 +26,10 @@ import {
   updateWhatsAppSettings,
 } from '../services/whatsappIntegration.service';
 import {
+  buildVehicleSaleInvoiceWhatsAppTemplateComponents,
+  VEHICLE_SALE_INVOICE_WHATSAPP_TEMPLATE,
+} from '../services/vehicleSaleInvoiceWhatsAppTemplate';
+import {
   buildVehicleSalePaymentReceiptWhatsAppTemplateComponents,
   VEHICLE_SALE_PAYMENT_RECEIPT_WHATSAPP_TEMPLATE,
 } from '../services/vehicleSalePaymentReceiptWhatsAppTemplate';
@@ -279,9 +283,11 @@ export const saveMarketplaceWhatsAppTemplate = async (req: Request, res: Respons
     const enteredBodyText = asOptionalString(body.bodyText, 'bodyText', 2000);
     const components = body.components !== undefined
       ? body.components
-      : name === VEHICLE_SALE_PAYMENT_RECEIPT_WHATSAPP_TEMPLATE.name
-        ? buildVehicleSalePaymentReceiptWhatsAppTemplateComponents(enteredBodyText)
-        : undefined;
+      : name === VEHICLE_SALE_INVOICE_WHATSAPP_TEMPLATE.name
+        ? buildVehicleSaleInvoiceWhatsAppTemplateComponents(enteredBodyText)
+        : name === VEHICLE_SALE_PAYMENT_RECEIPT_WHATSAPP_TEMPLATE.name
+          ? buildVehicleSalePaymentReceiptWhatsAppTemplateComponents(enteredBodyText)
+          : undefined;
     const template = await saveWhatsAppMetaTemplate({
       ...(typeof body.id === 'string' ? { id: body.id } : {}),
       name,

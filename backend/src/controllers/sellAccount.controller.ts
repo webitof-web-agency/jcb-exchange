@@ -27,6 +27,7 @@ import { completeVehicleSale, issueAndDeliverVehicleSaleInvoiceAfterFullPayment,
 import {
   buildSellAccountCreditNotePdf,
   buildSellAccountRefundAdvicePdf,
+  buildVehicleSaleDeliveryChallanPdf,
   buildVehicleSaleInvoicePdf,
   buildVehicleSalePaymentReceiptPdf,
 } from '../services/vehicleSaleInvoice.service';
@@ -286,4 +287,9 @@ export const downloadSellAccountInvoice = async (req: Request, res: Response, ne
   } catch (error) {
     res.status(400).json({ success: false, error: errorMessage(error) });
   }
+};
+
+export const downloadSellAccountDeliveryChallan = async (req: Request, res: Response) => {
+  try { sendPdf(res, await buildVehicleSaleDeliveryChallanPdf(String(req.params.id))); }
+  catch (error) { res.status(400).json({ success: false, error: errorMessage(error) }); }
 };

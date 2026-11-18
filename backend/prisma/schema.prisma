@@ -1559,6 +1559,11 @@ enum SellAccountReceiptStatus {
   CANCELLED
 }
 
+enum SellAccountLockAction {
+  LOCK
+  UNLOCK
+}
+
 enum SellAccountRefundStatus {
   REQUESTED
   APPROVED
@@ -1709,6 +1714,7 @@ model SellAccount {
   payments      SellAccountPayment[]
   refunds       SellAccountRefund[]
   statusHistory SellAccountStatusHistory[]
+  lockHistory   SellAccountLockHistory[]
   deedWorkflows SellAccountDeedWorkflow[]
 
   @@index([dealStatus, updatedAt])
@@ -1837,6 +1843,20 @@ model SellAccountStatusHistory {
   sellAccount SellAccount @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
 
   @@index([sellAccountId, createdAt])
+}
+
+model SellAccountLockHistory {
+  id            String               @id @default(uuid())
+  sellAccountId String
+  action        SellAccountLockAction
+  actorId       String?
+  reason        String?              @db.Text
+  createdAt     DateTime             @default(now())
+
+  sellAccount SellAccount @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+
+  @@index([sellAccountId, createdAt])
+  @@index([action, createdAt])
 }
 
 model VehicleRtoRecord {
@@ -2332,6 +2352,7 @@ model AiConversationMessage {
   provider       String?                      @db.VarChar(40)
   modelAlias     String?                      @db.VarChar(120)
   toolName       String?                      @db.VarChar(100)
+  toolArguments  Json?
   toolSource     String?                      @db.VarChar(40)
   toolFetchedAt  DateTime?
   createdAt      DateTime                     @default(now())

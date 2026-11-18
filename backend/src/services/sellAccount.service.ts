@@ -894,6 +894,11 @@ export const lockSellAccount = async (id: string, actorId?: string) => {
       data: { isLocked: true, lockedAt: current.lockedAt || now, lockedById: current.lockedById || actorId || null },
       include,
     });
+    if (!current.isLocked) {
+      await tx.sellAccountLockHistory.create({
+        data: { sellAccountId: current.id, action: 'LOCK', actorId: actorId || null, reason: 'Sold Vehicle deal locked after completion.' },
+      });
+    }
     if (rtoState.record?.id) {
       await tx.vehicleRtoRecord.update({
         where: { id: rtoState.record.id },
@@ -916,10 +921,16 @@ export const lockRtoWorkRecord = async (id: string, actorId?: string) => {
       data: { isLocked: true, lockedAt: current.lockedAt || now, lockedById: current.lockedById || actorId || null },
     });
     if (current.sellAccountId) {
+      const linkedAccount = await tx.sellAccount.findUnique({ where: { id: current.sellAccountId }, select: { isLocked: true } });
       await tx.sellAccount.update({
         where: { id: current.sellAccountId },
         data: { isLocked: true, lockedAt: now, lockedById: actorId || null },
       });
+      if (linkedAccount && !linkedAccount.isLocked) {
+        await tx.sellAccountLockHistory.create({
+          data: { sellAccountId: current.sellAccountId, action: 'LOCK', actorId: actorId || null, reason: 'Sold Vehicle deal locked from RTO work.' },
+        });
+      }
     }
     return locked;
   });

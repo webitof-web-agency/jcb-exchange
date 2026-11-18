@@ -257,9 +257,13 @@ export const fillBillOfSupplyTemplate = (
   if (companyIndex < 0) throw new Error('Bill of supply DOCX template is missing the company header.');
   xml = replaceParagraphAtIndex(xml, companyIndex, data.companyName);
   const cinIndex = findParagraphIndex(xml, (text) => text.toUpperCase().startsWith('CIN:'));
-  if (cinIndex < 0) throw new Error('Bill of supply DOCX template is missing the CIN line.');
-  xml = replaceParagraphAtIndex(xml, cinIndex, `CIN: ${data.cin}`);
-  xml = replaceParagraphAtIndex(xml, cinIndex + 1, data.companyAddressLine);
+  if (cinIndex >= 0) {
+    xml = data.cin ? replaceParagraphAtIndex(xml, cinIndex, `CIN: ${data.cin}`) : replaceParagraphAtIndex(xml, cinIndex, '');
+  }
+  const addressIndex = findParagraphIndex(xml, (text) => text.toLowerCase().includes('raipur, chhattisgarh'));
+  if (addressIndex >= 0) {
+    xml = replaceParagraphAtIndex(xml, addressIndex, data.companyAddressLine);
+  }
   const sellerNameIndex = findParagraphIndex(xml, (text) => text.toLowerCase().startsWith('name:'));
   if (sellerNameIndex < 0) throw new Error('Bill of supply DOCX template is missing seller details.');
   xml = replaceParagraphAtIndex(xml, sellerNameIndex, `Name: ${data.companyName}`);
@@ -301,11 +305,12 @@ export const fillBillOfSupplyTemplate = (
   const amountWordsIndex = findParagraphIndex(xml, (text) => text.toLowerCase().startsWith('amount in words'));
   if (amountWordsIndex < 0) throw new Error('Bill of supply DOCX template is missing amount in words.');
   xml = replaceParagraphAtIndex(xml, amountWordsIndex, `Amount in Words: ${data.amountInWords}`);
-  const termsHeadingIndex = findParagraphIndex(xml, (text) => text.toLowerCase().includes('terms & conditions'));
-  if (termsHeadingIndex < 0) throw new Error('Bill of supply DOCX template is missing terms and conditions.');
-  const termsIndex = findParagraphIndex(xml, (text, index) => index > termsHeadingIndex && text.length > 0);
-  if (termsIndex < 0) throw new Error('Bill of supply DOCX template is missing terms text.');
-  xml = replaceParagraphAtIndex(xml, termsIndex, data.terms);
+  const termsHeadingIndex = findParagraphIndex(xml, (text) => text.toLowerCase().includes('terms & conditions') || text.toLowerCase().includes('remarks'));
+  if (termsHeadingIndex >= 0) {
+    xml = replaceParagraphAtIndex(xml, termsHeadingIndex, 'Remarks:');
+    const termsIndex = findParagraphIndex(xml, (text, index) => index > termsHeadingIndex && text.length > 0 && !text.toLowerCase().startsWith('for '));
+    if (termsIndex >= 0) xml = replaceParagraphAtIndex(xml, termsIndex, data.terms);
+  }
   const forIndex = findParagraphIndex(xml, (text) => text.toLowerCase().startsWith('for '));
   if (forIndex < 0) throw new Error('Bill of supply DOCX template is missing the authorised-signatory block.');
   xml = replaceParagraphAtIndex(xml, forIndex, `For ${data.companyName}`);
