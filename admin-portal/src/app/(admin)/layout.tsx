@@ -203,6 +203,7 @@ export default function AdminLayout({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const notificationDropdownRef = useRef<HTMLDivElement>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [usersMenuExpansion, setUsersMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
     pathname: '',
@@ -246,6 +247,33 @@ export default function AdminLayout({
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [isDropdownOpen]);
+
+  useEffect(() => {
+    if (!isNotificationOpen) return undefined;
+
+    const closeOnOutsideInteraction = (event: globalThis.Event) => {
+      if (shouldDismissDropdown(notificationDropdownRef.current, event.target, event.type)) {
+        setIsNotificationOpen(false);
+      }
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setIsNotificationOpen(false);
+    };
+
+    // Capture interactions globally so clicks on the page, sidebar, header,
+    // overlays, or controls that stop propagation still dismiss the panel.
+    document.addEventListener('pointerdown', closeOnOutsideInteraction, true);
+    document.addEventListener('click', closeOnOutsideInteraction, true);
+    document.addEventListener('touchstart', closeOnOutsideInteraction, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideInteraction, true);
+      document.removeEventListener('click', closeOnOutsideInteraction, true);
+      document.removeEventListener('touchstart', closeOnOutsideInteraction, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isNotificationOpen]);
+
   // ─── Industry-standard timestamp-based notification tracking ───────────────
   // localStorage stores ISO timestamps of when each module was last visited.
   // The backend receives these timestamps and returns only NEW-since-then counts.
@@ -1418,7 +1446,7 @@ export default function AdminLayout({
             </a>
 
             {/* Notification Bell Dropdown */}
-            <div className="relative shrink-0">
+            <div ref={notificationDropdownRef} className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => setIsNotificationOpen(!isNotificationOpen)}
