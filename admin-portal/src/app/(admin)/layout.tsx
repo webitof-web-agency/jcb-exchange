@@ -1058,7 +1058,18 @@ export default function AdminLayout({
   };
 
   return (
-    <div className="fixed inset-0 flex h-full w-full min-h-0 overflow-hidden bg-gray-100">
+    <div
+      className="fixed inset-0 flex h-full w-full min-h-0 overflow-hidden bg-gray-100"
+      onPointerDownCapture={(event) => {
+        if (
+          isNotificationOpen &&
+          notificationDropdownRef.current &&
+          !notificationDropdownRef.current.contains(event.target as Node)
+        ) {
+          setIsNotificationOpen(false);
+        }
+      }}
+    >
       {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <div
@@ -1467,7 +1478,11 @@ export default function AdminLayout({
 
               {isNotificationOpen && (
                 <>
-                  <div className="fixed inset-0 z-40" onClick={() => setIsNotificationOpen(false)} />
+                  <div
+                    className="fixed inset-0 z-40"
+                    onPointerDown={() => setIsNotificationOpen(false)}
+                    aria-hidden="true"
+                  />
                   <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 animate-in fade-in duration-150">
                     <div className="p-2.5 bg-slate-50 flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-900">Operational Action Items</span>

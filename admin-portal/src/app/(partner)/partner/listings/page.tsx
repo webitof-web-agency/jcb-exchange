@@ -692,6 +692,22 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
   return error instanceof Error ? error.message : fallback;
 };
 
+const isTransientVerificationError = (error: unknown) => {
+  if (!axios.isAxiosError(error)) return false;
+  const status = error.response?.status;
+  return !error.response || status === 502 || status === 503 || status === 504;
+};
+
+const postVerificationWithRetry = async <T,>(url: string, payload: Record<string, string>) => {
+  try {
+    return await api.post<T>(url, payload);
+  } catch (error) {
+    if (!isTransientVerificationError(error)) throw error;
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    return api.post<T>(url, payload);
+  }
+};
+
 const getVideoPosterFrame = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
@@ -1468,7 +1484,7 @@ export default function PartnerListingsPage() {
       const cachedResponse = getVerificationCache<ChassisVerificationResponse>(cacheKey);
       const response = cachedResponse
         ? { data: { ...cachedResponse, cacheHit: true } }
-        : await api.post<ChassisVerificationResponse>('/chassis-to-rc/verify', { chassis_number: chassisNumber });
+        : await postVerificationWithRetry<ChassisVerificationResponse>('/chassis-to-rc/verify', { chassis_number: chassisNumber });
       if (requestId !== chassisVerificationRequestRef.current) return;
 
       const verificationRecordId = response.data.record?.id || '';
@@ -1571,7 +1587,7 @@ export default function PartnerListingsPage() {
       const cachedResponse = getVerificationCache<VehicleVerificationResponse>(cacheKey);
       const response = cachedResponse
         ? { data: { ...cachedResponse, cacheHit: true } }
-        : await api.post<VehicleVerificationResponse>('/listings/vehicle-verification/rc-full', { id_number: registrationNumber });
+        : await postVerificationWithRetry<VehicleVerificationResponse>('/listings/vehicle-verification/rc-full', { id_number: registrationNumber });
       if (requestId !== chassisVerificationRequestRef.current) return;
 
       const verificationRecordId = response.data.record?.id || '';

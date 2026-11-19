@@ -82,6 +82,14 @@ const api = axios.create({
   },
 });
 
+const isTransientApiFailure = (error: unknown) => {
+  if (!axios.isAxiosError(error)) return false;
+  const status = error.response?.status;
+  return !error.response || status === 502 || status === 503 || status === 504;
+};
+
+const waitForApiRecovery = (delayMs: number) => new Promise((resolve) => window.setTimeout(resolve, delayMs));
+
 api.interceptors.request.use(
   (config) => {
     const authStore = useAuthStore.getState();
@@ -108,6 +116,13 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const config = error?.config as (typeof error.config & { __transientRetryCount?: number }) | undefined;
+    const method = String(config?.method || '').toLowerCase();
+    if (config && ['get', 'head', 'options'].includes(method) && isTransientApiFailure(error) && !config.__transientRetryCount) {
+      config.__transientRetryCount = 1;
+      return waitForApiRecovery(750).then(() => api.request(config));
+    }
+
     const requestUrl = String(error?.config?.url || '');
     const requestHeaders = error?.config?.headers;
     const sentAuthToken = getAuthorizationToken(requestHeaders);
