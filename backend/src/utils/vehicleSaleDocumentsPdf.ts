@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import PDFDocument from 'pdfkit';
 
 // Built-in Money Receipt and Bill of Supply, used when the DOCX stationery templates are not
@@ -270,6 +272,12 @@ export const renderMoneyReceiptPdf = async (data: MoneyReceiptPdfData, logo?: Bu
   return done;
 };
 
+const isJpegOrPng = (buffer?: Buffer | null): buffer is Buffer =>
+  Boolean(buffer && buffer.length > 4 && (
+    (buffer[0] === 0xFF && buffer[1] === 0xD8) ||
+    (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47)
+  ));
+
 export const renderBillOfSupplyPdf = async (data: BillOfSupplyPdfData, logo?: Buffer | null) => {
   const doc = new PDFDocument({
     size: 'A4',
@@ -290,25 +298,41 @@ export const renderBillOfSupplyPdf = async (data: BillOfSupplyPdfData, logo?: Bu
 
   // 1. Top Header Area (Logo left, Company right)
   const headerTop = 26;
-  if (logo) {
+  let drawnLogo = false;
+  if (isJpegOrPng(logo)) {
     try {
-      doc.image(logo, left, headerTop, { fit: [120, 52] });
-    } catch {
-      drawLogo(doc, logo, left, headerTop);
-    }
+      doc.image(logo, left, headerTop, { fit: [125, 48] });
+      drawnLogo = true;
+    } catch {}
+  }
+  if (!drawnLogo) {
+    try {
+      const candidates = [
+        path.resolve(process.cwd(), 'templates', 'vehicle-sale', 'jcb-exchange-logo.jpg'),
+        path.resolve(process.cwd(), 'backend', 'templates', 'vehicle-sale', 'jcb-exchange-logo.jpg'),
+        path.resolve(__dirname, '..', '..', 'templates', 'vehicle-sale', 'jcb-exchange-logo.jpg'),
+      ];
+      for (const p of candidates) {
+        if (existsSync(p)) {
+          doc.image(readFileSync(p), left, headerTop, { fit: [125, 48] });
+          drawnLogo = true;
+          break;
+        }
+      }
+    } catch {}
   }
 
   // Company details right aligned
   const companyRightX = left + 140;
   const companyRightW = width - 140;
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(INK).text(data.company.name.toUpperCase(), companyRightX, headerTop + 4, { width: companyRightW, align: 'right' });
-  doc.font('Helvetica').fontSize(8).fillColor(MUTED).text(data.company.addressLine, companyRightX, doc.y + 2, { width: companyRightW, align: 'right', lineGap: 1 });
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text(data.company.name.toUpperCase(), companyRightX, headerTop + 2, { width: companyRightW, align: 'right' });
+  doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text(data.company.addressLine, companyRightX, doc.y + 2, { width: companyRightW, align: 'right', lineGap: 1 });
   if (data.company.gstin) {
     doc.text(`GSTIN: ${data.company.gstin}`, companyRightX, doc.y + 1, { width: companyRightW, align: 'right' });
   }
 
   // 2. Orange Separator Line
-  const orangeY = Math.max(doc.y + 8, headerTop + 58);
+  const orangeY = Math.max(doc.y + 6, headerTop + 54);
   doc.rect(left, orangeY, width, 2).fill(ORANGE);
 
   // 3. BILL OF SUPPLY heading
@@ -318,128 +342,132 @@ export const renderBillOfSupplyPdf = async (data: BillOfSupplyPdfData, logo?: Bu
   // 4. Main Details Table
   const tableTop = titleY + 16;
   const colSplit = left + 265;
+  const leftBoxW = 265;
+  const rightBoxW = width - leftBoxW;
   doc.lineWidth(0.8).strokeColor(INK);
 
   // Seller Details Header & Invoice Details Header
-  const secHdrH = 16;
-  doc.rect(left, tableTop, 265, secHdrH).stroke();
-  doc.rect(colSplit, tableTop, right - colSplit, secHdrH).stroke();
+  const secHdrH = 15;
+  doc.rect(left, tableTop, leftBoxW, secHdrH).stroke();
+  doc.rect(colSplit, tableTop, rightBoxW, secHdrH).stroke();
   doc.font('Helvetica-Bold').fontSize(8).fillColor(INK)
-    .text('Seller / Supplier Details', left + 6, tableTop + 4)
-    .text('Invoice Details', colSplit + 6, tableTop + 4);
+    .text('Seller / Supplier Details', left + 6, tableTop + 3.5)
+    .text('Invoice Details', colSplit + 6, tableTop + 3.5);
 
   // Seller Info (left) vs Invoice Info (right)
   const infoH = 68;
   const infoTop = tableTop + secHdrH;
-  doc.rect(left, infoTop, 265, infoH).stroke();
-  doc.rect(colSplit, infoTop, right - colSplit, infoH).stroke();
+  doc.rect(left, infoTop, leftBoxW, infoH).stroke();
+  doc.rect(colSplit, infoTop, rightBoxW, infoH).stroke();
 
-  // Left (Seller)
-  let ly = infoTop + 5;
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('Name: ', left + 6, ly, { continued: true })
-    .font('Helvetica').text(data.company.name);
-  ly = doc.y + 2;
-  doc.font('Helvetica-Bold').fontSize(8).text('Address: ', left + 6, ly, { continued: true })
-    .font('Helvetica').text(data.company.addressLine, { width: 250, height: 24, ellipsis: true });
-  ly = doc.y + 2;
-  doc.font('Helvetica-Bold').fontSize(8).text('GSTIN: ', left + 6, ly, { continued: true })
-    .font('Helvetica').text(data.company.gstin || '-');
-  ly = doc.y + 2;
-  doc.font('Helvetica-Bold').fontSize(8).text('State / Code: ', left + 6, ly, { continued: true })
-    .font('Helvetica').text(data.company.state || data.placeOfSupply);
+  // Left (Seller) - explicit bounded text, NO continued:true overflow
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text('Name: ', left + 6, infoTop + 5, { width: 32 });
+  doc.font('Helvetica').fontSize(7.5).text(data.company.name, left + 38, infoTop + 5, { width: leftBoxW - 44 });
 
-  // Right (Invoice)
-  let ry = infoTop + 5;
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('Invoice No: ', colSplit + 6, ry, { continued: true })
-    .font('Helvetica').text(data.invoiceNumber);
-  ry = doc.y + 2;
-  doc.font('Helvetica-Bold').fontSize(8).text('Invoice Date: ', colSplit + 6, ry, { continued: true })
-    .font('Helvetica').text(data.invoiceDate);
-  ry = doc.y + 2;
-  doc.font('Helvetica-Bold').fontSize(8).text('Place of Supply: ', colSplit + 6, ry, { continued: true })
-    .font('Helvetica').text(data.placeOfSupply);
-  ry = doc.y + 2;
-  doc.font('Helvetica-Bold').fontSize(8).text('Terms of Delivery: ', colSplit + 6, ry, { continued: true })
-    .font('Helvetica').text(data.cancelled || '-');
+  doc.font('Helvetica-Bold').fontSize(7.5).text('Address: ', left + 6, infoTop + 18, { width: 40 });
+  doc.font('Helvetica').fontSize(7.5).text(data.company.addressLine, left + 46, infoTop + 18, { width: leftBoxW - 52, height: 22, ellipsis: true });
+
+  doc.font('Helvetica-Bold').fontSize(7.5).text('GSTIN: ', left + 6, infoTop + 40, { width: 36 });
+  doc.font('Helvetica').fontSize(7.5).text(data.company.gstin || '-', left + 42, infoTop + 40, { width: leftBoxW - 48 });
+
+  doc.font('Helvetica-Bold').fontSize(7.5).text('State / Code: ', left + 6, infoTop + 52, { width: 56 });
+  doc.font('Helvetica').fontSize(7.5).text(data.company.state || data.placeOfSupply, left + 62, infoTop + 52, { width: leftBoxW - 68 });
+
+  // Right (Invoice) - explicit bounded text
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text('Invoice No: ', colSplit + 6, infoTop + 5, { width: 55 });
+  doc.font('Helvetica').fontSize(7.5).text(data.invoiceNumber, colSplit + 62, infoTop + 5, { width: rightBoxW - 68 });
+
+  doc.font('Helvetica-Bold').fontSize(7.5).text('Invoice Date: ', colSplit + 6, infoTop + 20, { width: 58 });
+  doc.font('Helvetica').fontSize(7.5).text(data.invoiceDate, colSplit + 66, infoTop + 20, { width: rightBoxW - 72 });
+
+  doc.font('Helvetica-Bold').fontSize(7.5).text('Place of Supply: ', colSplit + 6, infoTop + 35, { width: 72 });
+  doc.font('Helvetica').fontSize(7.5).text(data.placeOfSupply, colSplit + 80, infoTop + 35, { width: rightBoxW - 86 });
+
+  doc.font('Helvetica-Bold').fontSize(7.5).text('Terms of Delivery: ', colSplit + 6, infoTop + 50, { width: 78 });
+  doc.font('Helvetica').fontSize(7.5).text(data.cancelled || '-', colSplit + 86, infoTop + 50, { width: rightBoxW - 92 });
 
   // 5. Buyer Box
-  const buyerHdrH = 15;
   const buyerHdrTop = infoTop + infoH;
+  const buyerHdrH = 15;
   doc.rect(left, buyerHdrTop, width, buyerHdrH).stroke();
   doc.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('Buyer (Bill to)', left + 6, buyerHdrTop + 3.5);
 
-  const buyerBodyH = 48;
   const buyerBodyTop = buyerHdrTop + buyerHdrH;
+  const buyerBodyH = 44;
   doc.rect(left, buyerBodyTop, width, buyerBodyH).stroke();
-  let by = buyerBodyTop + 5;
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(INK).text('Name: ', left + 6, by, { continued: true })
-    .text(data.customerName);
-  by = doc.y + 2;
-  doc.font('Helvetica-Bold').fontSize(8).text('Address: ', left + 6, by, { continued: true })
-    .font('Helvetica').text(data.customerAddressLine);
-  by = doc.y + 2;
-  doc.font('Helvetica-Bold').fontSize(8).text('GSTIN: ', left + 6, by, { continued: true })
-    .font('Helvetica').text('-');
-  doc.font('Helvetica-Bold').fontSize(8).text('State / Code: ', left + 200, by, { continued: true })
-    .font('Helvetica').text(data.customerStateCode);
+
+  doc.font('Helvetica-Bold').fontSize(8).text('Name: ', left + 6, buyerBodyTop + 5, { width: 32 });
+  doc.font('Helvetica-Bold').fontSize(8).text(data.customerName, left + 38, buyerBodyTop + 5, { width: width - 44 });
+
+  doc.font('Helvetica-Bold').fontSize(7.5).text('Address: ', left + 6, buyerBodyTop + 18, { width: 42 });
+  doc.font('Helvetica').fontSize(7.5).text(data.customerAddressLine, left + 48, buyerBodyTop + 18, { width: width - 54, height: 12, ellipsis: true });
+
+  doc.font('Helvetica-Bold').fontSize(7.5).text('GSTIN: ', left + 6, buyerBodyTop + 30, { width: 36 });
+  doc.font('Helvetica').fontSize(7.5).text('-', left + 42, buyerBodyTop + 30, { width: 140 });
+
+  doc.font('Helvetica-Bold').fontSize(7.5).text('State / Code: ', left + 200, buyerBodyTop + 30, { width: 60 });
+  doc.font('Helvetica').fontSize(7.5).text(data.customerStateCode, left + 262, buyerBodyTop + 30, { width: 200 });
 
   // 6. Items Table
   const itemsTop = buyerBodyTop + buyerBodyH;
-  const colSl = left + 24;
-  const colDesc = colSl;
-  const colHsn = right - 165;
-  const colQty = right - 130;
-  const colRate = right - 68;
-  const colAmount = right;
+  const itemHdrH = 20;
 
-  const itemHdrH = 22;
+  // Columns: Sl(26), Desc(247), HSN(50), Qty(35), Rate(82), Amount(83) = 523
+  const colSl = left + 26;
+  const colDesc = colSl;
+  const colHsn = left + 273;
+  const colQty = left + 323;
+  const colRate = left + 358;
+  const colAmount = left + 440;
+
   doc.rect(left, itemsTop, width, itemHdrH).stroke();
-  [colSl, colHsn, colQty, colRate].forEach(x => doc.moveTo(x, itemsTop).lineTo(x, itemsTop + itemHdrH).stroke());
+  [colSl, colHsn, colQty, colRate, colAmount].forEach(x => doc.moveTo(x, itemsTop).lineTo(x, itemsTop + itemHdrH).stroke());
 
   doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK);
-  doc.text('Sl.', left + 2, itemsTop + 6, { width: 20, align: 'center' });
-  doc.text('Description of Goods / Services', colDesc + 4, itemsTop + 6, { width: colHsn - colDesc - 8, align: 'center' });
-  doc.text('HSN/SAC', colHsn + 2, itemsTop + 6, { width: colQty - colHsn - 4, align: 'center' });
-  doc.text('Qty.', colQty + 2, itemsTop + 6, { width: colRate - colQty - 4, align: 'center' });
-  doc.text('Rate', colRate + 2, itemsTop + 6, { width: colAmount - colRate - 6, align: 'right' });
-  doc.text('Amount', colRate + 2, itemsTop + 14, { width: colAmount - colRate - 6, align: 'right' });
+  doc.text('Sl.', left + 2, itemsTop + 5.5, { width: 22, align: 'center' });
+  doc.text('Description of Goods / Services', colDesc + 4, itemsTop + 5.5, { width: colHsn - colDesc - 8, align: 'center' });
+  doc.text('HSN/SAC', colHsn + 2, itemsTop + 5.5, { width: colQty - colHsn - 4, align: 'center' });
+  doc.text('Qty.', colQty + 2, itemsTop + 5.5, { width: colRate - colQty - 4, align: 'center' });
+  doc.text('Rate', colRate + 2, itemsTop + 5.5, { width: colAmount - colRate - 6, align: 'right' });
+  doc.text('Amount', colAmount + 2, itemsTop + 5.5, { width: right - colAmount - 6, align: 'right' });
 
-  // Item Rows (Fixed container height so it fits on exactly 1 page)
-  const itemsAreaH = 155;
+  // Items Area
+  const itemsAreaH = 130;
   const itemsAreaTop = itemsTop + itemHdrH;
   doc.rect(left, itemsAreaTop, width, itemsAreaH).stroke();
-  [colSl, colHsn, colQty, colRate].forEach(x => doc.moveTo(x, itemsAreaTop).lineTo(x, itemsAreaTop + itemsAreaH).stroke());
+  [colSl, colHsn, colQty, colRate, colAmount].forEach(x => doc.moveTo(x, itemsAreaTop).lineTo(x, itemsAreaTop + itemsAreaH).stroke());
 
-  // Item 1 Row
+  // Row 1
   const itemRowY = itemsAreaTop + 8;
-  doc.font('Helvetica').fontSize(8.5).fillColor(INK);
-  doc.text('1', left + 2, itemRowY, { width: 20, align: 'center' });
-  doc.font('Helvetica-Bold').fontSize(8.5).text(data.description, colDesc + 6, itemRowY, { width: colHsn - colDesc - 12 });
-  doc.font('Helvetica').fontSize(8.5).text(data.hsn || '-', colHsn + 2, itemRowY, { width: colQty - colHsn - 4, align: 'center' });
+  doc.font('Helvetica').fontSize(8).fillColor(INK);
+  doc.text('1', left + 2, itemRowY, { width: 22, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(8).text(data.description, colDesc + 6, itemRowY, { width: colHsn - colDesc - 12 });
+  doc.font('Helvetica').fontSize(8).text(data.hsn || '-', colHsn + 2, itemRowY, { width: colQty - colHsn - 4, align: 'center' });
   doc.text('1', colQty + 2, itemRowY, { width: colRate - colQty - 4, align: 'center' });
-  doc.font('Helvetica-Bold').fontSize(8.5).text(data.amount, colRate + 2, itemRowY, { width: colAmount - colRate - 6, align: 'right' });
+  doc.font('Helvetica').fontSize(8).text(data.amount, colRate + 2, itemRowY, { width: colAmount - colRate - 6, align: 'right' });
+  doc.font('Helvetica-Bold').fontSize(8).text(data.amount, colAmount + 2, itemRowY, { width: right - colAmount - 6, align: 'right' });
 
   // Total Row
   const totalRowH = 18;
   const totalRowTop = itemsAreaTop + itemsAreaH;
   doc.rect(left, totalRowTop, width, totalRowH).stroke();
-  doc.moveTo(colRate, totalRowTop).lineTo(colRate, totalRowTop + totalRowH).stroke();
-  doc.font('Helvetica-Bold').fontSize(9).text('Total', colDesc + 4, totalRowTop + 4, { width: colRate - colDesc - 10, align: 'right' });
-  doc.font('Helvetica-Bold').fontSize(9.5).text(data.total, colRate + 2, totalRowTop + 4, { width: colAmount - colRate - 6, align: 'right' });
+  doc.moveTo(colAmount, totalRowTop).lineTo(colAmount, totalRowTop + totalRowH).stroke();
+  doc.font('Helvetica-Bold').fontSize(8.5).text('Total', colDesc + 4, totalRowTop + 4.5, { width: colAmount - colDesc - 10, align: 'right' });
+  doc.font('Helvetica-Bold').fontSize(8.5).text(data.total, colAmount + 2, totalRowTop + 4.5, { width: right - colAmount - 6, align: 'right' });
 
   // 7. Amount in Words Box
   const wordsH = 18;
   const wordsTop = totalRowTop + totalRowH;
   doc.rect(left, wordsTop, width, wordsH).stroke();
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('Amount in Words: ', left + 6, wordsTop + 4, { continued: true })
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text('Amount in Words: ', left + 6, wordsTop + 4.5, { continued: true })
     .font('Helvetica').text(data.amountInWords);
 
-  // 8. Remarks Box
-  const remarksH = 50;
+  // 8. Remarks Box (Bounded, safe height, will never overflow)
+  const remarksH = 55;
   const remarksTop = wordsTop + wordsH;
   doc.rect(left, remarksTop, width, remarksH).stroke();
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('Remarks:', left + 6, remarksTop + 4);
-  doc.font('Helvetica').fontSize(7.5).fillColor(INK).text(data.remarks, left + 6, remarksTop + 14, { width: width - 12, lineGap: 1 });
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text('Remarks:', left + 6, remarksTop + 4);
+  doc.font('Helvetica').fontSize(7).fillColor(INK).text(data.remarks, left + 6, remarksTop + 14, { width: width - 12, height: remarksH - 18, lineGap: 1.5, ellipsis: true });
 
   // 9. Declaration & Signatory Box
   const bottomBoxH = 68;
@@ -450,18 +478,18 @@ export const renderBillOfSupplyPdf = async (data: BillOfSupplyPdfData, logo?: Bu
 
   // Left: Declaration
   doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text('Declaration:', left + 6, bottomBoxTop + 5);
-  doc.font('Helvetica').fontSize(7.5).fillColor(MUTED)
+  doc.font('Helvetica').fontSize(7).fillColor(MUTED)
     .text('We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.', left + 6, bottomBoxTop + 16, { width: signSplit - left - 12, lineGap: 1.5 });
+  doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text('(Company Seal / Stamp)', left + 6, bottomBoxTop + 52);
 
   // Right: Signatory
   doc.font('Helvetica-Bold').fontSize(8).fillColor(INK).text(`For ${data.company.name.toUpperCase()}`, signSplit + 6, bottomBoxTop + 5, { width: right - signSplit - 12, align: 'right' });
-  doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text('Signature: __________________________', signSplit + 6, bottomBoxTop + 32, { width: right - signSplit - 12, align: 'right' });
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text(`Name: ${data.signatory.name}`, signSplit + 6, bottomBoxTop + 43, { width: right - signSplit - 12, align: 'right' });
+  doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text('Signature: __________________________', signSplit + 6, bottomBoxTop + 30, { width: right - signSplit - 12, align: 'right' });
+  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text(`Name: ${data.signatory.name}`, signSplit + 6, bottomBoxTop + 42, { width: right - signSplit - 12, align: 'right' });
   doc.font('Helvetica').fontSize(7).fillColor(MUTED).text(`Designation: ${data.signatory.designation}`, signSplit + 6, bottomBoxTop + 53, { width: right - signSplit - 12, align: 'right' });
-  doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text('(Company Seal / Stamp)', left + 6, bottomBoxTop + 53);
 
   // 10. Bottom Footer Line (Registered Office, Email, Mobile)
-  const footerY = 800;
+  const footerY = 798;
   doc.rect(left, footerY - 4, width, 1.5).fill(ORANGE);
   doc.font('Helvetica').fontSize(7).fillColor(MUTED)
     .text('Registered Office: SH No. 08, 1st Floor, Housing Board Complex, Khamhardih, Shanker Nagar, Raipur, Chhattisgarh - 492004', left, footerY + 2, { width, align: 'center' });
@@ -471,7 +499,6 @@ export const renderBillOfSupplyPdf = async (data: BillOfSupplyPdfData, logo?: Bu
   return done;
 };
 
-/** Internal handover document. It is intentionally labelled a delivery challan, not a tax invoice. */
 export const renderDeliveryChallanPdf = async (data: DeliveryChallanPdfData, logo?: Buffer | null) => {
   const { doc, done } = startDocument(`Delivery Challan ${data.challanNumber}`);
   const left = 40;

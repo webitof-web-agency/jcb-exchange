@@ -190,11 +190,18 @@ export const buildVehicleSaleInvoicePdf = async (sellAccountId: string) => {
   const balance = summary.purchaserBalance;
   const identity = vehicleIdentityLine(record);
   const invoiceDate = record.invoiceGeneratedAt || record.completedAt || new Date();
+  const isJpegOrPng = (buffer?: Buffer | null): buffer is Buffer =>
+    Boolean(buffer && buffer.length > 4 && (
+      (buffer[0] === 0xFF && buffer[1] === 0xD8) ||
+      (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47)
+    ));
   let logo = await loadInvoiceLogo(appSettings.siteLogo.darkLogoUrl || appSettings.siteLogo.imageUrl);
-  if (!logo) {
+  if (!isJpegOrPng(logo)) {
     try {
       logo = await fs.readFile(resolveVehicleSaleAssetPath('jcb-exchange-logo.jpg'));
-    } catch {}
+    } catch {
+      logo = null;
+    }
   }
   const company = appSettings.companyInvoice;
   const invoiceNumber = record.invoiceNumber;
@@ -205,9 +212,8 @@ export const buildVehicleSaleInvoicePdf = async (sellAccountId: string) => {
     balance > 0
       ? `Total received: ${money(amountReceived)}. Balance due: ${money(balance)}.`
       : `Payment received in full: ${money(amountReceived)}.`,
-    'GST not charged separately on this Bill of Supply.',
+    'GST not charged separately on this Bill of Supply. Second-hand machinery dealt under GST Rule 32(5) Margin Scheme.',
     record.creditNoteNumber ? `CANCELLED vide Credit Note ${record.creditNoteNumber}.` : '',
-    company.termsAndConditions,
   ].filter(Boolean).join(' ');
 
   const buffer = await renderWithTemplateFallback('Bill of Supply', async () => {
