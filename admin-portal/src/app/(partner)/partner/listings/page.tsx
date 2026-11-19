@@ -1420,18 +1420,23 @@ export default function PartnerListingsPage() {
   };
 
   const updateField = <K extends keyof ListingFormState>(key: K, value: ListingFormState[K]) => {
+    const nextValue = typeof value === 'string' ? sanitizeListingFieldValue(key, value) : value;
     if (key === 'chassisOrSerialNo' || key === 'registrationNo' || key === 'engineNumber') {
-      chassisVerificationRequestRef.current += 1;
-      setChassisVerificationStatus('UNVERIFIED');
-      setVerifiedChassisNumber('');
-      setVerifiedRegistrationNumber('');
-      setVehicleVerificationSource('');
-      setVerificationLoadingSource('');
-      setChassisVerificationId('');
+      const prevNorm = typeof form[key] === 'string' ? String(form[key]).toUpperCase().replace(/[\s/-]+/g, '') : '';
+      const nextNorm = typeof nextValue === 'string' ? String(nextValue).toUpperCase().replace(/[\s/-]+/g, '') : '';
+      if (prevNorm !== nextNorm) {
+        chassisVerificationRequestRef.current += 1;
+        setChassisVerificationStatus('UNVERIFIED');
+        setVerifiedChassisNumber('');
+        setVerifiedRegistrationNumber('');
+        setVehicleVerificationSource('');
+        setVerificationLoadingSource('');
+        setChassisVerificationId('');
+      }
     }
     setForm((current) => ({
       ...current,
-      [key]: typeof value === 'string' ? sanitizeListingFieldValue(key, value) : value,
+      [key]: nextValue,
     }));
   };
 
@@ -1661,11 +1666,17 @@ export default function PartnerListingsPage() {
     });
     if (!saveAsDraft && mediaRequirementError) {
       setError(mediaRequirementError);
+      setModalTab(
+        mediaRequirementError.toLowerCase().includes('category') || mediaRequirementError.toLowerCase().includes('brand')
+          ? 'equipment'
+          : 'media'
+      );
       return;
     }
 
     if (vehicleIdentity.blocked) {
       setError(getVehicleIdentityBlockMessage(vehicleIdentity.result));
+      setModalTab('equipment');
       return;
     }
 
@@ -1698,7 +1709,27 @@ export default function PartnerListingsPage() {
         verifiedSource: vehicleVerificationSource,
       });
       if (vehicleVerificationError || (vehicleVerificationRequired && !chassisVerificationId)) {
-        setError(vehicleVerificationError || 'Verify the current vehicle identity before posting this vehicle.');
+        const regNo = sanitizedForm.registrationNo?.trim();
+        const chassisNo = sanitizedForm.chassisOrSerialNo?.trim();
+        let message = vehicleVerificationError;
+        if (!message || message === 'Verify the current vehicle identity before posting this vehicle.') {
+          message = regNo
+            ? `Vehicle verification required: Click the yellow "Verify" button next to Registration No. (${regNo}) on the Equipment & Specs tab.`
+            : chassisNo
+            ? `Vehicle verification required: Click the yellow "Verify" button next to Chassis Number (${chassisNo}) on the Equipment & Specs tab.`
+            : 'Vehicle verification required: Enter Registration No. or Chassis No. and click the yellow "Verify" button on the Equipment & Specs tab.';
+        } else if (message === 'Verify the current registration number before posting this vehicle.') {
+          message = `Registration number modified: Click the yellow "Verify" button next to Registration No. (${regNo || 'Registration Number'}) on the Equipment & Specs tab.`;
+        } else if (message === 'Verify the current chassis number before posting this vehicle.') {
+          message = `Chassis number modified: Click the yellow "Verify" button next to Chassis Number (${chassisNo || 'Chassis Number'}) on the Equipment & Specs tab.`;
+        }
+
+        setError(message);
+        setModalTab('equipment');
+        setTimeout(() => {
+          const el = document.getElementById('partner-registration-verify-btn') || document.getElementById('partner-vehicle-verification-status') || document.getElementById('partner-chassis-verification-status');
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
         return;
       }
 
@@ -1706,36 +1737,42 @@ export default function PartnerListingsPage() {
       if (rtoValidationError) {
         setError(rtoValidationError);
         setForm({ ...sanitizedForm, rtoDetails: sanitizedRto });
+        setModalTab('rto');
         return;
       }
 
       if (!sanitizedForm.price || Number(sanitizedForm.price) <= 0) {
         setError('Price is required and must be greater than 0.');
         setForm(sanitizedForm);
+        setModalTab('pricing');
         return;
       }
 
       if (!isValidDigitsOnlyValue(sanitizedForm.price)) {
         setError('Price must contain digits only.');
         setForm(sanitizedForm);
+        setModalTab('pricing');
         return;
       }
 
       if (!sanitizedForm.state.trim()) {
         setError('State is required.');
         setForm(sanitizedForm);
+        setModalTab('pricing');
         return;
       }
 
       if (!sanitizedForm.city.trim()) {
         setError('City is required.');
         setForm(sanitizedForm);
+        setModalTab('pricing');
         return;
       }
 
       if (!sanitizedForm.address.trim()) {
         setError('Address is required.');
         setForm(sanitizedForm);
+        setModalTab('pricing');
         return;
       }
 
@@ -1743,18 +1780,21 @@ export default function PartnerListingsPage() {
       if (pinCodeValidationError) {
         setError(pinCodeValidationError);
         setForm(sanitizedForm);
+        setModalTab('pricing');
         return;
       }
 
       if (!sanitizedForm.nearbyLandmark.trim()) {
         setError('Nearby Landmark is required.');
         setForm(sanitizedForm);
+        setModalTab('pricing');
         return;
       }
 
       if (!isValidYearValue(sanitizedForm.manufacturingYear)) {
         setError('Manufacturing year must be a 4-digit year.');
         setForm(sanitizedForm);
+        setModalTab('equipment');
         return;
       }
 
@@ -2490,10 +2530,15 @@ export default function PartnerListingsPage() {
                         /></ApiFillBox>
                         {listingVerificationPolicy?.chassisEnabled ? (
                         <button
+                          id="partner-chassis-verify-btn"
                           type="button"
                           onClick={() => void handleChassisVerification()}
                           disabled={chassisButtonState.isLoading || chassisButtonState.isLocked || !form.chassisOrSerialNo.trim()}
-                          className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] disabled:cursor-not-allowed disabled:opacity-50"
+                          className={`inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] disabled:cursor-not-allowed disabled:opacity-50 ${
+                            !chassisButtonState.isVerified && form.chassisOrSerialNo.trim() && listingVerificationPolicy?.required
+                              ? 'ring-2 ring-amber-400 ring-offset-1'
+                              : ''
+                          }`}
                         >
                           {chassisButtonState.isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Checking...</> : chassisButtonState.isVerified ? <><CheckCircle2 className="h-4 w-4 text-emerald-800" />Verified</> : chassisButtonState.isLocked ? <span>Filled from registration number</span> : <><Sparkles className="h-4 w-4" />Verify</>}
                         </button>
@@ -2502,9 +2547,9 @@ export default function PartnerListingsPage() {
                       {listingVerificationPolicy?.chassisEnabled ? (
                       <p
                         id="partner-chassis-verification-status"
-                            className={`mt-1.5 flex items-center gap-1 text-xs font-medium ${chassisButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-500'}`}
+                            className={`mt-1.5 flex items-center gap-1 text-xs font-medium ${chassisButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : !chassisButtonState.isVerified && listingVerificationPolicy?.required ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}
                       >
-                        {chassisButtonState.isVerified ? '✓ Verified successfully. API-backed vehicle details were filled.' : vehicleVerificationSource === 'RC_FULL' ? 'Chassis was auto-filled from vehicle-number verification.' : verificationLoadingSource === 'CHASSIS' ? 'Verifying chassis number...' : chassisVerificationStatus === 'FAILED' ? '✕ Verification failed. Correct the chassis number and try again.' : listingVerificationPolicy?.required ? 'Verification is required before posting this vehicle.' : 'Verification is optional for your account. Use it to auto-fill available vehicle details.'}
+                        {chassisButtonState.isVerified ? '✓ Verified successfully. API-backed vehicle details were filled.' : vehicleVerificationSource === 'RC_FULL' ? 'Chassis was auto-filled from vehicle-number verification.' : verificationLoadingSource === 'CHASSIS' ? 'Verifying chassis number...' : chassisVerificationStatus === 'FAILED' ? '✕ Verification failed. Correct the chassis number and try again.' : listingVerificationPolicy?.required ? '⚠️ Verification required before posting: Click "Verify" to validate vehicle identity.' : 'Verification is optional for your account. Use it to auto-fill available vehicle details.'}
                       </p>
                       ) : (
                         <p className="mt-1.5 text-xs font-medium text-gray-500">{listingVerificationPolicy?.registrationEnabled ? 'Chassis verification is disabled. Registration number verification can auto-fill chassis details.' : 'Manual listing mode is active. Vehicle verification and auto-fill are disabled.'}</p>
@@ -2532,16 +2577,33 @@ export default function PartnerListingsPage() {
                         /></ApiFillBox>
                         {listingVerificationPolicy?.registrationEnabled ? (
                           <button
+                            id="partner-registration-verify-btn"
                             type="button"
                             onClick={() => void handleVehicleNumberVerification()}
                             disabled={registrationButtonState.isLoading || registrationButtonState.isLocked || !form.registrationNo.trim()}
-                            className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] disabled:cursor-not-allowed disabled:opacity-50"
+                            className={`inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[#FFC107] px-4 py-2.5 text-sm font-bold text-gray-900 shadow-xs transition hover:bg-[#e5b100] disabled:cursor-not-allowed disabled:opacity-50 ${
+                              !registrationButtonState.isVerified && form.registrationNo.trim() && listingVerificationPolicy?.required
+                                ? 'ring-2 ring-amber-400 ring-offset-1'
+                                : ''
+                            }`}
                           >
                             {registrationButtonState.isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Checking...</> : registrationButtonState.isVerified ? <><CheckCircle2 className="h-4 w-4 text-emerald-800" />Verified</> : registrationButtonState.isLocked ? <span>Filled from chassis</span> : <><Sparkles className="h-4 w-4" />Verify</>}
                           </button>
                         ) : null}
                       </div>
-                      {listingVerificationPolicy?.registrationEnabled ? <p id="partner-vehicle-verification-status" className={`mt-1.5 text-xs font-medium ${registrationButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : 'text-gray-500'}`}>{registrationButtonState.isVerified ? '✓ Verified using registration number. Details were auto-filled.' : vehicleVerificationSource === 'CHASSIS' ? 'Registration number was auto-filled from chassis verification.' : verificationLoadingSource === 'RC_FULL' ? 'Verifying registration number...' : 'Use registration number verification when chassis verification is not available.'}</p> : null}
+                      {listingVerificationPolicy?.registrationEnabled ? (
+                        <p id="partner-vehicle-verification-status" className={`mt-1.5 text-xs font-medium ${registrationButtonState.isVerified ? 'text-emerald-600' : chassisVerificationStatus === 'FAILED' ? 'text-red-600' : !registrationButtonState.isVerified && listingVerificationPolicy?.required ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>
+                          {registrationButtonState.isVerified
+                            ? '✓ Verified using registration number. Details were auto-filled.'
+                            : vehicleVerificationSource === 'CHASSIS'
+                            ? 'Registration number was auto-filled from chassis verification.'
+                            : verificationLoadingSource === 'RC_FULL'
+                            ? 'Verifying registration number...'
+                            : listingVerificationPolicy?.required
+                            ? '⚠️ Verification required before posting: Click "Verify" to validate RC with Government RTO.'
+                            : 'Use registration number verification when chassis verification is not available.'}
+                        </p>
+                      ) : null}
                       <div className="mt-1">
                         <VehicleIdentityHint
                           check={vehicleIdentity.result?.registration}
@@ -3128,7 +3190,8 @@ function ListingMediaUploadBox({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sampleMedia = getSellVehicleSampleMedia(slotKey);
 
-  const hasUploadedAsset = Boolean(uploadedFile || previewUrl || localBlobUrl);
+  const hasUploadedAsset = Boolean(uploadedFile);
+  const hasPreview = Boolean(uploadedFile || previewUrl || localBlobUrl);
   const normalizedUploadedUrl = uploadedFile
     ? getAbsoluteFileUrl(uploadedFile.fileUrl || uploadedFile.absoluteUrl)
     : '';
@@ -3151,7 +3214,7 @@ function ListingMediaUploadBox({
     fileUrl: uploadedFile?.fileUrl,
   });
 
-  const showImagePreview = hasUploadedAsset && Boolean(previewSource) && !previewFailed;
+  const showImagePreview = hasPreview && Boolean(previewSource) && !previewFailed;
 
   const handleChange = async (file?: File) => {
     if (!file) {
@@ -3189,6 +3252,11 @@ function ListingMediaUploadBox({
       onUploaded(uploaded);
     } catch (uploadError) {
       setError(getApiErrorMessage(uploadError, 'Unable to upload the selected file.'));
+      if (!uploadedFile) {
+        onPreviewReady('');
+        setLocalBlobUrl('');
+        setLocalPosterUrl('');
+      }
     } finally {
       setUploading(false);
       setUploadMode(null);
@@ -3319,7 +3387,7 @@ function ListingMediaUploadBox({
           </div>
         ) : null}
 
-        {!hasUploadedAsset ? (
+        {!hasUploadedAsset && !hasPreview ? (
           <div className="relative z-20 flex flex-col items-center rounded-lg bg-white/90 px-3 py-2 shadow-sm">
             <Upload className="mb-2 h-5 w-5 text-gray-400" />
             <span className="text-center text-xs font-medium text-gray-600">{label}</span>

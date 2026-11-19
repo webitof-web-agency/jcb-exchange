@@ -1280,18 +1280,23 @@ export default function SellVehicleModal({
   };
 
   const updateField = <K extends keyof ListingFormState>(key: K, value: ListingFormState[K]) => {
+    const nextValue = typeof value === 'string' ? sanitizeListingFieldValue(String(key), value) : value;
     if (key === 'chassisOrSerialNo' || key === 'registrationNo' || key === 'engineNumber') {
-      chassisVerificationRequestRef.current += 1;
-      setChassisVerificationStatus('UNVERIFIED');
-      setVerifiedChassisNumber('');
-      setVerifiedRegistrationNumber('');
-      setVehicleVerificationSource('');
-      setVerificationLoadingSource('');
-      setChassisVerificationId('');
+      const prevNorm = typeof form[key] === 'string' ? String(form[key]).toUpperCase().replace(/[\s/-]+/g, '') : '';
+      const nextNorm = typeof nextValue === 'string' ? String(nextValue).toUpperCase().replace(/[\s/-]+/g, '') : '';
+      if (prevNorm !== nextNorm) {
+        chassisVerificationRequestRef.current += 1;
+        setChassisVerificationStatus('UNVERIFIED');
+        setVerifiedChassisNumber('');
+        setVerifiedRegistrationNumber('');
+        setVehicleVerificationSource('');
+        setVerificationLoadingSource('');
+        setChassisVerificationId('');
+      }
     }
     setForm((current) => ({
       ...current,
-      [key]: typeof value === 'string' ? sanitizeListingFieldValue(String(key), value) : value,
+      [key]: nextValue,
     }));
   };
 
@@ -1591,7 +1596,20 @@ export default function SellVehicleModal({
       verifiedSource: vehicleVerificationSource,
     });
     if (vehicleVerificationError || (vehicleVerificationRequired && !chassisVerificationId)) {
-      const safeError = vehicleVerificationError || 'Verify the current vehicle identity before posting this vehicle.';
+      const regNo = form.registrationNo?.trim();
+      const chassisNo = form.chassisOrSerialNo?.trim();
+      let safeError = vehicleVerificationError;
+      if (!safeError || safeError === 'Verify the current vehicle identity before posting this vehicle.') {
+        safeError = regNo
+          ? `Vehicle verification required: Click the yellow "Verify" button next to Registration No. (${regNo}) on the Equipment & Specs tab.`
+          : chassisNo
+          ? `Vehicle verification required: Click the yellow "Verify" button next to Chassis Number (${chassisNo}) on the Equipment & Specs tab.`
+          : 'Vehicle verification required: Enter Registration No. or Chassis No. and click the yellow "Verify" button on the Equipment & Specs tab.';
+      } else if (safeError === 'Verify the current registration number before posting this vehicle.') {
+        safeError = `Registration number modified: Click the yellow "Verify" button next to Registration No. (${regNo || 'Registration Number'}) on the Equipment & Specs tab.`;
+      } else if (safeError === 'Verify the current chassis number before posting this vehicle.') {
+        safeError = `Chassis number modified: Click the yellow "Verify" button next to Chassis Number (${chassisNo || 'Chassis Number'}) on the Equipment & Specs tab.`;
+      }
       setError(safeError);
       showToast({
         title: t('sellModal.notSubmitted', 'Not Submitted'),

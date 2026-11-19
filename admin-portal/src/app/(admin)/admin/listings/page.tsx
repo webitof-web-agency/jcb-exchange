@@ -2003,18 +2003,23 @@ export default function PartnerListingsPage() {
   };
 
   const updateField = <K extends keyof ListingFormState>(key: K, value: ListingFormState[K]) => {
+    const nextValue = typeof value === 'string' ? sanitizeListingFieldValue(key, value) : value;
     if (key === 'chassisOrSerialNo' || key === 'registrationNo' || key === 'engineNumber') {
-      chassisVerificationRequestRef.current += 1;
-      setChassisVerificationStatus('UNVERIFIED');
-      setVerifiedChassisNumber('');
-      setVerifiedRegistrationNumber('');
-      setVehicleVerificationSource('');
-      setVerificationLoadingSource('');
-      setChassisVerificationId('');
+      const prevNorm = typeof form[key] === 'string' ? String(form[key]).toUpperCase().replace(/[\s/-]+/g, '') : '';
+      const nextNorm = typeof nextValue === 'string' ? String(nextValue).toUpperCase().replace(/[\s/-]+/g, '') : '';
+      if (prevNorm !== nextNorm) {
+        chassisVerificationRequestRef.current += 1;
+        setChassisVerificationStatus('UNVERIFIED');
+        setVerifiedChassisNumber('');
+        setVerifiedRegistrationNumber('');
+        setVehicleVerificationSource('');
+        setVerificationLoadingSource('');
+        setChassisVerificationId('');
+      }
     }
     setForm((current) => ({
       ...current,
-      [key]: typeof value === 'string' ? sanitizeListingFieldValue(key, value) : value,
+      [key]: nextValue,
     }));
   };
 
@@ -2267,7 +2272,22 @@ export default function PartnerListingsPage() {
       verifiedSource: vehicleVerificationSource,
     });
     if (vehicleVerificationError || (vehicleVerificationRequired && !chassisVerificationId)) {
-      setError(vehicleVerificationError || 'Verify the current vehicle identity before posting this vehicle.');
+      const regNo = sanitizedForm.registrationNo?.trim();
+      const chassisNo = sanitizedForm.chassisOrSerialNo?.trim();
+      let message = vehicleVerificationError;
+      if (!message || message === 'Verify the current vehicle identity before posting this vehicle.') {
+        message = regNo
+          ? `Vehicle verification required: Click the yellow "Verify" button next to Registration No. (${regNo}) on the Equipment & Specs tab.`
+          : chassisNo
+          ? `Vehicle verification required: Click the yellow "Verify" button next to Chassis Number (${chassisNo}) on the Equipment & Specs tab.`
+          : 'Vehicle verification required: Enter Registration No. or Chassis No. and click the yellow "Verify" button on the Equipment & Specs tab.';
+      } else if (message === 'Verify the current registration number before posting this vehicle.') {
+        message = `Registration number modified: Click the yellow "Verify" button next to Registration No. (${regNo || 'Registration Number'}) on the Equipment & Specs tab.`;
+      } else if (message === 'Verify the current chassis number before posting this vehicle.') {
+        message = `Chassis number modified: Click the yellow "Verify" button next to Chassis Number (${chassisNo || 'Chassis Number'}) on the Equipment & Specs tab.`;
+      }
+
+      setError(message);
       setModalTab('equipment');
       return;
     }
@@ -5495,6 +5515,7 @@ function ListingMediaUploadBox({
   const [previewFailed, setPreviewFailed] = useState(false);
   const sampleMedia = getSellVehicleSampleMedia(slotKey);
 
+  const hasUploadedAsset = Boolean(uploadedFile);
   const hasUploadedPreview = Boolean(previewUrl || localBlobUrl || uploadedFile);
 
   const isImageData = (src?: string | null) => Boolean(src && (src.startsWith('data:image/') || /\.(jpe?g|png|webp)(\?.*)?$/i.test(src)));
@@ -5532,6 +5553,11 @@ function ListingMediaUploadBox({
       onUploaded(uploaded);
     } catch (uploadError) {
       setError(getApiErrorMessage(uploadError, 'Upload failed.'));
+      if (!uploadedFile) {
+        onPreviewReady('');
+        setLocalBlobUrl('');
+        setLocalPosterUrl('');
+      }
     } finally {
       setUploading(false);
       onUploadingChange(false);
@@ -5661,7 +5687,7 @@ function ListingMediaUploadBox({
           </div>
         ) : null}
 
-        {hasUploadedPreview ? (
+        {hasUploadedAsset ? (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 rounded-b-xl bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-3">
             <span className="block text-center text-[9px] font-bold uppercase tracking-widest text-emerald-300">✓ Uploaded</span>
           </div>

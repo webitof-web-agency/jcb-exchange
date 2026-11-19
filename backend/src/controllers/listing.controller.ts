@@ -382,11 +382,13 @@ const getChassisVerificationContext = async ({
   chassisNumber,
   verificationId,
   requestedById,
+  ownerUserId,
   canBypassVerification,
 }: {
   chassisNumber: unknown;
   verificationId: unknown;
   requestedById: string;
+  ownerUserId?: string | null | undefined;
   canBypassVerification: boolean;
 }) => {
   const normalizedChassis = normalizeText(chassisNumber);
@@ -416,7 +418,14 @@ const getChassisVerificationContext = async ({
     });
   }
 
-  const verifiedForRequester = isUsableChassisVerification(record, normalizedChassis, requestedById);
+  const isOwnerMatch = Boolean(
+    ownerUserId
+    && record
+    && record.status === 'SUCCESS'
+    && record.requestedById === ownerUserId
+    && record.requestFingerprint === buildChassisVerificationFingerprint(normalizedChassis),
+  );
+  const verifiedForRequester = isUsableChassisVerification(record, normalizedChassis, requestedById) || isOwnerMatch;
   const verifiedForSnapshot = Boolean(
     record
     && normalizedChassis
@@ -453,6 +462,7 @@ const getListingVerificationContext = async ({
   chassisNumber,
   verificationId,
   requestedById,
+  ownerUserId,
   canBypassVerification,
 }: {
   source: 'CHASSIS' | 'RC_FULL';
@@ -460,6 +470,7 @@ const getListingVerificationContext = async ({
   chassisNumber: unknown;
   verificationId: unknown;
   requestedById: string;
+  ownerUserId?: string | null | undefined;
   canBypassVerification: boolean;
 }) => {
   if (source === 'CHASSIS') {
@@ -467,6 +478,7 @@ const getListingVerificationContext = async ({
       chassisNumber,
       verificationId,
       requestedById,
+      ownerUserId,
       canBypassVerification,
     });
     return { ...context, source };
@@ -498,7 +510,14 @@ const getListingVerificationContext = async ({
     });
   }
 
-  const verifiedForRequester = isUsableRcFullVerification(record, normalizedRegistration, requestedById);
+  const isOwnerMatch = Boolean(
+    ownerUserId
+    && record
+    && record.status === 'SUCCESS'
+    && record.requestedById === ownerUserId
+    && record.requestFingerprint === buildRcFullVerificationFingerprint(normalizedRegistration),
+  );
+  const verifiedForRequester = isUsableRcFullVerification(record, normalizedRegistration, requestedById) || isOwnerMatch;
   const verifiedForSnapshot = Boolean(
     record
     && normalizedRegistration
@@ -1086,21 +1105,21 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     const requestedRegistrationNumber = rtoDetails && typeof rtoDetails === 'object'
       ? normalizeText((rtoDetails as Record<string, unknown>).registrationNo)
       : parseListingDescriptionRegistration(normalizedDescription);
-    const vehicleVerification = !saveAsDraft && vehicleListingVerificationEnabled
+    const vehicleVerification = vehicleListingVerificationEnabled
       ? await getListingVerificationContext({
         source: normalizedVehicleVerificationSource,
         registrationNumber: requestedRegistrationNumber,
         chassisNumber: normalizeText(chassisOrSerialNo) || parseListingDescriptionChassis(normalizedDescription),
         verificationId: normalizedVehicleVerificationId,
         requestedById: authenticatedUserId,
-        canBypassVerification: !vehicleListingVerificationRequired,
+        canBypassVerification: saveAsDraft || !vehicleListingVerificationRequired,
       })
       : { record: null, error: null, source: normalizedVehicleVerificationSource as 'CHASSIS' | 'RC_FULL' };
-    if (vehicleVerification.error) {
+    if (!saveAsDraft && vehicleVerification.error) {
       return res.status(422).json({ error: vehicleVerification.error, code: 'vehicle_verification_required' });
     }
-    const providerVerificationDetail = !saveAsDraft && vehicleListingVerificationEnabled
-      ? await getProviderListingVerificationDetail(vehicleVerification.source, vehicleVerification.record?.id)
+    const providerVerificationDetail = vehicleListingVerificationEnabled && vehicleVerification.record?.id
+      ? await getProviderListingVerificationDetail(vehicleVerification.source, vehicleVerification.record.id)
       : null;
     const providerVerificationSnapshot = providerVerificationDetail || null;
     const soldAt = getSoldAtValueForStatus({ nextStatus: initialListingStatus });
@@ -1229,6 +1248,9 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
           grossPower: normalizedGrossPower || null,
           engineNumber: normalizedEngineNumber || null,
           status: initialListingStatus,
+          // Persist this with the listing transaction. A second raw UPDATE after
+          // creation could turn a successful listing insert into a 500 response.
+          soldAt,
           media: normalizedMedia.length
             ? {
                 create: normalizedMedia,
@@ -1259,7 +1281,6 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       return createdListing;
     });
 
-    await setListingSoldAt(listing.id, soldAt);
     await handleSaleRecordUpsert(listing.id, initialListingStatus, req.body);
     const responseListing = await getOwnedListingForUser(listing.id, req.user.id);
 
@@ -1299,7 +1320,10 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
           }
         : ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)
           ? {
-              ...(requestedId ? { id: requestedId } : { status: { not: 'DRAFT' as any } }),
+              // Drafts are private to the owning partner, including when an
+              // admin/employee requests a listing by its exact id.
+              status: { not: 'DRAFT' as any },
+              ...(requestedId ? { id: requestedId } : {}),
               ...(!requestedId && requestedPrefix ? { id: { startsWith: requestedPrefix } } : {}),
             }
           : null;
@@ -1517,6 +1541,13 @@ export const getListingById = async (req: Request, res: Response, next: NextFunc
       ['PARTNER', 'CUSTOMER'].includes(req.user.role) && listing.partnerId === req.user.id;
     const canAccessAllListings = ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role);
 
+    // A partner draft remains private even if an admin/employee has a stale
+    // URL or knows the listing id. It becomes visible only after submission,
+    // when its status changes to PENDING_APPROVAL.
+    if (canAccessAllListings && String(listing.status || '').toUpperCase() === 'DRAFT') {
+      return res.status(404).json({ error: 'Listing not found.' });
+    }
+
     if (!canAccessOwnedListing && !canAccessAllListings) {
       return res.status(403).json({ error: 'You do not have access to this listing.' });
     }
@@ -1590,6 +1621,10 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
     const partnerProfile = isCustomer || isAdmin ? null : await getApprovedPartnerProfile(req.user.id);
 
     if (!existingListing) {
+      return res.status(404).json({ error: 'Listing not found.' });
+    }
+
+    if (isAdmin && String(existingListing.status || '').toUpperCase() === 'DRAFT') {
       return res.status(404).json({ error: 'Listing not found.' });
     }
 
@@ -1729,21 +1764,25 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       ? normalizeText((rtoDetails as Record<string, unknown>).registrationNo)
       : normalizeText(existingListing.rtoRecords?.[0]?.vehicleNumber)
         || parseListingDescriptionRegistration(normalizedDescription || '');
+    const effectiveVerificationId = normalizedVehicleVerificationId
+      || existingListing.vehicleVerification?.verificationRecordId
+      || null;
     const vehicleVerification = vehicleListingVerificationEnabled
       ? await getListingVerificationContext({
         source: normalizedVehicleVerificationSource,
         registrationNumber: requestedRegistrationNumber,
         chassisNumber: normalizeText(chassisOrSerialNo) || parseListingDescriptionChassis(normalizedDescription || ''),
-        verificationId: normalizedVehicleVerificationId,
+        verificationId: effectiveVerificationId,
         requestedById: req.user.id,
-        canBypassVerification: !vehicleListingVerificationRequired,
+        ownerUserId: existingListing.partnerId as string,
+        canBypassVerification: saveAsDraft || !vehicleListingVerificationRequired,
       })
       : { record: null, error: null, source: normalizedVehicleVerificationSource as 'CHASSIS' | 'RC_FULL' };
-    if (vehicleVerification.error) {
+    if (!saveAsDraft && vehicleVerification.error) {
       return res.status(422).json({ error: vehicleVerification.error, code: 'vehicle_verification_required' });
     }
-    const providerVerificationDetail = vehicleListingVerificationEnabled
-      ? await getProviderListingVerificationDetail(vehicleVerification.source, vehicleVerification.record?.id)
+    const providerVerificationDetail = vehicleListingVerificationEnabled && vehicleVerification.record?.id
+      ? await getProviderListingVerificationDetail(vehicleVerification.source, vehicleVerification.record.id)
       : null;
     const providerVerificationSnapshot = providerVerificationDetail || null;
     const resubmitForPriceChange = !keepsModeratedStatus && shouldResubmitListingForPriceChange({
@@ -1952,13 +1991,13 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
         providerVerificationSnapshot,
       )
       : null;
-    if (identityMismatch) {
+    if (!saveAsDraft && identityMismatch) {
       return res.status(422).json({ error: identityMismatch, code: 'vehicle_verification_mismatch' });
     }
-    if (vehicleListingVerificationRequired && vehicleVerification.record && !providerVerificationSnapshot) {
+    if (!saveAsDraft && vehicleListingVerificationRequired && vehicleVerification.record && !providerVerificationSnapshot) {
       return res.status(422).json({ error: 'Vehicle verification details are unavailable. Verify the registration number or chassis number again.', code: 'vehicle_verification_required' });
     }
-    if (vehicleListingVerificationRequired && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
+    if (!saveAsDraft && vehicleListingVerificationRequired && verificationAssessment.status === 'REVERIFICATION_REQUIRED') {
       return res.status(422).json({ error: 'Vehicle identity changed. Verify the current chassis and registration number before saving.', code: 'vehicle_reverification_required' });
     }
 
@@ -2021,8 +2060,8 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       await syncListingVehicleVerification(tx, {
         listingId: nextListing.id,
         actorUserId: authenticatedUserId,
-        verificationRecordId: vehicleVerification.record?.id || null,
-        verificationSource: providerVerificationSnapshot ? vehicleVerification.source : null,
+        verificationRecordId: vehicleVerification.record?.id || (saveAsDraft ? existingListing.vehicleVerification?.verificationRecordId : null) || null,
+        verificationSource: providerVerificationSnapshot ? vehicleVerification.source : (saveAsDraft ? existingListing.vehicleVerification?.verificationSource : null),
         providerSnapshot: providerVerificationSnapshot,
         currentSnapshot: currentVerificationSnapshot,
       });

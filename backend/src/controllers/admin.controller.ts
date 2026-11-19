@@ -2953,7 +2953,12 @@ export const getAdminListings = async (req: Request, res: Response, next: NextFu
     const requestedPrefix = req.query.prefix ? String(req.query.prefix).trim() : '';
     const compact = String(req.query.compact || '').toLowerCase() === 'true';
     const platformSettings = await getAppSettings();
-    const where: Record<string, string | { startsWith: string }> = {};
+    // Draft listings are private to their owning partner until the partner
+    // explicitly submits them for approval. Keep this restriction server-side
+    // so list filters, partner filters, and direct-id lookups cannot bypass it.
+    const where: Record<string, unknown> = {
+      status: { not: 'DRAFT' },
+    };
     if (partnerId) {
       where.partnerId = partnerId;
     }
