@@ -159,7 +159,6 @@ temp_check.txt
 # WhatsApp temporary folders
 whatsapp-moduleback/
 whatsappfront/
-*whatsapp*
 !backend/src/services/whatsappCampaign.service.ts
 !backend/src/services/whatsappCampaign.service.test.ts
 !backend/src/services/whatsappAudience.service.ts
