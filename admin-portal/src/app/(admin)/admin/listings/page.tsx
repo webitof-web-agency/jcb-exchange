@@ -800,8 +800,9 @@ const listingStatusToAvailability = (value: string) => {
       return value.toUpperCase();
     case 'PUBLISHED':
     case 'PAUSED':
-    case 'DRAFT':
       return 'AVAILABLE';
+    case 'DRAFT':
+      return 'DRAFT';
     case 'PENDING_APPROVAL':
     case 'CHANGES_REQUESTED':
       return 'PENDING';
@@ -1398,7 +1399,7 @@ export default function PartnerListingsPage() {
   }, []);
 
   const allViewListings = useMemo(
-    () => listings.filter((listing) => !isPendingApprovalListing(listing.status)),
+    () => listings.filter((listing) => !isPendingApprovalListing(listing.status) && String(listing.status).toUpperCase() !== 'DRAFT'),
     [listings]
   );
 
@@ -2924,7 +2925,7 @@ export default function PartnerListingsPage() {
                   listingView === 'all' ? 'bg-black/15 text-gray-950' : 'bg-gray-100 text-gray-700'
                 }`}
               >
-                {listings.filter((l) => !isPendingApprovalListing(l.status)).length}
+                {listings.filter((l) => !isPendingApprovalListing(l.status) && String(l.status).toUpperCase() !== 'DRAFT').length}
               </span>
             </button>
 

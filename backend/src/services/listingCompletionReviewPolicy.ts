@@ -15,8 +15,16 @@ export const normalizePartnerDraftSubmissionStatus = ({ role, currentStatus, req
   currentStatus: unknown;
   requestedStatus: unknown;
 }) => {
-  if (normalized(role) === 'PARTNER' && normalized(currentStatus) === 'DRAFT' && normalized(requestedStatus) === 'PUBLISHED') {
+  const normRole = normalized(role);
+  const normRequested = normalized(requestedStatus);
+  if (normRole === 'PARTNER') {
+    if (normRequested === 'DRAFT') {
+      return 'DRAFT';
+    }
+    if (normRequested === 'SOLD') {
+      return 'SOLD';
+    }
     return 'PENDING_APPROVAL';
   }
-  return normalized(requestedStatus);
+  return normRequested;
 };

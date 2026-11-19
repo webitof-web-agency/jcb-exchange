@@ -19,6 +19,8 @@ test('completion cannot bypass the partner review gate', () => {
 
 test('a partner draft can never be published directly', () => {
   assert.equal(normalizePartnerDraftSubmissionStatus({ role: 'PARTNER', currentStatus: 'DRAFT', requestedStatus: 'PUBLISHED' }), 'PENDING_APPROVAL');
+  assert.equal(normalizePartnerDraftSubmissionStatus({ role: 'PARTNER', currentStatus: 'PUBLISHED', requestedStatus: 'PUBLISHED' }), 'PENDING_APPROVAL');
   assert.equal(normalizePartnerDraftSubmissionStatus({ role: 'PARTNER', currentStatus: 'DRAFT', requestedStatus: 'DRAFT' }), 'DRAFT');
+  assert.equal(normalizePartnerDraftSubmissionStatus({ role: 'PARTNER', currentStatus: 'PUBLISHED', requestedStatus: 'SOLD' }), 'SOLD');
   assert.equal(normalizePartnerDraftSubmissionStatus({ role: 'SUPER_ADMIN', currentStatus: 'DRAFT', requestedStatus: 'PUBLISHED' }), 'PUBLISHED');
 });

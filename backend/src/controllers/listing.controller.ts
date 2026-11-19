@@ -1299,7 +1299,7 @@ export const getListings = async (req: Request, res: Response, next: NextFunctio
           }
         : ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(req.user.role)
           ? {
-              ...(requestedId ? { id: requestedId } : {}),
+              ...(requestedId ? { id: requestedId } : { status: { not: 'DRAFT' as any } }),
               ...(!requestedId && requestedPrefix ? { id: { startsWith: requestedPrefix } } : {}),
             }
           : null;
@@ -1679,16 +1679,20 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
     const normalizedModelName = normalizeText(modelName) || existingListing.model?.name || 'Not specified';
     const normalizedTitle = normalizeText(title);
     const normalizedStatus = normalizeListingStatus(status, existingListing.status || 'DRAFT');
+    const saveAsDraft = isPartnerListingDraftSave({
+      role: req.user.role,
+      status: normalizedStatus,
+      saveAsDraft: req.body?.saveAsDraft,
+    });
     let nextStatus = isAdmin
       ? normalizedStatus
-      : hasOwnField('status') && !isReviewPendingStatus(existingListing.status)
-        ? normalizedStatus
-        : (existingListing.status || 'PENDING_APPROVAL');
-    nextStatus = normalizePartnerDraftSubmissionStatus({
-      role: req.user.role,
-      currentStatus: existingListing.status,
-      requestedStatus: nextStatus,
-    });
+      : saveAsDraft
+        ? 'DRAFT'
+        : normalizePartnerDraftSubmissionStatus({
+            role: req.user.role,
+            currentStatus: existingListing.status,
+            requestedStatus: normalizedStatus,
+          });
     const normalizedState = normalizeText(locationState) || existingListing.locationState || 'Not specified';
     const normalizedCity = normalizeText(locationCity) || existingListing.locationCity || 'Not specified';
     const normalizedAddress = hasOwnField('address')
@@ -2394,6 +2398,10 @@ export const updateListingAvailability = async (req: Request, res: Response, nex
 
       if (isReviewPendingStatus(existingListing.status)) {
         return res.status(400).json({ error: 'This listing is awaiting approval. Availability can be updated after approval.' });
+      }
+
+      if (normalizedStatus === 'PUBLISHED') {
+        return res.status(403).json({ error: 'Publishing requires admin approval.' });
       }
     }
 

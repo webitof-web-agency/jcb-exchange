@@ -1853,11 +1853,12 @@ export default function PartnerListingsPage() {
         ...(shouldSyncRto ? { rtoDetails: buildListingRtoDetails(sanitizedRto, rtoBase) } : {}),
       };
 
-      if (saveAsDraft || submitForApproval) {
+      if (saveAsDraft) {
         payload.status = 'DRAFT';
         payload.saveAsDraft = true;
-      } else if (['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability)) {
-        payload.status = availabilityToListingStatus(sanitizedForm.currentAvailability);
+      } else {
+        payload.status = sanitizedForm.currentAvailability === 'SOLD' ? 'SOLD' : 'PENDING_APPROVAL';
+        payload.saveAsDraft = false;
       }
 
       if (!saveAsDraft && sanitizedForm.currentAvailability === 'SOLD') {
@@ -1885,7 +1886,7 @@ export default function PartnerListingsPage() {
 
       if (editingListingId) {
         const updateResponse = await api.put<{ listing: ListingRecord; message: string }>(`/listings/${editingListingId}`, payload);
-        const shouldSyncAvailability = !saveAsDraft && ['AVAILABLE', 'SOLD'].includes(sanitizedForm.currentAvailability);
+        const shouldSyncAvailability = !saveAsDraft && ['RESERVED', 'SOLD'].includes(sanitizedForm.currentAvailability);
         let availabilityResponse;
 
         if (shouldSyncAvailability) {
@@ -3020,9 +3021,11 @@ export default function PartnerListingsPage() {
                           ? 'Waiting for uploads...'
                           : completionReviewListingId
                             ? 'Submit to admin for approval'
-                            : editingListingId
-                              ? 'Update'
-                              : 'Add'}
+                            : form.currentAvailability === 'DRAFT'
+                              ? 'Submit for approval'
+                              : editingListingId
+                                ? 'Submit for approval'
+                                : 'Add Vehicle'}
                     </button>
                   </div>
                 </div>
