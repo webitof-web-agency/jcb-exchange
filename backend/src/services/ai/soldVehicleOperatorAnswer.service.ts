@@ -82,6 +82,22 @@ export const buildSoldVehicleOperatorAnswer = ({ message, toolName, operatorData
     const historySummary = statusHistory.length
       ? statusHistory.slice(0, 5).map((entry, index) => `${index + 1}. ${display(entry.status)}${text(entry.note) ? ` — ${text(entry.note)}` : ''}${text(entry.createdAt) ? ` (${text(entry.createdAt)})` : ''}`).join('\n')
       : null;
+    const asksInvoice = /\b(?:invoice|bill|bill\s+of\s+supply|challan|pdf)\b/u.test(normalized);
+    if (asksInvoice && (soldVehicle.invoiceNumber || soldVehicle.id)) {
+      return [
+        `### 📄 Official Sale Invoice (Bill of Supply) — ${display(vehicle.registrationNumber)}`,
+        line('- Invoice Number', soldVehicle.invoiceNumber),
+        line('- Record Number', soldVehicle.recordNumber),
+        line('- Purchaser (Buyer)', record(parties.purchaser).name),
+        line('- Purchaser Contact', record(parties.purchaser).number),
+        line('- Seller (Origin)', record(parties.seller).name),
+        line('- Deal Status', soldVehicle.status),
+        soldVehicle.sellAmount !== undefined ? `- **Total Sale Amount:** ${money(soldVehicle.sellAmount)}` : '',
+        soldVehicle.id ? `- **Direct PDF Action:** [📄 Download Bill of Supply PDF](/api/recruitment/admin/sell-accounts/${soldVehicle.id}/invoice)` : '',
+        soldVehicle.id ? `- **Delivery Challan:** [📦 Download Delivery Challan PDF](/api/recruitment/admin/sell-accounts/${soldVehicle.id}/delivery-challan)` : '',
+      ].filter(Boolean).join('\n');
+    }
+
     const nextAction = pendingTasks[0]
       ? `${display(pendingTasks[0].label || 'Pending RTO task')}${text(pendingTasks[0].remark) ? ` — ${text(pendingTasks[0].remark)}` : ' — is task ko complete karke status update karein.'}`
       : 'RTO transfer tasks complete hain; final office confirmation aur closure verify karein.';
@@ -149,6 +165,8 @@ export const buildSoldVehicleOperatorAnswer = ({ message, toolName, operatorData
       'Invoice/finance status',
       line('Record number', soldVehicle.recordNumber),
       line('Invoice number', soldVehicle.invoiceNumber),
+      soldVehicle.id ? `Invoice PDF: [📄 Download Bill of Supply](/api/recruitment/admin/sell-accounts/${soldVehicle.id}/invoice)` : '',
+      soldVehicle.id ? `Delivery Challan: [📦 Download Delivery Challan](/api/recruitment/admin/sell-accounts/${soldVehicle.id}/delivery-challan)` : '',
       line('Deal status', soldVehicle.status),
       line('Purchase amount', soldVehicle.purchaseAmount !== undefined ? money(soldVehicle.purchaseAmount) : undefined),
       line('Sell amount', soldVehicle.sellAmount !== undefined ? money(soldVehicle.sellAmount) : undefined),

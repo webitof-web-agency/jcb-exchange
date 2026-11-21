@@ -310,6 +310,36 @@ export const matchAiPageContext = (pathname: string) => {
   const finance = matchFinanceAiPageContext(pathname);
   if (finance) return finance;
 
+  const partnerMatch = /^\/(?:admin|employee)\/(partners|partner-agreements)(?:\/([^/]+))?\/?$/u.exec(pathname);
+  if (partnerMatch) {
+    const page = partnerMatch[1];
+    const recId = partnerMatch[2];
+    if (page === 'partner-agreements') {
+      return { groupKey: 'partners', moduleKey: 'partner-agreements', moduleLabel: 'Partner Agreements' };
+    }
+    return {
+      groupKey: 'partners',
+      moduleKey: recId ? 'partner-detail' : 'partners',
+      moduleLabel: recId ? 'Partner Detail' : 'All Partners',
+      ...(recId ? { recordId: recId } : {}),
+    };
+  }
+
+  const visitorMatch = /^\/(?:admin|employee)\/(visitors|won-customers|customers)(?:\/([^/]+))?\/?$/u.exec(pathname);
+  if (visitorMatch) {
+    const page = visitorMatch[1];
+    const recId = visitorMatch[2];
+    if (page === 'won-customers') {
+      return { groupKey: 'visitors', moduleKey: 'won-customers', moduleLabel: 'Won Customers' };
+    }
+    return {
+      groupKey: 'visitors',
+      moduleKey: recId ? 'visitor-detail' : 'visitors',
+      moduleLabel: recId ? 'Visitor & Customer 360°' : 'Visitor & Customer Directory',
+      ...(recId ? { recordId: recId } : {}),
+    };
+  }
+
   const administrationMatch = /^\/(?:admin|employee)\/(users(?:\/roles)?|settings|whatsapp|sms)\/?$/u.exec(pathname);
   if (administrationMatch) {
     const page = administrationMatch[1];

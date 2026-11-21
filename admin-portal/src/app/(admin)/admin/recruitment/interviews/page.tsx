@@ -30,6 +30,7 @@ import { buildPaginationItems } from '@/lib/paginationUtils';
 import RatingDropdown from '@/components/recruitment/RatingDropdown';
 import type { InterviewStatus } from '@/components/recruitment/InterviewStatusDropdown';
 import { isInterviewNotificationActive } from '@/lib/interviewNotification';
+import { fromInterviewDateTimeInput, toInterviewDateTimeInput } from '@/lib/interviewDateTime';
 import { confirmDelete } from '@/store/confirmDeleteStore';
 
 interface InterviewItem {
@@ -336,7 +337,7 @@ export default function AdminInterviewsPage() {
       setSavingSchedule(true);
       const payload = {
         applicationId: selectedApplicationId,
-        scheduledAt: scheduleDate,
+        scheduledAt: fromInterviewDateTimeInput(scheduleDate),
         type: scheduleType,
         meetingUrl: scheduleUrl.trim(),
         notes: scheduleNotes.trim(),
@@ -362,7 +363,7 @@ export default function AdminInterviewsPage() {
     if (!(await loadApplications())) return;
     setEditingInterviewId(item.id);
     setSelectedApplicationId(item.application.id);
-    setScheduleDate(new Date(item.scheduledAt).toISOString().slice(0, 16));
+    setScheduleDate(toInterviewDateTimeInput(item.scheduledAt));
     setScheduleType(['VIDEO', 'PHONE', 'IN_PERSON'].includes(item.interviewType) ? item.interviewType : 'VIDEO');
     setScheduleUrl(item.meetingUrl || '');
     setScheduleNotes(item.notes || '');

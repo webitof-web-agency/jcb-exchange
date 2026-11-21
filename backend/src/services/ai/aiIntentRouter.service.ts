@@ -426,6 +426,32 @@ const extractCustomerDetailQuery = (message: string): string | null => {
   return null;
 };
 
+const extractCustomerSubject = (message: string): string | null => {
+  const normalized = message.trim();
+
+  // 1. Explicit visitor / customer prefix: e.g. "customer test0 ka...", "visitor test0 ne...", "buyer test0..."
+  const prefixMatch = /\b(?:customer|visitor|buyer|grahak)\s+([a-z0-9_\-.@]+)/iu.exec(normalized);
+  if (prefixMatch?.[1] && !/^(?:directory|list|summary|all|details?|status|active|prime|won)$/iu.test(prefixMatch[1])) {
+    return prefixMatch[1].trim().toLowerCase();
+  }
+
+  // 2. Direct name/subject at start with Hindi postposition: e.g. "test0 ka mobile...", "test0 ne website...", "test0 ki payment..."
+  const postpositionMatch = /^([a-z0-9_\-.@]+)\s+(?:ka|ki|ke|ne|ko)\s+/iu.exec(normalized);
+  if (postpositionMatch?.[1]) {
+    const candidate = postpositionMatch[1].trim();
+    const notCustomer = /^(?:vehicle|vehicles|gaadi|gadi|machine|machines|equipment|partner|partners|dealer|dealers|total|all|sab|kisi|lead|leads|user|users|show|which|what|rto|challan|finance|invoice|invoices|bill|bills|payment|payments|receipt|receipts|satya|webitof|crm)$/iu.test(candidate)
+      || extractRegistrationNumber(candidate)
+      || extractChassisNumber(candidate)
+      || extractPartnerIdentifier(candidate);
+    if (!notCustomer && candidate.length >= 2) {
+      return candidate.toLowerCase();
+    }
+  }
+
+  const query = extractCustomerDetailQuery(normalized);
+  return query ? query.toLowerCase() : null;
+};
+
 const extractContactDetailQuery = (message: string): string | null => {
   const patterns = [
     /\b(?:contact|contacts?)\s+(.+?)\s+(?:ka|ki|ke)\s+(?:details?|info|information|status|vivaran|jankari|jaankari)\b.*$/u,
@@ -607,10 +633,16 @@ const extractRtoWorkDossierRequest = (message: string, pageContext: FinancePageC
 };
 
 const extractPartnerIdentifier = (message: string): { partnerId?: string; partnerCode?: string } | null => {
-  const match = /\b(?:partner|dealer)\s*(?:code|id|identifier)\s*[:#-]?\s*([A-Z0-9][A-Z0-9_-]{2,})/iu.exec(message);
-  if (!match?.[1]) return null;
-  const value = match[1].trim();
-  return UUID_PATTERN.test(value) ? { partnerId: value } : { partnerCode: value };
+  const match = /\b(?:partner|dealer)\s*(?:code|id|identifier)\s*[:#-]?\s*([A-Za-z0-9][A-Za-z0-9_-]{2,})/iu.exec(message);
+  if (match?.[1]) {
+    const value = match[1].trim();
+    return UUID_PATTERN.test(value) ? { partnerId: value } : { partnerCode: value };
+  }
+  const slugCodeMatch = /\b([a-z]{2}-[a-z0-9]+-[a-z0-9_-]+)\b/iu.exec(message);
+  if (slugCodeMatch?.[1]) {
+    return { partnerCode: slugCodeMatch[1].trim() };
+  }
+  return null;
 };
 
 const extractPartnerSubject = (message: string): string | null => {
@@ -626,6 +658,9 @@ const extractPartnerSubject = (message: string): string | null => {
   const suffixMatch = message.match(/\b([0-9a-f]{8}-[0-9a-f]{4})\b/i);
   if (suffixMatch?.[1]) return suffixMatch[1].trim();
 
+  const knownPartners = /\b(satya\s+earth\s+movers|satya|webitof)\b/iu.exec(message);
+  if (knownPartners?.[1]) return knownPartners[1].trim();
+
   // Devanagari pattern: "<Name> का/की/के सत्यापन/विवरण/केवाईसी"
   const mHindi = /([A-Za-z0-9\s]{2,40}?)\s*(?:का|की|के|को)?\s*(?:सत्यापन|विवरण|केवाईसी)/u.exec(message);
   if (mHindi?.[1]) {
@@ -637,20 +672,20 @@ const extractPartnerSubject = (message: string): string | null => {
 
   // Check on normalized message so typos like verfication, dossir are already corrected
   const norm = normalizeMessage(message);
-  const mEng = /([A-Za-z0-9\s]{2,40}?)\s+(?:ka|ki|ke|ko)?\s*(?:kyc|verification|verifications|verify|dossier|documents?|docs?|gst|pan|aadhaar|changes\s+requested|sudhar|review|status)\b/iu.exec(norm);
+  const mEng = /([A-Za-z0-9\s]{2,40}?)\s+(?:ka|ki|ke|ko)?\s*(?:kyc|verification|verifications|verify|dossier|documents?|docs?|gst|pan|aadhaar|changes\s+requested|sudhar|review|status|details?|profile|contact|phone|mobile|number|address|pata|malik|owner|gaadiyan|gadiyan|inventory|stock|fleet|deals?|sold|biki\s+hui|rto|agreement|agreements|papers?|kagaz)\b/iu.exec(norm);
   if (mEng?.[1]) {
     const candidate = mEng[1].trim().replace(/\b(?:show|tell|check|verify|give|find|kripya|please|batao|btao|dikhao|karo)\b/giu, '').trim();
-    if (candidate.length >= 2 && !/\b(?:rc|rto|vehicle|vehicles|gaadi|machine|listing|listings|inventory|deal|deals|invoice|payment|crm|lead|leads|task|tasks|compliance|partner|dealer|showroom|broker|queue|all|pending|kitne|total|full|today|summary|software|pan|gst|aadhaar|aadhar)\b/iu.test(candidate) && !/आधार|पैन|जीएसटी/u.test(candidate)) {
+    if (candidate.length >= 2 && !/\b(?:rc|rto|vehicle|vehicles|gaadi|machine|listing|listings|inventory|deal|deals|invoice|payment|crm|lead|leads|task|tasks|compliance|partner|dealer|showroom|broker|queue|all|pending|kitne|total|full|today|summary|software|pan|gst|aadhaar|aadhar|customer|visitor|buyer|grahak|test0|chassis|engine|copilot)\b/iu.test(candidate) && !/आधार|पैन|जीएसटी/u.test(candidate) && !extractChassisNumber(candidate) && !extractRegistrationNumber(candidate)) {
       const rawMatch = new RegExp(`\\b${candidate}\\b`, 'iu').exec(message);
       return rawMatch ? rawMatch[0] : candidate;
     }
   }
 
   // "(?:for|of) <Name>"
-  const mFor = /\b(?:for|of|partner|dealer)\s+([A-Za-z0-9\s]{2,40})/iu.exec(norm);
+  const mFor = /\b(?:partner|dealer)\s+([A-Za-z0-9\s]{2,40})/iu.exec(norm);
   if (mFor?.[1]) {
     const candidate = mFor[1].trim().replace(/\b(?:the|a|an)\b/giu, '').trim();
-    if (candidate.length >= 2 && !/\b(?:rc|rto|vehicle|vehicles|gaadi|machine|listing|listings|inventory|deal|deals|invoice|payment|crm|lead|leads|task|tasks|compliance|queue|all|pending|kitne|total|full|today|verification|dossier|summary|software|pan|gst|aadhaar|aadhar)\b/iu.test(candidate) && !/आधार|पैन|जीएसटी/u.test(candidate)) {
+    if (candidate.length >= 2 && !/\b(?:rc|rto|vehicle|vehicles|gaadi|machine|listing|listings|inventory|deal|deals|invoice|payment|crm|lead|leads|task|tasks|compliance|queue|all|pending|kitne|total|full|today|verification|dossier|summary|software|pan|gst|aadhaar|aadhar|customer|visitor|buyer|grahak|test0|chassis|engine|copilot)\b/iu.test(candidate) && !/आधार|पैन|जीएसटी/u.test(candidate)) {
       const rawMatch = new RegExp(`\\b${candidate}\\b`, 'iu').exec(message);
       return rawMatch ? rawMatch[0] : candidate;
     }
@@ -664,16 +699,21 @@ const isPartnerVerificationIntent = (normalized: string, message: string): boole
   if (hasRegNo) return false;
 
   if (hasAny(normalized, [
-    /\b(?:vehicle\s+docs?|vehicle\s+documents?|gaadi\s+ke\s+papers?|gaadi\s+ke\s+kagaz)\b/u,
-    /\b(?:rto|challan|chassis|engine|rc)\b/u,
     /\bcopilot\b/u,
     /\breview\s+(?:pending\s+)?kyc\s+for\s+partner\s+code\b/u,
   ]) || (/\bpending\s+kyc\b/u.test(normalized) && hasAny(normalized, [/\bchecklist\b/u, /\bmissing\b/u, /\bmismatch\b/u, /\bexpired\b/u, /\brecommendation\b/u, /\breview\b/u]))) {
     return false;
   }
 
-  // Pure Identity checks without partner context belong to verification.summary / identity hub
   const hasPartnerSubject = Boolean(extractPartnerSubject(message));
+  if (!hasPartnerSubject && hasAny(normalized, [
+    /\b(?:vehicle\s+docs?|vehicle\s+documents?|gaadi\s+ke\s+papers?|gaadi\s+ke\s+kagaz)\b/u,
+    /\b(?:rto|challan|chassis|engine|rc)\b/u,
+  ])) {
+    return false;
+  }
+
+  // Pure Identity checks without partner context belong to verification.summary / identity hub
   const hasPartnerMention = /\b(?:partner|dealer|showroom|broker|onboarding)\b/u.test(normalized);
   if (!hasPartnerSubject && !hasPartnerMention && (hasAny(normalized, [/\b(?:pan|aadhaar|aadhar|driving\s+license|dl)\b/u]) || /आधार|पैन|जीएसटी/u.test(message))) {
     return false;
@@ -693,7 +733,11 @@ const isPartnerVerificationIntent = (normalized: string, message: string): boole
     && !hasAny(normalized, [/\brc\b/u, /\bchallan\b/u, /\bvehicle\b/u, /\btransport\b/u, /\bidentity\s+hub\b/u, /\bsurepass\b/u])
   ) || (
     Boolean(extractPartnerSubject(message))
-    && hasAny(normalized, [/\b(?:kyc|verification|verifications|verfy|verifiy|documents?|docs?|gst|pan|aadhaar|dossier|review)\b/u])
+    && (
+      hasAny(normalized, [/\b(?:kyc|verification|verifications|verfy|verifiy|dossier|onboarding)\b/u])
+      || (hasAny(normalized, [/\b(?:partner|dealer)\b/u]) && hasAny(normalized, [/\b(?:profile|details?|contact|phone|mobile|number|address|pata|malik|owner|inventory|stock|fleet|deals?|sold|biki|rto|agreement|agreements|papers?|kagaz|gst|pan|aadhaar)\b/u]))
+      || /\b(satya|webitof)\b/iu.test(message)
+    )
   );
 };
 
@@ -989,6 +1033,29 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
     }
     return { name: 'tasks.compliance.overview', arguments: {} };
   }
+  if (pageContext.moduleKey === 'partner-agreements' && !explicitFinanceMutation) {
+    return {
+      name: 'partner.agreements.summary',
+      arguments: /\b(content|full\s+terms?|agreement\s+text)\b/u.test(normalized) ? { includeContent: true } : {},
+    };
+  }
+  if ((pageContext.moduleKey === 'partners' || pageContext.moduleKey === 'partner-detail') && !explicitFinanceMutation) {
+    const target = extractPartnerSubject(message) || pageContext.recordId;
+    if (target && !/\b(?:queue|list|all|pending|directory)\b/iu.test(target)) {
+      return { name: 'partner.verification.dossier', arguments: { query: target, ...(pageContext.recordId ? { partnerId: pageContext.recordId } : {}) } };
+    }
+    return { name: 'partner.statistics', arguments: {} };
+  }
+  if (pageContext.moduleKey === 'won-customers' && !explicitFinanceMutation) {
+    return { name: 'crm.won.customers.summary', arguments: {} };
+  }
+  if ((pageContext.moduleKey === 'visitors' || pageContext.moduleKey === 'visitor-detail' || pageContext.groupKey === 'visitors') && !explicitFinanceMutation) {
+    const target = extractCustomerSubject(message) || pageContext.recordId;
+    if (target && !/\b(?:list|all|summary|directory|overview|kitne|kitna)\b/iu.test(target)) {
+      return { name: 'customer.detail', arguments: { query: target, ...(pageContext.recordId ? { customerId: pageContext.recordId } : {}) } };
+    }
+    return { name: 'customer.summary', arguments: {} };
+  }
   if (pageContext.moduleKey === 'verification-detail' && !explicitFinanceMutation) {
     const target = extractPartnerSubject(message) || pageContext.recordId;
     if (target) {
@@ -1156,6 +1223,14 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
     return { name: 'tasks.compliance.overview', arguments: {} };
   }
 
+  const customerSubject = extractCustomerSubject(message);
+  const isCustomerQuestion = customerSubject && hasAny(normalized, [
+    /\b(?:mobile|phone|number|no|contact|email|whatsapp|dekha|dekhi|view|views|viewed|search|searches|searched|website|portal|activity|intent|invoice|bill|challan|receipt|slip|payment|advance|deal|deals|rto|profile|details?|info|jankari|status|record|records)\b/iu,
+  ]);
+  if (customerSubject && isCustomerQuestion && !extractRegistrationNumber(message) && !extractPartnerIdentifier(message) && !/\b(satya|webitof)\b/iu.test(customerSubject)) {
+    return { name: 'customer.detail', arguments: { query: customerSubject } };
+  }
+
   if (isPartnerVerificationIntent(normalized, message) && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
     const isQueueExplicit = hasAny(normalized, [
       /\b(?:queue|katar|line|desk|all|pending\s+cases?|pending\s+list|kitne|kitni)\b/u,
@@ -1216,6 +1291,7 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
   if (isGeneralVehicleDocsIntent && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
     return { name: 'vehicle.documents.summary', arguments: {} };
   }
+
   const storedFileRequest = hasAny(normalized, [
     /\b(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\b/u,
   ]) && hasAny(normalized, [
@@ -1254,17 +1330,17 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
   if (customerSignals.test(normalized) && listingId && entityLookupIntent) {
     return { name: 'customer.detail', arguments: { customerId: listingId } };
   }
-  if (/\b(?:won\s+customers?|won\s+customer\s+(?:module|page|wala|wale|wali)|customers?\s+(?:won|closed\s+as\s+won))\b/u.test(normalized)
-    && hasAny(normalized, [
+  if (/\b(?:won\s+customers?|won\s+customer\s+(?:module|page|wala|wale|wali|list)|customers?\s+(?:won|closed\s+as\s+won)|won\s+deals?\s+(?:wale|wali|customers?))\b/iu.test(normalized)
+    || (/\bwon\s+customers?\b/iu.test(normalized) && hasAny(normalized, [
       /\b(summary|count|total|number|list|show|which|what|status|active|all|kitne|kitni|kitna|kaun|dikhao|batao|btao|details?|detail)\b/u,
-    ])) {
+    ]))) {
     return { name: 'crm.won.customers.summary', arguments: {} };
   }
   if (customerSignals.test(normalized) && customerDetailQuery) {
     return { name: 'customer.detail', arguments: { query: customerDetailQuery } };
   }
   if (customerSignals.test(normalized) && hasAny(normalized, [
-    /\b(summary|count|total|number|list|show|which|what|status|active|all|kitne|kitni|kaun|dikhao|batao|btao)\b/u,
+    /\b(summary|count|total|number|list|show|which|what|status|active|all|kitne|kitni|kaun|dikhao|batao|btao|directory)\b/u,
   ])) {
     return { name: 'customer.summary', arguments: {} };
   }
@@ -1619,8 +1695,8 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
     return rangeTool('partner.performance', normalized);
   }
 
-  if (hasAny(normalized, [/\bpartners?\b/u, /\bdealers?\b/u])
-    && hasAny(normalized, partnerListIntent)) {
+  if (hasAny(normalized, [/\b(partner\s+directory|dealership\s+directory|all\s+partners|sabhi\s+partners|partners\s+list)\b/u])
+    || (hasAny(normalized, [/\bpartners?\b/u, /\bdealers?\b/u]) && hasAny(normalized, partnerListIntent))) {
     return { name: 'partner.statistics', arguments: {} };
   }
 

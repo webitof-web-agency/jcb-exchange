@@ -384,7 +384,7 @@ const documentSearchArguments = z.object({
 export const documentSearchActionLimit = (kind: string, limit: number, aggregateActionCount: number) =>
   kind === 'vehicle' ? limit + aggregateActionCount : limit;
 const customerDetailArguments = z.object({
-  customerId: z.string().uuid().optional(),
+  customerId: z.string().trim().min(1).max(100).optional(),
   query: z.string().trim().min(1).max(100).optional(),
 }).strict().refine((value) => Boolean(value.customerId || value.query), {
   message: 'Provide a customer ID or a customer search query.',
@@ -846,7 +846,7 @@ const definitions: PermissionedDefinition[] = [
   {
     name: 'customer.detail',
     label: 'Customer detail',
-    description: 'Returns a specific customer or visitor profile summary without mobile, email, or document data.',
+    description: 'Returns 360° visitor dossier including contacts, viewed machines, searches, leads, won deals, and RTO.',
     permissions: CUSTOMER_READ_PERMISSIONS,
     available: false,
     schema: customerDetailArguments,
@@ -1613,6 +1613,7 @@ const crmAccessFor = (context: AiToolContext): CrmAccess =>
 const hasVisitorWideAccess = (context: AiToolContext) =>
   context.role === 'SUPER_ADMIN'
   || context.role === 'ADMIN'
+  || context.role === 'EMPLOYEE'
   || context.permissions.includes('ALL_ACCESS')
   || context.permissions.includes('visitors.read');
 
@@ -1667,14 +1668,27 @@ const safeLead = (value: unknown) => {
   };
 };
 
-const safeCustomer = (value: unknown) => {
+const safeCustomer = (value: unknown, allowOperationalPii = false) => {
   const customer = asRecord(value);
   const crmProfile = asRecord(customer.crmProfile);
-  const createdAt = customer.createdAt instanceof Date ? customer.createdAt.toISOString() : customer.createdAt ?? null;
-  const updatedAt = customer.updatedAt instanceof Date ? customer.updatedAt.toISOString() : customer.updatedAt ?? null;
+  const createdAt = customer.createdAt instanceof Date ? customer.createdAt.toISOString() : (typeof customer.createdAt === 'string' ? customer.createdAt : null);
+  const updatedAt = customer.updatedAt instanceof Date ? customer.updatedAt.toISOString() : (typeof customer.updatedAt === 'string' ? customer.updatedAt : null);
+  const mobile = typeof customer.mobile === 'string' && customer.mobile ? customer.mobile : null;
+  const rawEmail = typeof customer.email === 'string' && customer.email ? customer.email : null;
+  const whatsapp = typeof customer.whatsappNumber === 'string' && customer.whatsappNumber ? customer.whatsappNumber : (mobile || null);
+  const authProvider = typeof customer.authProvider === 'string' ? customer.authProvider : 'LOCAL';
+  const isPrime = Boolean(customer.isPrimeCustomer || (Array.isArray(customer.customerPrimeSubscriptions) && customer.customerPrimeSubscriptions.length > 0));
+  const cleanDigits = mobile ? mobile.replace(/\D/g, '').slice(-10) : '';
+  const waDigits = whatsapp ? whatsapp.replace(/\D/g, '').slice(-10) : cleanDigits;
+
   return {
     customerId: typeof customer.id === 'string' ? customer.id : null,
     customerName: typeof customer.name === 'string' ? customer.name : null,
+    mobile: allowOperationalPii ? mobile : (mobile ? (mobile.length > 5 ? `${mobile.slice(0, 3)}****${mobile.slice(-2)}` : '****') : null),
+    email: allowOperationalPii ? rawEmail : (rawEmail ? rawEmail.replace(/^(.)(.*)(@.*)$/, '$1***$3') : null),
+    whatsappNumber: allowOperationalPii ? whatsapp : (whatsapp ? (whatsapp.length > 5 ? `${whatsapp.slice(0, 3)}****${whatsapp.slice(-2)}` : '****') : null),
+    authProvider,
+    isPrimeCustomer: isPrime,
     status: typeof customer.status === 'string' ? customer.status : null,
     city: typeof customer.city === 'string' ? customer.city : null,
     state: typeof customer.state === 'string' ? customer.state : null,
@@ -1683,14 +1697,29 @@ const safeCustomer = (value: unknown) => {
     leadCount: typeof customer.leadCount === 'number' ? customer.leadCount : 0,
     createdAt,
     updatedAt,
+    callLink: cleanDigits ? `tel:${cleanDigits}` : null,
+    whatsappLink: waDigits ? `https://wa.me/91${waDigits}` : null,
+    profileUrl: typeof customer.id === 'string' ? `/employee/visitors/${customer.id}` : null,
   };
 };
 
-const safeCrmContact = (value: unknown) => {
+const safeCrmContact = (value: unknown, allowOperationalPii = false) => {
   const contact = asRecord(value);
   const profile = asRecord(contact.crmProfile);
+  const mobile = typeof contact.mobile === 'string' && contact.mobile ? contact.mobile : null;
+  const rawEmail = typeof contact.email === 'string' && contact.email ? contact.email : null;
+  const whatsapp = typeof contact.whatsappNumber === 'string' && contact.whatsappNumber ? contact.whatsappNumber : (mobile || null);
+  const cleanDigits = mobile ? mobile.replace(/\D/g, '').slice(-10) : '';
+  const waDigits = whatsapp ? whatsapp.replace(/\D/g, '').slice(-10) : cleanDigits;
+
   return {
+    contactId: typeof contact.id === 'string' ? contact.id : null,
     customerName: typeof contact.name === 'string' ? contact.name : null,
+    mobile: allowOperationalPii ? mobile : (mobile ? (mobile.length > 5 ? `${mobile.slice(0, 3)}****${mobile.slice(-2)}` : '****') : null),
+    email: allowOperationalPii ? rawEmail : (rawEmail ? rawEmail.replace(/^(.)(.*)(@.*)$/, '$1***$3') : null),
+    whatsappNumber: allowOperationalPii ? whatsapp : (whatsapp ? (whatsapp.length > 5 ? `${whatsapp.slice(0, 3)}****${whatsapp.slice(-2)}` : '****') : null),
+    callLink: cleanDigits ? `tel:${cleanDigits}` : null,
+    whatsappLink: waDigits ? `https://wa.me/91${waDigits}` : null,
     city: typeof contact.city === 'string' ? contact.city : null,
     state: typeof contact.state === 'string' ? contact.state : null,
     companyName: typeof profile.companyName === 'string' ? profile.companyName : null,
@@ -1807,14 +1836,23 @@ const safeListingSummaryItem = (value: unknown) => {
 export const safePartnerSummaryItem = (value: unknown) => {
   const partner = asRecord(value);
   const createdAt = partner.createdAt instanceof Date ? partner.createdAt.toISOString() : partner.createdAt ?? null;
+  const user = asRecord(partner.user);
+  const city = asRecord(partner.city);
+  const state = asRecord(partner.state);
   return {
     partnerCode: typeof partner.partnerCode === 'string' ? partner.partnerCode : null,
     businessName: typeof partner.businessName === 'string' ? partner.businessName : null,
+    ownerName: typeof partner.ownerName === 'string' ? partner.ownerName : (typeof user.name === 'string' ? user.name : null),
     partnerType: typeof partner.partnerType === 'string' ? partner.partnerType : null,
     accountStatus: typeof partner.accountStatus === 'string' ? partner.accountStatus : null,
     kycStatus: typeof partner.kycStatus === 'string' ? partner.kycStatus : null,
     onboardingStatus: typeof partner.onboardingStatus === 'string' ? partner.onboardingStatus : null,
-    createdAt,
+    mobile: typeof user.mobile === 'string' ? user.mobile : (typeof partner.alternateMobile === 'string' ? partner.alternateMobile : null),
+    email: typeof user.email === 'string' ? user.email : null,
+    territory: typeof partner.serviceAreas === 'string' && partner.serviceAreas.trim() ? partner.serviceAreas : [typeof city.name === 'string' ? city.name : null, typeof partner.district === 'string' ? partner.district : null, typeof state.name === 'string' ? state.name : null].filter(Boolean).join(', ') || null,
+    inventoryCount: typeof partner.listingCount === 'number' ? partner.listingCount : (user._count && typeof user._count === 'object' && typeof (user._count as any).listings === 'number' ? (user._count as any).listings : 0),
+    joinedDate: typeof createdAt === 'string' ? createdAt.slice(0, 10) : null,
+    createdAt: typeof createdAt === 'string' ? createdAt : null,
   };
 };
 
@@ -2272,6 +2310,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
   async crmContactsSummary(context, args) {
     const access = crmAccessFor(context);
     if (!access.canRead) throw new AiToolError('You do not have CRM read permission for contacts.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
+    const isInternal = hasVisitorWideAccess(context);
     const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 20)));
     const result = await crmContacts.listContacts(access, {
       page: '1',
@@ -2290,14 +2329,15 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         primeCustomers: result.primeTotal ?? 0,
         wonLeads: result.wonLeadTotal ?? 0,
       } : {}),
-      items: result.items.map(safeCrmContact),
-      maskedFields: ['contactUserId', 'mobile', 'whatsappNumber', 'email', 'address', 'pinCode', 'notes'],
+      items: result.items.map((it) => safeCrmContact(it, isInternal)),
+      maskedFields: isInternal ? [] : ['contactUserId', 'mobile', 'whatsappNumber', 'email', 'address', 'pinCode', 'notes'],
     };
   },
 
   async crmContactDetail(context, args) {
     const access = crmAccessFor(context);
     if (!access.canRead) throw new AiToolError('You do not have CRM read permission for contact details.', 403, 'AI_TOOL_PERMISSION_REQUIRED');
+    const isInternal = hasVisitorWideAccess(context);
     let contactId = args.contactId;
     if (!contactId && args.query) {
       const matches = await crmContacts.listContacts(access, { q: args.query, page: '1', pageSize: '6' });
@@ -2312,7 +2352,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     const contact = asRecord(result.contact);
     return {
       found: true,
-      contact: safeCrmContact(contact),
+      contact: safeCrmContact(contact, isInternal),
       leads: Array.isArray(result.leads) ? result.leads.map(safeLead) : [],
       pipelineStage: result.pipelineStage ?? null,
       followUps: Array.isArray(result.followUps) ? result.followUps.map(safeFollowUpItem) : [],
@@ -2328,7 +2368,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       rto: Array.isArray(result.rto) ? result.rto.map((record) => ({ rtoStatus: record.rtoStatus, rtoOffice: record.rtoOffice, createdAt: isoDate(record.createdAt) })) : [],
       interest: result.interest ? { listingViews: result.interest.listingViews, contactClicks: result.interest.contactClicks, searches: result.interest.searches?.length ?? 0, viewedListings: result.interest.viewedListings?.map((listing) => ({ title: listing.title, price: listing.price, status: listing.status, city: listing.locationCity })) ?? [] } : null,
       finance: result.finance ? { receivable: result.finance.receivable, payable: result.finance.payable, partyCount: result.finance.parties?.length ?? 0 } : null,
-      maskedFields: ['contactUserId', 'mobile', 'whatsappNumber', 'email', 'address', 'pinCode', 'notes', 'documentUrl', 'vehicleNumber', 'customerNumber'],
+      maskedFields: isInternal ? [] : ['contactUserId', 'mobile', 'whatsappNumber', 'email', 'address', 'pinCode', 'notes', 'documentUrl', 'vehicleNumber', 'customerNumber'],
     };
   },
 
@@ -2682,16 +2722,18 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
   },
 
   async customerSummary(context, args) {
-    const limit = Math.min(20, Math.max(1, Math.floor(args.limit ?? 20)));
+    const isInternal = hasVisitorWideAccess(context);
+    const limit = Math.min(50, Math.max(1, Math.floor(args.limit ?? 20)));
     const where: Prisma.UserWhereInput = {
       AND: [
         { role: 'CUSTOMER', status: { not: 'CLOSED' } },
         customerScopeWhereForAi(context),
       ],
     };
-    const [total, active, rows] = await Promise.all([
+    const [total, active, primeCount, rows] = await Promise.all([
       prisma.user.count({ where }),
       prisma.user.count({ where: { AND: [where, { status: 'ACTIVE' }] } }),
+      prisma.user.count({ where: { AND: [where, { customerPrimeSubscriptions: { some: { status: 'ACTIVE' } } }] } }),
       prisma.user.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -2699,49 +2741,82 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         select: {
           id: true,
           name: true,
+          mobile: true,
+          email: true,
+          whatsappNumber: true,
+          authProvider: true,
           status: true,
           city: true,
           state: true,
           createdAt: true,
           updatedAt: true,
-          crmProfile: { select: { lifecycle: true, source: true } },
+          createdBy: { select: { id: true, name: true, role: true } },
+          customerPrimeSubscriptions: { where: { status: 'ACTIVE' }, select: { id: true, status: true, startedAt: true, expiresAt: true }, take: 1 },
+          crmProfile: { select: { lifecycle: true, source: true, companyName: true, owner: { select: { id: true, name: true } } } },
           _count: { select: { leads: true } },
         },
       }),
     ]);
+    const cities = new Set(rows.map((row) => row.city).filter(Boolean));
     return {
       total,
       active,
+      primeCount,
+      citiesCovered: cities.size,
       returned: rows.length,
       hasMore: total > rows.length,
       items: rows.map((row) => safeCustomer({
         ...row,
+        isPrimeCustomer: row.customerPrimeSubscriptions.length > 0,
         leadCount: row._count.leads,
-      })),
-      maskedFields: ['customerName', 'mobile', 'whatsappNumber', 'email', 'documentUrl'],
+      }, isInternal)),
+      maskedFields: isInternal ? [] : ['customerName', 'mobile', 'whatsappNumber', 'email', 'documentUrl'],
     };
   },
 
   async customerDetail(context, args) {
-    const search = args.query || '';
+    const isInternal = hasVisitorWideAccess(context);
+    const search = (args.query || '').trim();
+    const customerId = (args.customerId || '').trim();
+
+    const isShortUuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4})?$/i.test(search);
+    const phoneDigits = search.replace(/\D/g, '');
+    const isPhoneSearch = phoneDigits.length >= 7;
+    const isEmailSearch = search.includes('@');
+
+    const searchOrConditions: Prisma.UserWhereInput[] = [];
+    if (customerId) {
+      searchOrConditions.push({ id: customerId });
+      if (/^[0-9a-f]{8}/i.test(customerId)) {
+        searchOrConditions.push({ id: { startsWith: customerId } });
+      }
+    } else if (search) {
+      if (isShortUuid) {
+        searchOrConditions.push({ id: { startsWith: search } });
+      }
+      if (isPhoneSearch) {
+        searchOrConditions.push({ mobile: { contains: phoneDigits } });
+        searchOrConditions.push({ whatsappNumber: { contains: phoneDigits } });
+      }
+      if (isEmailSearch) {
+        searchOrConditions.push({ email: { contains: search, mode: 'insensitive' } });
+      }
+      searchOrConditions.push({ name: { contains: search, mode: 'insensitive' } });
+      searchOrConditions.push({ city: { contains: search, mode: 'insensitive' } });
+      searchOrConditions.push({ state: { contains: search, mode: 'insensitive' } });
+    }
+
     const where: Prisma.UserWhereInput = {
       AND: [
         customerScopeWhereForAi(context),
         {
           role: 'CUSTOMER',
           status: { not: 'CLOSED' },
-          ...(args.customerId
-            ? { id: args.customerId }
-            : {
-              OR: [
-                { name: { contains: search, mode: 'insensitive' } },
-                { city: { contains: search, mode: 'insensitive' } },
-                { state: { contains: search, mode: 'insensitive' } },
-              ],
-            }),
+          ...(searchOrConditions.length ? { OR: searchOrConditions } : {}),
         },
       ],
     };
+
     const matches = await prisma.user.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
@@ -2749,40 +2824,358 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       select: {
         id: true,
         name: true,
+        mobile: true,
+        email: true,
+        whatsappNumber: true,
+        authProvider: true,
         status: true,
         city: true,
         state: true,
         createdAt: true,
         updatedAt: true,
-        crmProfile: { select: { lifecycle: true, source: true } },
+        createdBy: { select: { id: true, name: true, role: true } },
+        crmProfile: {
+          select: {
+            companyName: true,
+            alternatePhone: true,
+            address: true,
+            pinCode: true,
+            gstNumber: true,
+            lifecycle: true,
+            source: true,
+            contactTypes: true,
+            tags: true,
+            notes: true,
+            doNotContact: true,
+            preferredLanguage: true,
+            preferredChannel: true,
+            owner: { select: { id: true, name: true } },
+          },
+        },
         _count: { select: { leads: true } },
       },
     });
+
     if (!matches.length) return { found: false, requested: args.customerId || args.query || null, matches: [] };
+    let customer = matches[0]!;
     if (matches.length > 1 && !args.customerId) {
-      throw new AiToolError(
-        'Multiple customers match that search. Please provide a customer ID or a more specific name.',
-        409,
-        'AI_TOOL_AMBIGUOUS',
+      const exactMatch = matches.find((m) =>
+        (m.mobile && m.mobile.replace(/\D/g, '').endsWith(phoneDigits))
+        || (m.name && m.name.toLowerCase() === search.toLowerCase())
+        || (m.email && m.email.toLowerCase() === search.toLowerCase())
+        || m.id === search
+        || m.id.startsWith(search)
       );
+      if (exactMatch) {
+        customer = exactMatch;
+      } else {
+        return {
+          found: true,
+          ambiguous: true,
+          requested: search,
+          matches: matches.map((m) => safeCustomer(m, isInternal)),
+          maskedFields: isInternal ? [] : ['mobile', 'email'],
+        };
+      }
     }
-    const customer = matches[0]!;
+
     const access = crmAccessFor(context);
     const activityWhere = hasVisitorWideAccess(context) ? {} : { AND: [followUpScopeWhere(access)] };
     const leadActivityWhere = hasVisitorWideAccess(context) ? {} : leadScopeWhere(access);
-    const [followUpCount, leadsByStatus] = await Promise.all([
-      prisma.crmFollowUp.count({ where: { AND: [{ contactUserId: customer.id }, activityWhere] } }),
-      prisma.lead.groupBy({ by: ['status'], where: { AND: [{ customerId: customer.id, mergedIntoId: null }, leadActivityWhere] }, _count: { _all: true } }),
+
+    const rawMobile = customer.mobile || '';
+    const cleanDigits = rawMobile.replace(/\D/g, '').slice(-10);
+    const phones: string[] = [];
+    if (cleanDigits) {
+      phones.push(cleanDigits, `91${cleanDigits}`, `+91${cleanDigits}`, `0${cleanDigits}`, `+91 ${cleanDigits}`);
+    }
+    if (customer.whatsappNumber) {
+      const waDigits = customer.whatsappNumber.replace(/\D/g, '').slice(-10);
+      if (waDigits && waDigits !== cleanDigits) {
+        phones.push(waDigits, `91${waDigits}`, `+91${waDigits}`, `0${waDigits}`, `+91 ${waDigits}`);
+      }
+    }
+
+    const since90d = daysBack(90);
+
+    const [
+      followUps,
+      leads,
+      primeSubs,
+      payments,
+      deals,
+      rtoRecords,
+      events,
+    ] = await Promise.all([
+      prisma.crmFollowUp.findMany({
+        where: { AND: [{ contactUserId: customer.id }, activityWhere] },
+        orderBy: { dueAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          title: true,
+          type: true,
+          status: true,
+          dueAt: true,
+          notes: true,
+          owner: { select: { id: true, name: true } },
+          lead: { select: { id: true, status: true, leadType: true, priority: true, temperature: true, listingTitleSnapshot: true } },
+        },
+      }),
+      prisma.lead.findMany({
+        where: { AND: [{ customerId: customer.id, mergedIntoId: null }, leadActivityWhere] },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          leadType: true,
+          status: true,
+          source: true,
+          priority: true,
+          temperature: true,
+          score: true,
+          listingTitleSnapshot: true,
+          expectedValue: true,
+          wonAmount: true,
+          createdAt: true,
+          nextFollowUpAt: true,
+          owner: { select: { id: true, name: true } },
+          pipelineStage: { select: { code: true, name: true, color: true, isTerminal: true } },
+        },
+      }),
+      prisma.customerPrimeSubscription.findMany({
+        where: { userId: customer.id },
+        orderBy: { submittedAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          status: true,
+          paidAmount: true,
+          startedAt: true,
+          expiresAt: true,
+          transactionRef: true,
+          receiptUrl: true,
+          paymentNote: true,
+        },
+      }),
+      prisma.listingPaymentSubmission.findMany({
+        where: { buyerId: customer.id },
+        orderBy: { submittedAt: 'desc' },
+        take: 10,
+        select: {
+          id: true,
+          amount: true,
+          method: true,
+          status: true,
+          transactionRef: true,
+          receiptUrl: true,
+          submittedAt: true,
+          listing: { select: { id: true, title: true } },
+        },
+      }),
+      phones.length
+        ? prisma.sellAccount.findMany({
+            where: {
+              deletedAt: null,
+              OR: [
+                { purchaserNumber: { in: phones } },
+                { sellerNumber: { in: phones } },
+                { ownerNumber: { in: phones } },
+              ],
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: {
+              id: true,
+              recordNumber: true,
+              listingTitle: true,
+              vehicleNumber: true,
+              sellAmount: true,
+              purchaseAmount: true,
+              dealStatus: true,
+              purchaserName: true,
+              purchaserNumber: true,
+              sellerName: true,
+              sellerNumber: true,
+              invoiceUrl: true,
+              challanUrl: true,
+              createdAt: true,
+            },
+          })
+        : Promise.resolve([]),
+      phones.length
+        ? prisma.vehicleRtoRecord.findMany({
+            where: {
+              OR: [
+                { customerNumber: { in: phones } },
+                { purchaserNumber: { in: phones } },
+                { sellerNumber: { in: phones } },
+              ],
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: {
+              id: true,
+              vehicleNumber: true,
+              rtoStatus: true,
+              rtoOffice: true,
+              rtoAgentName: true,
+              rtoAgentPhone: true,
+              isLocked: true,
+              lockedAt: true,
+              createdAt: true,
+            },
+          })
+        : Promise.resolve([]),
+      prisma.analyticsEvent.findMany({
+        where: {
+          actorUserId: customer.id,
+          occurredAt: { gte: since90d },
+          eventType: { in: ['LISTING_VIEW', 'CONTACT_CLICK', 'SEARCH'] },
+        },
+        orderBy: { occurredAt: 'desc' },
+        take: 200,
+        select: { eventType: true, listingId: true, query: true, occurredAt: true },
+      }),
     ]);
+
+    const viewedIds = [...new Set(events.filter((e) => e.eventType === 'LISTING_VIEW' && e.listingId).map((e) => e.listingId as string))].slice(0, 10);
+    const viewedListings = viewedIds.length
+      ? await prisma.listing.findMany({
+          where: { id: { in: viewedIds } },
+          select: {
+            id: true,
+            title: true,
+            price: true,
+            status: true,
+            locationCity: true,
+            locationState: true,
+            media: { select: { url: true }, take: 1 },
+          },
+        })
+      : [];
+
+    const isPrime = primeSubs.some((p) => p.status === 'ACTIVE');
+    const safeCust = safeCustomer({
+      ...customer,
+      isPrimeCustomer: isPrime,
+      leadCount: leads.length,
+    }, isInternal);
+
+    const invoices = deals
+      .filter((d) => Boolean(d.invoiceUrl || d.challanUrl || d.id))
+      .map((d) => ({
+        dealId: d.id,
+        recordNumber: d.recordNumber,
+        vehicleNumber: d.vehicleNumber,
+        invoiceUrl: d.invoiceUrl || `/api/recruitment/admin/sell-accounts/${d.id}/invoice`,
+        challanUrl: d.challanUrl || `/api/recruitment/admin/sell-accounts/${d.id}/delivery-challan`,
+      }));
+
+    const receipts = [
+      ...primeSubs.filter((p) => Boolean(p.receiptUrl)).map((p) => ({
+        type: 'PRIME_MEMBERSHIP',
+        amount: numeric(p.paidAmount),
+        receiptUrl: p.receiptUrl,
+        transactionRef: p.transactionRef,
+      })),
+      ...payments.filter((p) => Boolean(p.receiptUrl)).map((p) => ({
+        type: 'LISTING_PAYMENT',
+        amount: numeric(p.amount),
+        receiptUrl: p.receiptUrl,
+        transactionRef: p.transactionRef,
+        listingTitle: p.listing?.title || null,
+      })),
+    ];
+
     return {
       found: true,
-      customer: safeCustomer({ ...customer, leadCount: customer._count.leads }),
-      activity: {
-        leadCount: customer._count.leads,
-        followUpCount,
-        leadsByStatus: leadsByStatus.map((row) => ({ status: row.status, count: row._count._all })),
+      customer: safeCust,
+      crmProfile: customer.crmProfile,
+      digitalIntent: {
+        totalViews: events.filter((e) => e.eventType === 'LISTING_VIEW').length,
+        totalContactClicks: events.filter((e) => e.eventType === 'CONTACT_CLICK').length,
+        recentSearches: events.filter((e) => e.eventType === 'SEARCH' && e.query).slice(0, 10).map((e) => ({
+          query: e.query,
+          at: e.occurredAt.toISOString(),
+        })),
+        viewedMachines: viewedListings.map((l) => ({
+          id: l.id,
+          title: l.title,
+          price: numeric(l.price),
+          status: l.status,
+          city: l.locationCity,
+          state: l.locationState,
+          imageUrl: l.media[0]?.url || null,
+        })),
       },
-      maskedFields: ['customerName', 'mobile', 'whatsappNumber', 'email', 'notes', 'documentUrl'],
+      leads: leads.map((l) => ({
+        id: l.id,
+        leadType: l.leadType,
+        status: l.status,
+        stage: l.pipelineStage?.name || l.status,
+        stageColor: l.pipelineStage?.color || null,
+        temperature: l.temperature,
+        priority: l.priority,
+        score: l.score,
+        machine: l.listingTitleSnapshot,
+        expectedValue: numeric(l.expectedValue),
+        wonAmount: numeric(l.wonAmount),
+        assignedTo: l.owner?.name || null,
+        createdAt: l.createdAt.toISOString(),
+      })),
+      followUps: followUps.map((f) => ({
+        id: f.id,
+        title: f.title,
+        type: f.type,
+        status: f.status,
+        dueAt: f.dueAt.toISOString(),
+        notes: f.notes,
+        owner: f.owner?.name || null,
+      })),
+      prime: {
+        active: isPrime,
+        history: primeSubs.map((p) => ({
+          id: p.id,
+          status: p.status,
+          paidAmount: numeric(p.paidAmount),
+          startedAt: p.startedAt ? p.startedAt.toISOString() : null,
+          expiresAt: p.expiresAt ? p.expiresAt.toISOString() : null,
+          receiptUrl: p.receiptUrl,
+          transactionRef: p.transactionRef,
+        })),
+      },
+      deals: deals.map((d) => ({
+        id: d.id,
+        recordNumber: d.recordNumber,
+        vehicleNumber: d.vehicleNumber,
+        listingTitle: d.listingTitle,
+        side: phones.includes(d.purchaserNumber ?? '') ? 'BUYER' : 'SELLER',
+        sellAmount: numeric(d.sellAmount),
+        purchaseAmount: numeric(d.purchaseAmount),
+        dealStatus: d.dealStatus,
+        invoiceUrl: d.invoiceUrl || `/api/recruitment/admin/sell-accounts/${d.id}/invoice`,
+        challanUrl: d.challanUrl || `/api/recruitment/admin/sell-accounts/${d.id}/delivery-challan`,
+        createdAt: d.createdAt.toISOString(),
+      })),
+      rtoRecords: rtoRecords.map((r) => ({
+        id: r.id,
+        vehicleNumber: r.vehicleNumber,
+        rtoStatus: r.rtoStatus,
+        rtoOffice: r.rtoOffice,
+        agentName: r.rtoAgentName,
+        agentPhone: r.rtoAgentPhone,
+        isLocked: r.isLocked,
+        lockedAt: r.lockedAt ? r.lockedAt.toISOString() : null,
+      })),
+      invoices,
+      receipts,
+      actions: {
+        callUrl: safeCust.callLink,
+        whatsappUrl: safeCust.whatsappLink,
+        profileUrl: safeCust.profileUrl,
+      },
+      maskedFields: isInternal ? [] : ['mobile', 'email', 'whatsappNumber', 'notes', 'receiptUrl', 'invoiceUrl'],
     };
   },
 
@@ -4330,7 +4723,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         where: {
           partnerProfile: { isNot: null },
           OR: [
-            { partnerProfile: { is: { partnerCode: { equals: rawTarget, mode: 'insensitive' } } } },
+            { partnerProfile: { is: { partnerCode: { contains: rawTarget, mode: 'insensitive' } } } },
             { partnerProfile: { is: { businessName: { contains: rawTarget, mode: 'insensitive' } } } },
             { partnerProfile: { is: { ownerName: { contains: rawTarget, mode: 'insensitive' } } } },
             { partnerProfile: { is: { gstNumber: { equals: rawTarget, mode: 'insensitive' } } } },
@@ -4456,6 +4849,139 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       acceptedAt: a.acceptedAt?.toISOString() || null,
     }));
 
+    const cleanDigits = user.mobile ? user.mobile.replace(/[^0-9]/g, '') : '';
+    const [listings, soldDeals, rtoTransfers] = await Promise.all([
+      prisma.listing.findMany({
+        where: { partnerId: user.id },
+        take: 20,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          registrationNumberKey: true,
+          price: true,
+          status: true,
+          brand: { select: { name: true } },
+          model: { select: { name: true } },
+          operatingHours: true,
+          manufacturingYear: true,
+        },
+      }),
+      prisma.sellAccount.findMany({
+        where: {
+          OR: [
+            ...(prof.businessName ? [{ customerName: { contains: prof.businessName, mode: 'insensitive' as const } }] : []),
+            ...(cleanDigits.length >= 6 ? [{ customerNumber: { contains: cleanDigits } }] : []),
+            { listing: { is: { partnerId: user.id } } },
+          ],
+        },
+        take: 20,
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id: true,
+          recordNumber: true,
+          invoiceNumber: true,
+          dealStatus: true,
+          vehicleNumber: true,
+          purchaserName: true,
+          purchaserPhone: true,
+          customerName: true,
+          customerNumber: true,
+          sellAmount: true,
+          purchaseAmount: true,
+          netProfit: true,
+          netProfitAfterGst: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.vehicleRtoRecord.findMany({
+        where: {
+          OR: [
+            ...(prof.businessName ? [
+              { sellerName: { contains: prof.businessName, mode: 'insensitive' as const } },
+              { customerName: { contains: prof.businessName, mode: 'insensitive' as const } },
+            ] : []),
+            ...(cleanDigits.length >= 6 ? [
+              { sellerNumber: { contains: cleanDigits } },
+              { customerNumber: { contains: cleanDigits } },
+            ] : []),
+          ],
+        },
+        take: 20,
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id: true,
+          vehicleNumber: true,
+          customerName: true,
+          customerNumber: true,
+          sellerName: true,
+          sellerNumber: true,
+          purchaserName: true,
+          purchaserNumber: true,
+          rtoStatus: true,
+          rtoOffice: true,
+          rtoAgentName: true,
+          rtoAgentNumber: true,
+          rtoExpenses: true,
+          rtoExpensesAdvance: true,
+          isLocked: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
+
+    const inventoryItems = listings.map((l) => ({
+      id: l.id,
+      title: l.title,
+      registrationNumber: l.registrationNumberKey || '—',
+      brand: l.brand?.name || null,
+      model: l.model?.name || null,
+      price: l.price ? Number(l.price) : 0,
+      status: l.status,
+      hours: l.operatingHours,
+      year: l.manufacturingYear,
+      listingUrl: `/employee/listings/${l.id}`,
+    }));
+
+    const dealItems = soldDeals.map((d) => ({
+      id: d.id,
+      recordNumber: d.recordNumber,
+      invoiceNumber: d.invoiceNumber,
+      vehicleNumber: d.vehicleNumber,
+      dealStatus: d.dealStatus,
+      purchaserName: d.purchaserName,
+      purchaserPhone: d.purchaserPhone,
+      sellerName: d.customerName,
+      sellerPhone: d.customerNumber,
+      sellAmount: d.sellAmount ? Number(d.sellAmount) : 0,
+      purchaseAmount: d.purchaseAmount ? Number(d.purchaseAmount) : 0,
+      netProfit: d.netProfitAfterGst !== null && d.netProfitAfterGst !== undefined ? Number(d.netProfitAfterGst) : (d.netProfit ? Number(d.netProfit) : 0),
+      invoicePdfUrl: d.invoiceNumber ? `/api/recruitment/admin/sell-accounts/${encodeURIComponent(d.id)}/invoice` : null,
+      deliveryChallanUrl: `/api/recruitment/admin/sell-accounts/${encodeURIComponent(d.id)}/delivery-challan`,
+    }));
+
+    const rtoRecordItems = rtoTransfers.map((r) => {
+      const exp = r.rtoExpenses ? Number(r.rtoExpenses) : 0;
+      const adv = r.rtoExpensesAdvance ? Number(r.rtoExpensesAdvance) : 0;
+      return {
+        id: r.id,
+        vehicleNumber: r.vehicleNumber,
+        sellerName: r.sellerName || r.customerName,
+        sellerPhone: r.sellerNumber || r.customerNumber,
+        purchaserName: r.purchaserName,
+        purchaserPhone: r.purchaserNumber,
+        status: r.rtoStatus,
+        rtoOffice: r.rtoOffice,
+        rtoAgentName: r.rtoAgentName,
+        rtoAgentPhone: r.rtoAgentNumber,
+        totalExpenses: exp,
+        advancePaid: adv,
+        balanceDue: Math.max(0, exp - adv),
+        isLocked: r.isLocked,
+        rtoWorkUrl: `/employee/accounts/rto-work-status/${encodeURIComponent(r.vehicleNumber)}`,
+      };
+    });
+
     return {
       found: true,
       scope: 'CURRENT_REALTIME_OPERATIONS',
@@ -4501,6 +5027,9 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       documents: documentsList,
       reviewHistory,
       agreements,
+      inventory: inventoryItems,
+      deals: dealItems,
+      rtoRecords: rtoRecordItems,
       reviewUrl,
       maskedFields: [],
     };
@@ -4756,11 +5285,27 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         select: {
           partnerCode: true,
           businessName: true,
+          ownerName: true,
           partnerType: true,
           accountStatus: true,
           kycStatus: true,
           onboardingStatus: true,
+          alternateMobile: true,
+          serviceAreas: true,
+          district: true,
           createdAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              mobile: true,
+              email: true,
+              createdAt: true,
+              _count: { select: { listings: true } },
+            },
+          },
+          city: { select: { name: true } },
+          state: { select: { name: true } },
         },
       }),
     ]);
@@ -4773,6 +5318,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       byKycStatus: byKyc.map((row) => ({ status: row.kycStatus, count: row._count._all })),
       byPartnerType: byType.map((row) => ({ type: row.partnerType, count: row._count._all })),
       byOnboardingStatus: byOnboarding.map((row) => ({ status: row.onboardingStatus, count: row._count._all })),
+      maskedFields: [],
     };
   },
 
@@ -6116,9 +6662,17 @@ export class AiReadOnlyToolsService {
       'tasks.compliance.detail',
       'partner.verification.queue',
       'partner.verification.dossier',
+      'partner.statistics',
+      'partner.agreements.summary',
+      'partner.performance',
+      'customer.summary',
+      'customer.detail',
+      'crm.contact.detail',
+      'crm.contact.search',
+      'crm.won.customers.summary',
     ].includes(definition.name);
     const exactVehicleOperatorScope = isVehicleOperationalTool
-      && (context.role === 'SUPER_ADMIN' || context.role === 'ADMIN' || context.role === 'EMPLOYEE' || context.permissions.some((permission) => [...SOLD_VEHICLE_PERMISSIONS, ...LISTING_READ_PERMISSIONS, ...VEHICLE_IDENTITY_PERMISSIONS, ...RTO_DOCUMENTS_PERMISSIONS, ...PARTNER_VERIFICATION_PERMISSIONS].includes(permission as any)));
+      && (context.role === 'SUPER_ADMIN' || context.role === 'ADMIN' || context.role === 'EMPLOYEE' || context.permissions.some((permission) => [...SOLD_VEHICLE_PERMISSIONS, ...LISTING_READ_PERMISSIONS, ...VEHICLE_IDENTITY_PERMISSIONS, ...RTO_DOCUMENTS_PERMISSIONS, ...PARTNER_VERIFICATION_PERMISSIONS, ...CUSTOMER_READ_PERMISSIONS].includes(permission as any)));
     const operatorPresentation = presentAiToolDataForOperator(data, context, { allowOperationalPii: exactVehicleOperatorScope });
     const secured = sanitizeAiToolData(data, context);
     // Provider-facing tool data is always sanitized. Authorized portal operators

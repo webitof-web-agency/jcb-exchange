@@ -18,6 +18,7 @@ import OfferLetterPdfDocument from '@/components/recruitment/OfferLetterPdfDocum
 import { emptyOfferLetterData, type OfferLetterFormData } from '@/lib/offerLetter';
 import { toast } from 'react-toastify';
 import { isUuid } from '@/lib/routeSlug';
+import { fromInterviewDateTimeInput, toInterviewDateTimeInput } from '@/lib/interviewDateTime';
 import {
   generateRecruitmentApplicationDetailPath,
   getRecruitmentPortalBasePath,
@@ -773,7 +774,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
       setSchedulingIv(true);
       const payload = {
         applicationId,
-        scheduledAt: ivDate,
+        scheduledAt: fromInterviewDateTimeInput(ivDate),
         type: ivType,
         meetingUrl: ivMeetingUrl.trim(),
         notes: ivNotes.trim(),
@@ -847,7 +848,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
   const openInterviewEditor = (iv: ApplicationWorkspaceData['interviews'][number]) => {
     if (!canUpdateInterview) return;
     setEditingInterviewId(iv.id);
-    setIvDate(new Date(iv.scheduledAt).toISOString().slice(0, 16));
+    setIvDate(toInterviewDateTimeInput(iv.scheduledAt));
     setIvType(iv.type);
     setIvMeetingUrl(iv.meetingUrl || '');
     setIvNotes(iv.notes || '');

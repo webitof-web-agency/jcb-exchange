@@ -1,6 +1,7 @@
 import { buildVehicleDocsOperatorAnswer } from './vehicleDocsOperatorAnswer.service';
 import { buildTasksOperatorAnswer } from './tasksOperatorAnswer.service';
 import { buildVerificationOperatorAnswer } from './verificationOperatorAnswer.service';
+import { buildVisitorOperatorAnswer } from './visitorOperatorAnswer.service';
 
 type LocalAnswerInput = {
   message: string;
@@ -156,10 +157,37 @@ export const buildLocalAiAnswer = (input: LocalAnswerInput): string => {
     });
     if (formatted) return formatted;
   }
-  if ((input.label === 'Partner verification queue' || input.label === 'Partner verification dossier' || input.label === 'partner.verification.queue' || input.label === 'partner.verification.dossier') && rawData) {
+  if ((input.label === 'Partner verification queue' || input.label === 'Partner verification dossier' || input.label === 'partner.verification.queue' || input.label === 'partner.verification.dossier' || input.label === 'Partner statistics' || input.label === 'partner.statistics' || input.label.toLowerCase().includes('partner agreement') || input.label === 'partner.agreements.summary') && rawData) {
+    const toolName = input.label.toLowerCase().includes('dossier')
+      ? 'partner.verification.dossier'
+      : (input.label.toLowerCase().includes('agreement') ? 'partner.agreements.summary' : (input.label.toLowerCase().includes('stat') ? 'partner.statistics' : 'partner.verification.queue'));
     const formatted = buildVerificationOperatorAnswer({
       message: input.message,
-      toolName: input.label.includes('dossier') ? 'partner.verification.dossier' : 'partner.verification.queue',
+      toolName,
+      operatorData: rawData,
+    });
+    if (formatted) return formatted;
+  }
+  if ((
+    input.label === 'Customer summary'
+    || input.label === 'customer.summary'
+    || input.label === 'Customer detail'
+    || input.label === 'customer.detail'
+    || input.label === 'Won customers'
+    || input.label === 'crm.won.customers.summary'
+    || input.label === 'CRM contact detail'
+    || input.label === 'crm.contact.detail'
+  ) && rawData) {
+    const toolName = (input.label === 'Customer detail' || input.label === 'customer.detail')
+      ? 'customer.detail'
+      : (input.label === 'Won customers' || input.label === 'crm.won.customers.summary')
+        ? 'crm.won.customers.summary'
+        : (input.label === 'CRM contact detail' || input.label === 'crm.contact.detail')
+          ? 'crm.contact.detail'
+          : 'customer.summary';
+    const formatted = buildVisitorOperatorAnswer({
+      message: input.message,
+      toolName,
       operatorData: rawData,
     });
     if (formatted) return formatted;
