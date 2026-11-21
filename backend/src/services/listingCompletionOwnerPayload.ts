@@ -24,7 +24,6 @@ export const listingCompletionOwnerPayloadSchema = z.object({
   locationCity: optionalShortText(100),
   address: optionalShortText(500),
   condition: optionalText(80),
-  variant: optionalText(160),
   registrationDate: optionalText(40),
   registrationUpto: optionalText(40),
   previousOwners: optionalText(40),

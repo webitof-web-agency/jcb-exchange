@@ -102,7 +102,6 @@ type ListingResponse = {
 
 type ParsedListingDetails = {
   rawDescription: string;
-  variant: string;
   registrationDate: string;
   registrationUpto: string;
   registrationYear: string;
@@ -121,7 +120,6 @@ type ParsedListingDetails = {
 
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   rawDescription: '',
-  variant: '',
   registrationDate: '',
   registrationUpto: '',
   registrationYear: '',
@@ -162,7 +160,6 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
 
     switch (key) {
       case 'variant':
-        parsed.variant = value;
         break;
       case 'registration year':
         parsed.registrationYear = value;
@@ -700,7 +697,6 @@ export default function ProfileListingDetailClient({ listingId }: { listingId: s
               >
                 <SpecCard icon={<Truck className="h-4 w-4" />} label={t('machineDetails.equipmentTypeLabel')} value={listing.category?.name || t('machineDetails.na')} />
                 <SpecCard icon={<Wrench className="h-4 w-4" />} label={t('machineDetails.conditionLabel')} value={listing.condition || t('machineDetails.na')} />
-                <SpecCard icon={<Info className="h-4 w-4" />} label={t('machineDetails.variantLabel')} value={parsedDetails.variant || t('machineDetails.na')} />
                 <SpecCard icon={<Calendar className="h-4 w-4" />} label={t('machineDetails.manufacturingYearLabel')} value={listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na')} />
                 <SpecCard icon={<Fuel className="h-4 w-4" />} label={t('machineDetails.fuelTypeLabel')} value={listing.fuelType || parsedDetails.fuelType || t('machineDetails.na')} />
                 {listing.transmission || parsedDetails.transmission ? (

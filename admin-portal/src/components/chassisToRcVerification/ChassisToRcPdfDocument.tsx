@@ -325,7 +325,6 @@ export function ChassisToRcPdfDocument({ result, record }: Props) {
     { key: 'vehicleCategory', label: 'Category code', value: result.vehicleCategory },
     { key: 'makerDescription', label: 'Maker', value: result.makerDescription },
     { key: 'makerModel', label: 'Model', value: result.makerModel },
-    { key: 'variant', label: 'Variant', value: result.variant },
     { key: 'bodyType', label: 'Body type', value: result.bodyType },
     { key: 'fuelType', label: 'Fuel type', value: result.fuelType },
     { key: 'color', label: 'Color', value: result.color },

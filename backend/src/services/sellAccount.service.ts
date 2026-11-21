@@ -33,6 +33,9 @@ import { encryptDocumentLinkToken } from '../utils/documentLinkToken';
 import { linkSoldVehicleToWonLeads, releaseCancelledSaleLeads } from '../modules/crm/services/soldVehicleLink';
 import { buildSellAccountLookup } from './sellAccountLookup';
 import { getListingPricing } from '../utils/listingPricing';
+import { syncListingSoldStatusFromSellAccount } from './sellAccountListingSync';
+
+export { syncListingSoldStatusFromSellAccount } from './sellAccountListingSync';
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const phone = (value: unknown) => text(value).replace(/\D/g, '').slice(0, 15);
@@ -347,6 +350,28 @@ const syncStatus = async (tx: any, record: any, actorId?: string) => {
   const nextStatus = record.cancelledAt
     ? SellAccountDealStatus.CANCELLED
     : deriveSellAccountDealStatus(summary.purchaserPaymentStatus, rtoState.status, rtoState.linked) as SellAccountDealStatus;
+
+  // Auto-sync listing sold status on 100% customer payment or DEAL_DONE
+  if (!record.cancelledAt) {
+    const customerReceiptTotal = payments
+      .filter((p: any) => p.side === 'PURCHASER_RECEIPT' && p.receiptStatus !== 'CANCELLED')
+      .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+    const isAmountFullyCovered = Number(record.sellAmount || 0) > 0 && customerReceiptTotal >= Number(record.sellAmount || 0);
+    const isFullyPaid = summary.purchaserPaymentStatus === 'FULL' || isAmountFullyCovered;
+
+    if (isFullyPaid || nextStatus === SellAccountDealStatus.DEAL_DONE || record.dealStatus === SellAccountDealStatus.DEAL_DONE) {
+      await syncListingSoldStatusFromSellAccount(
+        tx,
+        {
+          ...record,
+          dealStatus: nextStatus || record.dealStatus,
+        },
+        isFullyPaid,
+        { actorId, sourceReason: 'SellAccount status sync (100% Payment / Deal Done)' },
+      );
+    }
+  }
+
   if (record.isLocked) {
     return { nextStatus: record.dealStatus, rtoStatus: record.rtoStatusSnapshot || rtoState.status, rtoState };
   }

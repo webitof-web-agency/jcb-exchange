@@ -7,6 +7,17 @@ test('normalizes internal API file actions to the axios request path', () => {
   assert.equal(getAiFileRequestPath('/api/recruitment/admin/sell-accounts/123/invoice'), '/recruitment/admin/sell-accounts/123/invoice');
 });
 
+test('accepts every generated sale and RTO document action returned by the AI', () => {
+  const routes = [
+    '/api/recruitment/admin/sell-accounts/32e28d69-5b6e-41b8-a1dd-850528f6ad09/payments/42e28d69-5b6e-41b8-a1dd-850528f6ad09/receipt',
+    '/api/recruitment/admin/sell-accounts/32e28d69-5b6e-41b8-a1dd-850528f6ad09/credit-note',
+    '/api/recruitment/admin/sell-accounts/32e28d69-5b6e-41b8-a1dd-850528f6ad09/refunds/52e28d69-5b6e-41b8-a1dd-850528f6ad09/advice',
+    '/api/recruitment/admin/sell-accounts/32e28d69-5b6e-41b8-a1dd-850528f6ad09/delivery-challan',
+    '/api/recruitment/admin/rto-records/62e28d69-5b6e-41b8-a1dd-850528f6ad09/transfer-certificate',
+  ];
+  for (const route of routes) assert.ok(getAiFileRequestPath(route), route);
+});
+
 test('rejects non-internal or malformed file action URLs', () => {
   assert.equal(getAiFileRequestPath('https://example.com/file.pdf'), null);
   assert.equal(getAiFileRequestPath('/api/documents/secure/../../secret'), null);

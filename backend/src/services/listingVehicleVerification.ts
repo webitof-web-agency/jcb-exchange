@@ -52,15 +52,26 @@ const yearFrom = (value: unknown) => {
 };
 
 const validDate = (value: unknown) => {
-  const candidate = text(value);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return '';
-  const [yearText = '0', monthText = '0', dayText = '0'] = candidate.split('-');
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
+  const raw = (text(value).split('T')[0] || '').trim().replace(/,/g, ' ');
+  if (!raw) return '';
+  const tokens = raw.replace(/[/.]/g, '-').replace(/\s+/g, '-').split('-').filter(Boolean);
+  const months: Record<string, number> = { jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12 };
+  const numeric = (token: string) => /^\d+$/.test(token) ? Number(token) : 0;
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  if (tokens.length === 3) {
+    const monthToken = tokens[1]!.toLowerCase();
+    if (/^\d{4}$/.test(tokens[0]!) && (numeric(tokens[1]!) || months[monthToken])) {
+      year = numeric(tokens[0]!); month = numeric(tokens[1]!) || months[monthToken]!; day = numeric(tokens[2]!);
+    } else if (/^\d{4}$/.test(tokens[2]!) && (numeric(tokens[1]!) || months[monthToken])) {
+      day = numeric(tokens[0]!); month = numeric(tokens[1]!) || months[monthToken]!; year = numeric(tokens[2]!);
+    }
+  }
+  if (!year || !month || !day) return '';
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-    ? candidate
+    ? `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
     : '';
 };
 
@@ -89,8 +100,8 @@ const descriptionFields = (description: unknown) => {
 
 const emptyValue = (value: unknown) => text(value);
 
-const getProviderDate = (result: Record<string, unknown>, camelKey: string, snakeKey: string) =>
-  validDate(result[camelKey] ?? result[snakeKey]);
+const getProviderDate = (result: Record<string, unknown>, ...keys: string[]) =>
+  validDate(keys.map((key) => result[key]).find((value) => text(value)));
 
 const getProviderData = (result: Record<string, unknown>) => {
   const nested = result.details;
@@ -104,7 +115,7 @@ export const buildProviderListingVerificationSnapshot = (input: Record<string, u
   const insuranceExpiry = getProviderDate(result, 'insuranceUpto', 'insurance_upto');
   const fitnessValidUntil = getProviderDate(result, 'fitUpTo', 'fit_up_to');
   const taxValidUntil = getProviderDate(result, 'taxUpto', 'tax_upto') || getProviderDate(result, 'taxPaidUpto', 'tax_paid_upto');
-  const pucValidUntil = getProviderDate(result, 'puccUpto', 'pucc_upto');
+  const pucValidUntil = getProviderDate(result, 'puccUpto', 'pucc_upto', 'puccValidUpto', 'pucc_valid_upto', 'puccExpiryDate', 'pucc_expiry_date', 'puccValidUntil', 'pucc_valid_until', 'pucUpto', 'puc_upto', 'pucValidUpto', 'puc_valid_upto', 'pucExpiryDate', 'puc_expiry_date', 'pucValidUntil', 'puc_valid_until', 'pollutionUpto', 'pollution_upto', 'pollutionValidUpto', 'pollution_valid_upto', 'pollutionExpiryDate', 'pollution_expiry_date', 'pollutionValidUntil', 'pollution_valid_until');
   const brandName = firstText(result.makerDescription, result.maker_description);
   const modelName = firstText(result.makerModel, result.maker_model);
   const chassisNumber = firstText(result.vehicleChasiNumber, result.vehicle_chasi_number);

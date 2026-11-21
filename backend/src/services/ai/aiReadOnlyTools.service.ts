@@ -41,7 +41,7 @@ import {
   buildRtoReview,
 } from './operationsCopilot.service';
 import { extractDriveFileIdFromSecureUrl, getSecureDocumentUrl } from '../../utils/secureDocumentUrl';
-import { getVehicleDocs, VehicleDocsError } from '../vehicleDocs.service';
+import { getVehicleDocs, listVehicleDocs, VehicleDocsError } from '../vehicleDocs.service';
 import { listVerificationHistory } from '../verificationHistory.service';
 import { getAnalyticsAiPageData, type AnalyticsPageArguments } from './analyticsAiData.service';
 import { ANALYTICS_AI_PAGE_KEYS } from './analyticsAiPage.service';
@@ -55,6 +55,7 @@ import { buildSoldVehicleDetail, type SoldVehicleDetailArguments } from './soldV
 import { buildSoldVehicleDocumentActions } from './soldVehicleDocumentActions.service';
 import { buildSoldVehicleSearch, type SoldVehicleSearchArguments } from './soldVehicleSearchAi.service';
 import { getSoldVehicleAnalytics, type SoldVehicleAnalyticsArguments, type SoldVehicleAnalyticsMetric } from './soldVehicleAnalytics.service';
+import { buildRtoWorkDossier, type RtoWorkDossierArguments } from './rtoWorkDossierAi.service';
 
 export type { AiToolExecutionObservability } from './aiToolObservability.service';
 
@@ -89,10 +90,12 @@ export const AI_READ_ONLY_TOOL_NAMES = [
   'listing.detail',
   'vehicle.identity',
   'vehicle.documents.detail',
+  'vehicle.documents.summary',
   'sold.vehicles',
   'sold.vehicle.search',
   'sold.vehicle.detail',
   'sold.vehicle.analytics',
+  'rto.work.detail',
   'inventory.trend',
   'revenue.summary',
   'partner.statistics',
@@ -127,6 +130,10 @@ export const AI_READ_ONLY_TOOL_NAMES = [
   'rto.pending.tasks',
   'rto.documents.summary',
   'rto.copilot',
+  'tasks.compliance.overview',
+  'tasks.compliance.detail',
+  'partner.verification.queue',
+  'partner.verification.dossier',
   'crm.followups',
   'crm.call.intelligence',
   'recruitment.summary',
@@ -217,6 +224,20 @@ type ModelSummaryArguments = RangeLimitArguments & { brandId?: string };
 type PartnerPerformanceArguments = RangeLimitArguments & { partnerId?: string; partnerCode?: string };
 type VehicleIdentityArguments = { listingId?: string; query?: string };
 type VehicleDocumentsArguments = { query: string };
+type VehicleDocumentsSummaryArguments = { query?: string; dealStatus?: string; rtoStatus?: string; limit?: number; days?: number };
+type TasksComplianceOverviewArguments = { query?: string; status?: string; office?: string; limit?: number };
+type TasksComplianceDetailArguments = { vehicleNumber?: string; recordNumber?: string; customerName?: string; rtoId?: string; query?: string };
+export type PartnerVerificationQueueArguments = {
+  limit?: number;
+  status?: 'SUBMITTED' | 'UNDER_REVIEW' | 'CHANGES_REQUESTED' | 'ALL';
+  partnerType?: 'SHOWROOM' | 'BROKER' | 'ALL';
+  query?: string;
+};
+export type PartnerVerificationDossierArguments = {
+  partnerId?: string;
+  partnerCode?: string;
+  query?: string;
+};
 type VerificationHistoryArguments = { group: 'identity' | 'vehicle'; limit?: number; search?: string; type?: string };
 type PartnerAgreementsArguments = { query?: string; limit?: number; includeContent?: boolean };
 type EmptyArguments = Record<string, never>;
@@ -251,10 +272,14 @@ export type AiReadOnlyToolDependencies = {
   listingDetail: (context: AiToolContext, args: ListingDetailArguments) => Promise<unknown>;
   vehicleIdentity: (context: AiToolContext, args: VehicleIdentityArguments) => Promise<unknown>;
   vehicleDocumentsDetail?: (context: AiToolContext, args: VehicleDocumentsArguments) => Promise<unknown>;
+  vehicleDocumentsSummary?: (context: AiToolContext, args: VehicleDocumentsSummaryArguments) => Promise<unknown>;
+  tasksComplianceOverview?: (context: AiToolContext, args: TasksComplianceOverviewArguments) => Promise<unknown>;
+  tasksComplianceDetail?: (context: AiToolContext, args: TasksComplianceDetailArguments) => Promise<unknown>;
   soldVehicles: (context: AiToolContext, args: RangeLimitArguments) => Promise<unknown>;
   soldVehicleSearch?: (context: AiToolContext, args: SoldVehicleSearchArguments) => Promise<unknown>;
   soldVehicleDetail?: (context: AiToolContext, args: SoldVehicleDetailArguments) => Promise<unknown>;
   soldVehicleAnalytics?: (context: AiToolContext, args: SoldVehicleAnalyticsArguments) => Promise<unknown>;
+  rtoWorkDetail?: (context: AiToolContext, args: RtoWorkDossierArguments) => Promise<unknown>;
   inventoryTrend: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   revenueSummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   partnerStatistics: (context: AiToolContext, args: EmptyArguments) => Promise<unknown>;
@@ -297,6 +322,8 @@ export type AiReadOnlyToolDependencies = {
   listingSearch: (context: AiToolContext, args: ListingSearchArguments) => Promise<unknown>;
   whatsappActivitySummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
   verificationSummary: (context: AiToolContext, args: RangeArguments) => Promise<unknown>;
+  partnerVerificationQueue?: (context: AiToolContext, args: PartnerVerificationQueueArguments) => Promise<unknown>;
+  partnerVerificationDossier?: (context: AiToolContext, args: PartnerVerificationDossierArguments) => Promise<unknown>;
   verificationHistory?: (context: AiToolContext, args: VerificationHistoryArguments) => Promise<unknown>;
   partnerAgreementsSummary?: (context: AiToolContext, args: PartnerAgreementsArguments) => Promise<unknown>;
   surepassStatus: (context: AiToolContext, args: EmptyArguments) => Promise<unknown>;
@@ -354,6 +381,8 @@ const documentSearchArguments = z.object({
   kind: z.enum(['all', 'kyc', 'resume', 'invoice', 'rto', 'offer', 'vehicle', 'verification']).optional(),
   limit: z.number().int().min(1).max(10).optional(),
 }).strict();
+export const documentSearchActionLimit = (kind: string, limit: number, aggregateActionCount: number) =>
+  kind === 'vehicle' ? limit + aggregateActionCount : limit;
 const customerDetailArguments = z.object({
   customerId: z.string().uuid().optional(),
   query: z.string().trim().min(1).max(100).optional(),
@@ -385,6 +414,39 @@ const vehicleIdentityArguments = z.object({
 const vehicleDocumentsArguments = z.object({
   query: z.string().trim().min(3).max(100),
 }).strict();
+const vehicleDocumentsSummaryArguments = z.object({
+  query: z.string().trim().max(100).optional(),
+  dealStatus: z.string().trim().max(50).optional(),
+  rtoStatus: z.string().trim().max(50).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  days: z.number().int().min(1).max(365).optional(),
+}).strict();
+const tasksComplianceOverviewArguments = z.object({
+  query: z.string().trim().max(100).optional(),
+  status: z.string().trim().max(50).optional(),
+  office: z.string().trim().max(100).optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+}).strict();
+const tasksComplianceDetailArguments = z.object({
+  vehicleNumber: z.string().trim().max(30).optional(),
+  recordNumber: z.string().trim().max(50).optional(),
+  customerName: z.string().trim().max(100).optional(),
+  rtoId: z.string().trim().max(50).optional(),
+  query: z.string().trim().max(100).optional(),
+}).strict();
+const partnerVerificationQueueArguments = z.object({
+  limit: z.number().int().min(1).max(50).optional(),
+  status: z.enum(['SUBMITTED', 'UNDER_REVIEW', 'CHANGES_REQUESTED', 'ALL']).optional(),
+  partnerType: z.enum(['SHOWROOM', 'BROKER', 'ALL']).optional(),
+  query: z.string().trim().max(100).optional(),
+}).strict();
+const partnerVerificationDossierArguments = z.object({
+  partnerId: z.string().trim().max(100).optional(),
+  partnerCode: z.string().trim().max(100).optional(),
+  query: z.string().trim().max(120).optional(),
+}).strict().refine((val) => Boolean(val.partnerId || val.partnerCode || val.query), {
+  message: 'Provide a partner ID, partner code, or business search query.',
+});
 const verificationHistoryArguments = z.object({
   group: z.enum(['identity', 'vehicle']),
   limit: z.number().int().min(1).max(20).optional(),
@@ -409,6 +471,16 @@ const soldVehicleDetailArguments = z.object({
 }).strict().refine((value) => Boolean(value.dealId || value.recordNumber), {
   message: 'Provide an exact sold-vehicle deal ID or record number.',
 });
+const rtoWorkDossierArguments = z.object({
+  rtoId: z.string().uuid().optional(),
+  vehicleNumber: z.string().trim().min(3).max(100).optional(),
+  recordNumber: z.string().trim().min(3).max(100).optional(),
+  invoiceNumber: z.string().trim().min(3).max(100).optional(),
+  chassisNumber: z.string().trim().min(3).max(100).optional(),
+  query: z.string().trim().min(3).max(100).optional(),
+}).strict().refine((value) => Boolean(
+  value.rtoId || value.vehicleNumber || value.recordNumber || value.invoiceNumber || value.chassisNumber || value.query,
+), { message: 'Provide an exact RTO identifier or search query.' });
 const validIsoDate = (value: string) => {
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
@@ -557,6 +629,7 @@ const RTO_DOCUMENTS_PERMISSIONS = ['accounts.rto.read', 'accounts.rto.crud', 'ta
 const SOLD_VEHICLE_PERMISSIONS = ['listings.read', 'accounts.sell.read', 'accounts.sell.crud', ...FINANCE_READ_PERMISSIONS] as const;
 const PARTNER_READ_PERMISSIONS = ['partners.read', 'MANAGE_PARTNERS'] as const;
 const PARTNER_AGREEMENT_READ_PERMISSIONS = ['partner.agreements.read', 'partner.agreements.manage', 'partners.read', 'MANAGE_PARTNERS'] as const;
+const PARTNER_VERIFICATION_PERMISSIONS = ['partners.read', 'MANAGE_PARTNERS', 'kyc.manage', 'kyc.edit.override'] as const;
 const FORECAST_ACCESS_PERMISSIONS = [...LISTING_READ_PERMISSIONS, ...FINANCE_READ_PERMISSIONS, ...CRM_REPORT_PERMISSIONS, ...PARTNER_READ_PERMISSIONS, 'kyc.manage'] as const;
 const VERIFICATION_READ_PERMISSIONS = [
   'pan.verification.read',
@@ -875,12 +948,23 @@ const definitions: PermissionedDefinition[] = [
     name: 'vehicle.documents.detail',
     label: 'Vehicle document detail',
     description: 'Returns RTO and document pending status for one registration number without internal IDs, document URLs, or owner contact data.',
-    permissions: [...VEHICLE_IDENTITY_PERMISSIONS, ...RTO_DOCUMENTS_PERMISSIONS],
+    permissions: [...VEHICLE_IDENTITY_PERMISSIONS, ...RTO_DOCUMENTS_PERMISSIONS, ...SOLD_VEHICLE_PERMISSIONS],
     available: false,
     schema: vehicleDocumentsArguments,
     execute: (dependencies, context, args) => dependencies.vehicleDocumentsDetail
       ? dependencies.vehicleDocumentsDetail(context, args as VehicleDocumentsArguments)
       : Promise.reject(new AiToolError('Vehicle document lookup is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'vehicle.documents.summary',
+    label: 'Vehicle documents summary',
+    description: 'Summarizes real-time live vehicle documents, dossiers, KYC completeness, and master ZIP/PDF URLs across all active inventory without 30-day time cuts.',
+    permissions: [...VEHICLE_IDENTITY_PERMISSIONS, ...RTO_DOCUMENTS_PERMISSIONS, ...SOLD_VEHICLE_PERMISSIONS],
+    available: false,
+    schema: vehicleDocumentsSummaryArguments,
+    execute: (dependencies, context, args) => dependencies.vehicleDocumentsSummary
+      ? dependencies.vehicleDocumentsSummary(context, args as VehicleDocumentsSummaryArguments)
+      : Promise.reject(new AiToolError('Vehicle documents summary is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
   },
   {
     name: 'sold.vehicles',
@@ -923,6 +1007,17 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.soldVehicleAnalytics
       ? dependencies.soldVehicleAnalytics(context, args as SoldVehicleAnalyticsArguments)
       : Promise.reject(new AiToolError('Sold vehicle analytics is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'rto.work.detail',
+    label: 'RTO complete dossier',
+    description: 'Returns the exact source-backed RTO work dossier with vehicle, parties, compliance, transfer tasks and history, linked listing and sold-vehicle finance context, document metadata, missing fields, and verified relationship warnings. It never merges ambiguous records, exposes stored file URLs, or guesses missing data.',
+    permissions: RTO_DOCUMENTS_PERMISSIONS,
+    available: false,
+    schema: rtoWorkDossierArguments,
+    execute: (dependencies, context, args) => dependencies.rtoWorkDetail
+      ? dependencies.rtoWorkDetail(context, args as RtoWorkDossierArguments)
+      : Promise.reject(new AiToolError('RTO complete dossier is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
   },
   {
     name: 'inventory.trend',
@@ -1259,6 +1354,50 @@ const definitions: PermissionedDefinition[] = [
     execute: (dependencies, context, args) => dependencies.rtoCopilot
       ? dependencies.rtoCopilot(context, args as RangeLimitArguments)
       : Promise.reject(new AiToolError('RTO copilot is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'tasks.compliance.overview',
+    label: 'RTO compliance tasks overview',
+    description: 'Centralized operational register tracking RTO transfer milestones, tax, fitness, insurance, and compliance progress in real-time.',
+    permissions: TASKS_READ_PERMISSIONS,
+    available: false,
+    schema: tasksComplianceOverviewArguments,
+    execute: (dependencies, context, args) => dependencies.tasksComplianceOverview
+      ? dependencies.tasksComplianceOverview(context, args as TasksComplianceOverviewArguments)
+      : Promise.reject(new AiToolError('Tasks compliance overview is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'tasks.compliance.detail',
+    label: 'RTO compliance tasks detail',
+    description: 'Detailed 360-degree view of a vehicle transfer case with 7 milestones, staff remarks, customer/deal linkage, and proof documents.',
+    permissions: TASKS_READ_PERMISSIONS,
+    available: false,
+    schema: tasksComplianceDetailArguments,
+    execute: (dependencies, context, args) => dependencies.tasksComplianceDetail
+      ? dependencies.tasksComplianceDetail(context, args as TasksComplianceDetailArguments)
+      : Promise.reject(new AiToolError('Tasks compliance detail is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'partner.verification.queue',
+    label: 'Partner verification queue',
+    description: 'Real-time operational queue of partner KYC onboarding submissions requiring review (SUBMITTED, UNDER_REVIEW, CHANGES_REQUESTED).',
+    permissions: PARTNER_VERIFICATION_PERMISSIONS,
+    available: false,
+    schema: partnerVerificationQueueArguments,
+    execute: (dependencies, context, args) => dependencies.partnerVerificationQueue
+      ? dependencies.partnerVerificationQueue(context, args as PartnerVerificationQueueArguments)
+      : Promise.reject(new AiToolError('Partner verification queue is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
+  },
+  {
+    name: 'partner.verification.dossier',
+    label: 'Partner verification dossier',
+    description: '360-degree partner KYC review dossier with dynamic 6 documents, reviewer comments, audit logs, signed agreements, and unmasked contacts.',
+    permissions: PARTNER_VERIFICATION_PERMISSIONS,
+    available: false,
+    schema: partnerVerificationDossierArguments,
+    execute: (dependencies, context, args) => dependencies.partnerVerificationDossier
+      ? dependencies.partnerVerificationDossier(context, args as PartnerVerificationDossierArguments)
+      : Promise.reject(new AiToolError('Partner verification dossier is not configured.', 503, 'AI_TOOL_NOT_CONFIGURED')),
   },
   {
     name: 'crm.followups',
@@ -2253,6 +2392,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
           : null;
     const actions: AiFileAction[] = [];
     const items: Array<Record<string, unknown>> = [];
+    let aggregateVehicleActionCount = 0;
 
     if ((kind === 'all' || kind === 'kyc') && hasPermission(context, ['kyc.manage', 'kyc.edit.override'])) {
       const partners = await prisma.partnerProfile.findMany({
@@ -2340,14 +2480,20 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
           mimeType: 'application/zip',
           url: `/api/vehicle-docs/${vehicleNumber}/zip`,
         });
-        if (archiveAction) actions.push(archiveAction);
+        if (archiveAction) {
+          actions.push(archiveAction);
+          aggregateVehicleActionCount += 1;
+        }
         const detailsAction = buildAiFileAction({
           label: `${vehicle.vehicleNumber} · Vehicle details`,
           fileName: `${vehicle.vehicleNumber} - Vehicle Details.pdf`,
           mimeType: 'application/pdf',
           url: `/api/vehicle-docs/${vehicleNumber}/details.pdf?inline=1`,
         });
-        if (detailsAction) actions.push(detailsAction);
+        if (detailsAction) {
+          actions.push(detailsAction);
+          aggregateVehicleActionCount += 1;
+        }
         for (const document of vehicle.documents.slice(0, limit)) {
           const action = buildAiFileAction({
             label: `${vehicle.vehicleNumber} · ${document.label}`,
@@ -2523,7 +2669,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         items: boundedItems,
         maskedFields: ['documentUrl', 'fileUrl', 'candidateName', 'partnerId', 'mobile', 'email', 'aadhaar', 'pan', 'gstin'],
       },
-      uiActions: actions.slice(0, limit),
+      uiActions: actions.slice(0, documentSearchActionLimit(kind, limit, aggregateVehicleActionCount)),
     } satisfies AiToolPayload;
   },
 
@@ -2894,6 +3040,11 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
   async listingDetail(_context, args) {
     const query = args.query?.trim();
     const searchQuery = query || '';
+    const identityKey = query ? toVehicleIdentityKey(query) : '';
+    const compactReg = query ? query.replace(/[\s-]/gu, '').toUpperCase() : '';
+
+    const queryWords = searchQuery.split(/\s+/).filter((w) => w.length >= 2);
+
     const where: Prisma.ListingWhereInput = args.listingId
       ? { id: args.listingId }
       : args.invoiceNumber
@@ -2912,6 +3063,37 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
           { locationState: { contains: searchQuery, mode: 'insensitive' as const } },
           { brand: { name: { contains: searchQuery, mode: 'insensitive' as const } } },
           { model: { name: { contains: searchQuery, mode: 'insensitive' as const } } },
+          ...(queryWords.length > 1 ? [
+            {
+              AND: queryWords.map((word) => ({
+                OR: [
+                  { title: { contains: word, mode: 'insensitive' as const } },
+                  { locationCity: { contains: word, mode: 'insensitive' as const } },
+                  { locationState: { contains: word, mode: 'insensitive' as const } },
+                  { brand: { name: { contains: word, mode: 'insensitive' as const } } },
+                  { model: { name: { contains: word, mode: 'insensitive' as const } } },
+                ],
+              })),
+            },
+          ] : []),
+          ...(identityKey ? [
+            { registrationNumberKey: { contains: identityKey, mode: 'insensitive' as const } },
+            { chassisNumberKey: { contains: identityKey, mode: 'insensitive' as const } },
+            { rtoRecords: { some: { vehicleNumber: { contains: identityKey, mode: 'insensitive' as const } } } },
+          ] : []),
+          ...(compactReg && compactReg !== identityKey ? [
+            { registrationNumberKey: { contains: compactReg, mode: 'insensitive' as const } },
+            { chassisNumberKey: { contains: compactReg, mode: 'insensitive' as const } },
+            { rtoRecords: { some: { vehicleNumber: { contains: compactReg, mode: 'insensitive' as const } } } },
+          ] : []),
+          ...(searchQuery ? [
+            { saleRecord: { is: { invoiceNo: { contains: searchQuery, mode: 'insensitive' as const } } } },
+            { sellAccount: { is: { invoiceNumber: { contains: searchQuery, mode: 'insensitive' as const } } } },
+            { sellAccount: { is: { recordNumber: { contains: searchQuery, mode: 'insensitive' as const } } } },
+            { vehicleVerification: { is: { verifiedRegistrationNumber: { contains: searchQuery, mode: 'insensitive' as const } } } },
+            { vehicleVerification: { is: { verifiedChassisNumber: { contains: searchQuery, mode: 'insensitive' as const } } } },
+            { vehicleVerification: { is: { verifiedEngineNumber: { contains: searchQuery, mode: 'insensitive' as const } } } },
+          ] : []),
         ],
       };
     const listing = await prisma.listing.findFirst({
@@ -2920,32 +3102,224 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       select: {
         id: true,
         title: true,
+        ownerName: true,
         price: true,
         isNegotiable: true,
         manufacturingYear: true,
         operatingHours: true,
         locationState: true,
         locationCity: true,
+        address: true,
         condition: true,
+        description: true,
+        additionalDescription: true,
         grossPower: true,
+        engineNumber: true,
+        registrationNumberKey: true,
+        chassisNumberKey: true,
+        adminMarginAmount: true,
+        adminExpenseAmount: true,
+        adminExpenseBreakdown: true,
         status: true,
         soldAt: true,
         views: true,
         createdAt: true,
         updatedAt: true,
-        brand: { select: { name: true } },
-        model: { select: { name: true } },
-        category: { select: { name: true } },
-        partner: { select: { partnerProfile: { select: { businessName: true, partnerCode: true } } } },
-        saleRecord: { select: { soldPrice: true, soldAt: true, invoiceNo: true } },
-        sellAccount: { select: { invoiceNumber: true } },
+        brand: { select: { id: true, name: true } },
+        model: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+        partner: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            partnerProfile: {
+              select: {
+                businessName: true,
+                partnerCode: true,
+                contactPhone: true,
+                whatsappNumber: true,
+                city: true,
+                state: true,
+              },
+            },
+          },
+        },
+        media: {
+          select: {
+            id: true,
+            url: true,
+            type: true,
+            slot: true,
+            isFeatured: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        vehicleVerification: {
+          select: {
+            status: true,
+            verificationSource: true,
+            verifiedRegistrationNumber: true,
+            verifiedChassisNumber: true,
+            verifiedEngineNumber: true,
+            lastVerifiedAt: true,
+            updatedAt: true,
+          },
+        },
+        rtoRecords: {
+          select: {
+            id: true,
+            vehicleNumber: true,
+            brandName: true,
+            vehicleModel: true,
+            vehicleType: true,
+            rtoOffice: true,
+            rtoStatus: true,
+            taxStatus: true,
+            taxValidUntil: true,
+            fitnessStatus: true,
+            fitnessValidUntil: true,
+            insuranceStatus: true,
+            insuranceValidUntil: true,
+            pucStatus: true,
+            pucValidUntil: true,
+            hsrpStatus: true,
+            documentSendDate: true,
+            transferTasks: {
+              select: {
+                id: true,
+                taskKey: true,
+                label: true,
+                status: true,
+                isOptional: true,
+                documents: true,
+                updatedAt: true,
+              },
+            },
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+        },
+        saleRecord: {
+          select: {
+            id: true,
+            buyerName: true,
+            buyerPhone: true,
+            buyerCity: true,
+            buyerState: true,
+            soldPrice: true,
+            soldAt: true,
+            invoiceNo: true,
+            notes: true,
+          },
+        },
+        sellAccount: {
+          select: {
+            id: true,
+            recordNumber: true,
+            isDraft: true,
+            dealStatus: true,
+            ownerName: true,
+            ownerNumber: true,
+            vehicleNumber: true,
+            chassisNumber: true,
+            sellerName: true,
+            sellerNumber: true,
+            purchaserName: true,
+            purchaserNumber: true,
+            purchaseAmount: true,
+            sellAmount: true,
+            expenses: true,
+            balanceAmount: true,
+            netProfit: true,
+            netProfitAfterGst: true,
+            gstRatePercent: true,
+            taxMode: true,
+            expenseBreakdown: true,
+            invoiceNumber: true,
+            invoiceGeneratedAt: true,
+            invoiceTokenExpiresAt: true,
+            creditNoteNumber: true,
+            remarks: true,
+            transferDetails: true,
+            payments: {
+              select: {
+                id: true,
+                side: true,
+                amount: true,
+                paymentDate: true,
+                method: true,
+                reference: true,
+                drawnOn: true,
+                receiptStatus: true,
+                receiptNumber: true,
+                receiptTokenExpiresAt: true,
+                issuedAt: true,
+              },
+              orderBy: { paymentDate: 'asc' },
+            },
+          },
+        },
       },
     });
     if (!listing) return {
       found: false,
       requested: args.listingId ?? args.invoiceNumber ?? args.partnerCode ?? query ?? null,
     };
-    return {
+
+    const normalizeSlot = (s: string | null | undefined) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const findMediaSlot = (slots: string[]) => {
+      const normalizedSlots = slots.map((s) => s.toLowerCase().replace(/[^a-z0-9]/g, ''));
+      const found = listing.media.find((m) => m.slot && normalizedSlots.includes(normalizeSlot(m.slot)));
+      return found ? { id: found.id, url: found.url, type: found.type, slot: found.slot, isFeatured: found.isFeatured } : null;
+    };
+
+    const regNo = listing.registrationNumberKey
+      || listing.vehicleVerification?.verifiedRegistrationNumber
+      || listing.rtoRecords[0]?.vehicleNumber
+      || listing.sellAccount?.vehicleNumber
+      || null;
+
+    const featuredMedia = listing.media.find((m) => m.isFeatured) || listing.media[0] || null;
+    const videoMedia = listing.media.find((m) => m.type === 'VIDEO' || (m.url && m.url.toLowerCase().endsWith('.mp4'))) || null;
+
+    const actions: AiFileAction[] = [];
+    const seen = new Set<string>();
+    const addAction = (label: string, name: string, type: string, url: string) => {
+      if (seen.has(url)) return;
+      const action = buildAiFileAction({ label, fileName: name, mimeType: type, url });
+      if (action) {
+        actions.push(action);
+        seen.add(url);
+      }
+    };
+
+    if (listing.sellAccount) {
+      const dealPrefix = `/api/recruitment/admin/sell-accounts/${encodeURIComponent(listing.sellAccount.id)}`;
+      const recordLabel = listing.sellAccount.recordNumber || regNo || 'Vehicle';
+      if (listing.sellAccount.invoiceNumber) {
+        addAction(`${recordLabel} · Bill of Supply`, `${listing.sellAccount.invoiceNumber}.pdf`, 'application/pdf', `${dealPrefix}/invoice`);
+      }
+      if (listing.sellAccount.creditNoteNumber) {
+        addAction(`${recordLabel} · Credit note`, `${listing.sellAccount.creditNoteNumber}.pdf`, 'application/pdf', `${dealPrefix}/credit-note`);
+      }
+      addAction(`${recordLabel} · Delivery challan`, `Delivery Challan ${recordLabel}.pdf`, 'application/pdf', `${dealPrefix}/delivery-challan`);
+      for (const payment of listing.sellAccount.payments) {
+        if (payment.side === 'PURCHASER_RECEIPT' && payment.receiptStatus === 'ISSUED') {
+          const number = payment.receiptNumber || payment.id;
+          addAction(`${recordLabel} · Money receipt ${number}`, `Money Receipt ${number}.pdf`, 'application/pdf', `${dealPrefix}/payments/${encodeURIComponent(payment.id)}/receipt`);
+        }
+      }
+    }
+
+    if (regNo) {
+      addAction(`${regNo} · Vehicle details`, `${regNo} - Vehicle Details.pdf`, 'application/pdf', `/api/vehicle-docs/${encodeURIComponent(regNo)}/details.pdf?inline=1`);
+      addAction(`${regNo} · All documents ZIP`, `${regNo} - Vehicle Documents.zip`, 'application/zip', `/api/vehicle-docs/${encodeURIComponent(regNo)}/zip`);
+    }
+
+    const data = {
       found: true,
       item: {
         listingId: listing.id,
@@ -2957,21 +3331,147 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         negotiable: listing.isNegotiable,
         manufacturingYear: listing.manufacturingYear,
         operatingHours: listing.operatingHours,
-        location: { city: listing.locationCity, state: listing.locationState },
+        location: {
+          city: listing.locationCity,
+          state: listing.locationState,
+          address: listing.address || null,
+        },
         condition: listing.condition,
         grossPower: listing.grossPower,
         status: listing.status,
-        soldAt: listing.saleRecord?.soldAt?.toISOString() ?? listing.soldAt?.toISOString() ?? null,
-        soldPrice: listing.saleRecord ? numeric(listing.saleRecord.soldPrice) : null,
-        invoiceNo: listing.saleRecord?.invoiceNo ?? listing.sellAccount?.invoiceNumber ?? null,
         views: listing.views,
         createdAt: listing.createdAt.toISOString(),
         updatedAt: listing.updatedAt.toISOString(),
+        vehicleIdentity: {
+          registrationNumber: regNo,
+          chassisNumber: listing.chassisNumberKey || listing.vehicleVerification?.verifiedChassisNumber || listing.sellAccount?.chassisNumber || null,
+          engineNumber: listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || null,
+          ownerName: listing.ownerName || listing.sellAccount?.ownerName || listing.sellAccount?.sellerName || null,
+          verificationStatus: listing.vehicleVerification?.status || 'NOT_VERIFIED',
+          verificationSource: listing.vehicleVerification?.verificationSource || null,
+          lastVerifiedAt: listing.vehicleVerification?.lastVerifiedAt?.toISOString() || null,
+        },
+        pricingAndFinancials: {
+          sellerListingPrice: numeric(listing.price),
+          adminMarginAmount: numeric(listing.adminMarginAmount),
+          adminExpenseAmount: numeric(listing.adminExpenseAmount),
+          adminExpenseBreakdown: listing.adminExpenseBreakdown,
+          customerOnRoadAskingPrice: numeric(listing.price) + numeric(listing.adminMarginAmount) + numeric(listing.adminExpenseAmount),
+          deal: listing.sellAccount ? {
+            dealStatus: listing.sellAccount.dealStatus,
+            isDraft: listing.sellAccount.isDraft,
+            purchasePrice: numeric(listing.sellAccount.purchaseAmount),
+            sellPrice: numeric(listing.sellAccount.sellAmount),
+            expenses: numeric(listing.sellAccount.expenses),
+            netProfit: numeric(listing.sellAccount.netProfit),
+            netProfitAfterGst: numeric(listing.sellAccount.netProfitAfterGst),
+            gstRatePercent: numeric(listing.sellAccount.gstRatePercent),
+            taxMode: listing.sellAccount.taxMode,
+            balanceAmount: numeric(listing.sellAccount.balanceAmount),
+            purchaserName: listing.sellAccount.purchaserName,
+            purchaserNumber: listing.sellAccount.purchaserNumber,
+            sellerName: listing.sellAccount.sellerName,
+            sellerNumber: listing.sellAccount.sellerNumber,
+          } : listing.saleRecord ? {
+            dealStatus: 'COMPLETED',
+            soldPrice: numeric(listing.saleRecord.soldPrice),
+            soldAt: listing.saleRecord.soldAt.toISOString(),
+            buyerName: listing.saleRecord.buyerName,
+            buyerPhone: listing.saleRecord.buyerPhone,
+          } : null,
+        },
+        rtoCompliance: listing.rtoRecords[0] ? {
+          vehicleNumber: listing.rtoRecords[0].vehicleNumber,
+          rtoOffice: listing.rtoRecords[0].rtoOffice,
+          rtoStatus: listing.rtoRecords[0].rtoStatus,
+          documentSendDate: listing.rtoRecords[0].documentSendDate?.toISOString() || null,
+          tax: { status: listing.rtoRecords[0].taxStatus, validUntil: listing.rtoRecords[0].taxValidUntil?.toISOString() || null },
+          fitness: { status: listing.rtoRecords[0].fitnessStatus, validUntil: listing.rtoRecords[0].fitnessValidUntil?.toISOString() || null },
+          insurance: { status: listing.rtoRecords[0].insuranceStatus, validUntil: listing.rtoRecords[0].insuranceValidUntil?.toISOString() || null },
+          puc: { status: listing.rtoRecords[0].pucStatus, validUntil: listing.rtoRecords[0].pucValidUntil?.toISOString() || null },
+          hsrp: { status: listing.rtoRecords[0].hsrpStatus },
+          hypothecation: listing.sellAccount?.transferDetails || null,
+          transferTasks: listing.rtoRecords[0].transferTasks.map((t) => ({
+            taskKey: t.taskKey,
+            label: t.label,
+            status: t.status,
+            optional: t.isOptional,
+            proofUploaded: Boolean(t.documents),
+          })),
+        } : null,
+        media: {
+          totalMediaCount: listing.media.length,
+          featuredImageUrl: featuredMedia?.url || null,
+          videoUrl: videoMedia?.url || null,
+          slots: {
+            frontRight: findMediaSlot(['front_right', 'front-right', 'frontright']),
+            rearLeft: findMediaSlot(['rear_left', 'rear-left', 'rearleft']),
+            rearRight: findMediaSlot(['rear_right', 'rear-right', 'rearright']),
+            frontLeft: findMediaSlot(['front_left', 'front-left', 'frontleft']),
+            chassisNumber: findMediaSlot(['chassis_number', 'chassis-number', 'chassis']),
+            meterReading: findMediaSlot(['meter_reading', 'meter-reading', 'meter']),
+            dashboardFront: findMediaSlot(['dashboard_front', 'dashboard-front', 'dashboardfront']),
+            dashboardLeft: findMediaSlot(['dashboard_left', 'dashboard-left', 'dashboardleft']),
+            dashboardRight: findMediaSlot(['dashboard_right', 'dashboard-right', 'dashboardright']),
+            engineCompartment: findMediaSlot(['engine_compartment', 'engine-compartment', 'engine']),
+            hydraulicPump: findMediaSlot(['hydraulic_pump', 'hydraulic-pump', 'hydraulic']),
+            tyreUndercarriage: findMediaSlot(['tyre_undercarriage', 'tyres', 'undercarriage']),
+            bucketAttachment: findMediaSlot(['bucket', 'attachment', 'loader']),
+            rcOrDocument: findMediaSlot(['rc', 'rc_copy', 'document']),
+          },
+          items: listing.media.map((m) => ({
+            id: m.id,
+            slot: m.slot,
+            type: m.type,
+            url: m.url,
+            isFeatured: m.isFeatured,
+          })),
+        },
+        documents: {
+          invoice: (listing.sellAccount?.invoiceNumber || listing.saleRecord?.invoiceNo) ? {
+            invoiceNumber: listing.sellAccount?.invoiceNumber || listing.saleRecord?.invoiceNo,
+            generatedAt: listing.sellAccount?.invoiceGeneratedAt?.toISOString() || listing.saleRecord?.soldAt.toISOString() || null,
+            adminDownloadUrl: listing.sellAccount?.id ? `/api/recruitment/admin/sell-accounts/${listing.sellAccount.id}/invoice` : null,
+          } : null,
+          deliveryChallan: listing.sellAccount?.id ? {
+            adminDownloadUrl: `/api/recruitment/admin/sell-accounts/${listing.sellAccount.id}/delivery-challan`,
+          } : null,
+          moneyReceipts: (listing.sellAccount?.payments || [])
+            .filter((p) => p.receiptNumber || p.receiptStatus === 'ISSUED')
+            .map((p) => ({
+              paymentId: p.id,
+              receiptNumber: p.receiptNumber || p.id,
+              amount: numeric(p.amount),
+              paymentDate: p.paymentDate.toISOString(),
+              method: p.method,
+              receiptStatus: p.receiptStatus,
+              adminDownloadUrl: `/api/recruitment/admin/sell-accounts/${listing.sellAccount!.id}/payments/${p.id}/receipt`,
+            })),
+          vehicleDocsPdf: regNo ? `/api/vehicle-docs/${encodeURIComponent(regNo)}/details.pdf?inline=1` : null,
+          allDocsZip: regNo ? `/api/vehicle-docs/${encodeURIComponent(regNo)}/zip` : null,
+        },
         partner: listing.partner.partnerProfile
-          ? { businessName: listing.partner.partnerProfile.businessName, partnerCode: listing.partner.partnerProfile.partnerCode }
-          : null,
+          ? {
+            businessName: listing.partner.partnerProfile.businessName,
+            partnerCode: listing.partner.partnerProfile.partnerCode,
+            contactPhone: listing.partner.partnerProfile.contactPhone || listing.partner.phone,
+            whatsappNumber: listing.partner.partnerProfile.whatsappNumber || null,
+            city: listing.partner.partnerProfile.city,
+            state: listing.partner.partnerProfile.state,
+          }
+          : {
+            name: listing.partner.name,
+            phone: listing.partner.phone,
+            email: listing.partner.email,
+          },
+        // Backward-compatibility properties
+        soldAt: listing.saleRecord?.soldAt?.toISOString() ?? listing.soldAt?.toISOString() ?? null,
+        soldPrice: listing.saleRecord ? numeric(listing.saleRecord.soldPrice) : (listing.sellAccount ? numeric(listing.sellAccount.sellAmount) : null),
+        invoiceNo: listing.saleRecord?.invoiceNo ?? listing.sellAccount?.invoiceNumber ?? null,
       },
+      fileActions: actions,
     };
+    return { data, uiActions: actions };
   },
 
   async vehicleIdentity(_context, args) {
@@ -3028,7 +3528,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       });
     }
 
-    const matches = listings.map((listing) => {
+    let matches = listings.map((listing) => {
       const verification = listing.vehicleVerification;
       return {
         listingId: listing.id,
@@ -3040,12 +3540,56 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         verificationSource: verification?.verificationSource || null,
         lastVerifiedAt: verification?.lastVerifiedAt?.toISOString() || null,
         fields: {
-          registration: { present: Boolean(listing.registrationNumberKey || verification?.verifiedRegistrationNumber), value: null },
-          chassis: { present: Boolean(listing.chassisNumberKey || verification?.verifiedChassisNumber), value: null },
-          engine: { present: Boolean(verification?.verifiedEngineNumber), value: null },
+          registration: {
+            present: Boolean(listing.registrationNumberKey || verification?.verifiedRegistrationNumber),
+            value: listing.registrationNumberKey || verification?.verifiedRegistrationNumber || null,
+          },
+          chassis: {
+            present: Boolean(listing.chassisNumberKey || verification?.verifiedChassisNumber),
+            value: listing.chassisNumberKey || verification?.verifiedChassisNumber || null,
+          },
+          engine: {
+            present: Boolean(verification?.verifiedEngineNumber),
+            value: verification?.verifiedEngineNumber || null,
+          },
         },
       };
     });
+
+    // RTO records can exist without a marketplace listing (for example an
+    // employee-created transfer). Keep identity questions useful by falling
+    // back to the canonical RTO dossier before reporting no data.
+    if (!matches.length && identifierKey) {
+      try {
+        const dossier = await buildRtoWorkDossier(prisma as never, { vehicleNumber: query || identifierKey });
+        if (dossier.found === true) {
+          const vehicle = dossier.vehicle as Record<string, unknown>;
+          const rto = dossier.rto as Record<string, unknown>;
+          const parties = dossier.parties as Record<string, unknown>;
+          const customer = (parties.customer || {}) as Record<string, unknown>;
+          matches = [{
+            listingId: null,
+            title: [vehicle.brand, vehicle.model].filter(Boolean).join(' ') || vehicle.registrationNumber || query,
+            brand: vehicle.brand || null,
+            model: vehicle.model || null,
+            status: rto.status || 'RTO_RECORD',
+            verificationStatus: 'RTO_RECORD',
+            verificationSource: 'INTERNAL_RTO_DOSSIER',
+            lastVerifiedAt: dossier.fetchedAt || null,
+            fields: {
+              registration: { present: Boolean(vehicle.registrationNumber), value: vehicle.registrationNumber || null },
+              chassis: { present: Boolean(vehicle.chassisNumber), value: vehicle.chassisNumber || null },
+              engine: { present: Boolean(vehicle.engineNumber), value: vehicle.engineNumber || null },
+            },
+            rtoOffice: rto.office || null,
+            ownerName: customer.name || null,
+          } as any];
+        }
+      } catch {
+        // The normal identity response remains bounded; the caller will report
+        // a safe unavailable result only if both local sources fail.
+      }
+    }
 
     return {
       found: matches.length > 0 || soldRecordCount > 0,
@@ -3057,9 +3601,221 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
   },
 
   async vehicleDocumentsDetail(_context, args) {
-    const query = args.query.trim().toUpperCase();
-    const compact = query.replace(/[\s-]/gu, '');
+    const rawQuery = String(args.query ?? '').trim();
+    const query = rawQuery.toUpperCase();
+    const compact = query.replace(/[^A-Z0-9]/gu, '');
     const variants = [...new Set([query, compact, compact.replace(/^(..)(\d{1,2})([A-Z]{1,3})(\d{1,4})$/u, '$1-$2-$3-$4')])];
+
+    let vehicleData: Awaited<ReturnType<typeof getVehicleDocs>> | null = null;
+
+    if (compact.length >= 4) {
+      try {
+        vehicleData = await getVehicleDocs(compact);
+      } catch {
+        // Continue to fuzzy/list search if direct lookup fails
+      }
+    }
+
+    if (!vehicleData && rawQuery.length >= 2) {
+      try {
+        const matchedVehicles = await listVehicleDocs({ q: rawQuery });
+        if (matchedVehicles.length === 1) {
+          vehicleData = await getVehicleDocs(matchedVehicles[0]!.vehicleNumber);
+        } else if (matchedVehicles.length > 1) {
+          return {
+            found: true,
+            multipleMatches: true,
+            requestedQuery: rawQuery,
+            matchedCount: matchedVehicles.length,
+            vehicles: matchedVehicles.map((v) => ({
+              vehicleNumber: v.vehicleNumber,
+              title: v.title,
+              owner: v.owner,
+              buyer: v.buyer,
+              chassisNumber: v.chassisNumber,
+              engineNumber: v.engineNumber,
+              dealStatus: v.dealStatus,
+              rtoStatus: v.rtoStatus,
+              listingStatus: v.listingStatus,
+              documentsCount: v.documents,
+              detailsPdfUrl: `/api/vehicle-docs/${encodeURIComponent(v.vehicleNumber)}/details.pdf?inline=1`,
+              allDocsZipUrl: `/api/vehicle-docs/${encodeURIComponent(v.vehicleNumber)}/zip`,
+            })),
+            maskedFields: [],
+          };
+        }
+      } catch {
+        // Continue to RTO record fallback
+      }
+    }
+
+    if (vehicleData) {
+      const vNum = vehicleData.vehicleNumber;
+      const encodedNum = encodeURIComponent(vNum);
+      const detailsPdfUrl = `/api/vehicle-docs/${encodedNum}/details.pdf?inline=1`;
+      const allDocsZipUrl = `/api/vehicle-docs/${encodedNum}/zip`;
+      const sectionZipUrls: Record<string, string> = {
+        'Seller & Purchase': `/api/vehicle-docs/${encodedNum}/zip?section=${encodeURIComponent('Seller & Purchase')}`,
+        'Buyer & Sale': `/api/vehicle-docs/${encodedNum}/zip?section=${encodeURIComponent('Buyer & Sale')}`,
+        'Invoices & Payments': `/api/vehicle-docs/${encodedNum}/zip?section=${encodeURIComponent('Invoices & Payments')}`,
+        'RTO Transfer': `/api/vehicle-docs/${encodedNum}/zip?section=${encodeURIComponent('RTO Transfer')}`,
+        'Listing & Photos': `/api/vehicle-docs/${encodedNum}/zip?section=${encodeURIComponent('Listing & Photos')}`,
+        Other: `/api/vehicle-docs/${encodedNum}/zip?section=Other`,
+      };
+
+      const docsWithUrls = vehicleData.documents.map((doc) => ({
+        id: doc.id,
+        section: doc.section,
+        checklistKey: doc.checklistKey,
+        label: doc.label,
+        fileName: doc.fileName,
+        mimeType: doc.mimeType,
+        size: doc.size,
+        date: doc.date,
+        generated: doc.generated,
+        isVideo: doc.isVideo,
+        previewUrl: `/api/vehicle-docs/${encodedNum}/files/${encodeURIComponent(doc.id)}?inline=1`,
+        downloadUrl: `/api/vehicle-docs/${encodedNum}/files/${encodeURIComponent(doc.id)}`,
+      }));
+
+      const checklistSummary = {
+        totalCount: vehicleData.checklist.length,
+        availableCount: vehicleData.checklist.filter((i) => i.state === 'AVAILABLE').length,
+        missingNaCount: vehicleData.checklist.filter((i) => i.state === 'NA').length,
+        notRequiredCount: vehicleData.checklist.filter((i) => i.state === 'NOT_REQUIRED').length,
+        items: vehicleData.checklist.map((item) => ({
+          key: item.key,
+          label: item.label,
+          section: item.section,
+          state: item.state,
+          note: item.note,
+          files: docsWithUrls.filter((d) => item.docIds.includes(d.id)),
+        })),
+      };
+
+      const primarySale = vehicleData.sales.find((s) => !s.cancelledAt) ?? vehicleData.sales[vehicleData.sales.length - 1] ?? null;
+
+      const vehicleItem = {
+        vehicleNumber: vNum,
+        title: vehicleData.title,
+        category: vehicleData.category,
+        brand: vehicleData.brand,
+        model: vehicleData.model,
+        year: vehicleData.year,
+        hours: vehicleData.hours,
+        chassisNumber: vehicleData.chassisNumber,
+        engineNumber: vehicleData.engineNumber,
+        location: vehicleData.location,
+        owner: vehicleData.owner,
+        statusBadges: {
+          listingStatus: vehicleData.listing?.status ?? null,
+          dealStatus: primarySale?.dealStatus ?? null,
+          rtoStatus: vehicleData.rto?.status ?? null,
+        },
+        listing: vehicleData.listing ? {
+          id: vehicleData.listing.id,
+          title: vehicleData.listing.title,
+          status: vehicleData.listing.status,
+          partner: vehicleData.listing.partner,
+          sellerPrice: vehicleData.listing.sellerPrice,
+          finalPrice: vehicleData.listing.finalPrice,
+          soldAt: vehicleData.listing.soldAt,
+        } : null,
+        parties: {
+          ownerName: vehicleData.owner,
+          sellerName: primarySale?.sellerName ?? null,
+          sellerNumber: primarySale?.sellerNumber ?? null,
+          purchaserName: primarySale?.purchaserName ?? null,
+          purchaserNumber: primarySale?.purchaserNumber ?? null,
+          purchaserCity: primarySale?.purchaserCity ?? null,
+        },
+        sales: vehicleData.sales.map((s) => ({
+          id: s.id,
+          recordNumber: s.recordNumber,
+          dealStatus: s.dealStatus,
+          isDraft: s.isDraft,
+          isLocked: s.isLocked,
+          cancelledAt: s.cancelledAt,
+          sourceType: s.sourceType,
+          sellerName: s.sellerName,
+          sellerNumber: s.sellerNumber,
+          purchaserName: s.purchaserName,
+          purchaserNumber: s.purchaserNumber,
+          purchaserCity: s.purchaserCity,
+          sellDate: s.sellDate,
+          purchaseAmount: s.purchaseAmount,
+          sellAmount: s.sellAmount,
+          received: s.received,
+          paidToSeller: s.paidToSeller,
+          invoiceNumber: s.invoiceNumber,
+          creditNoteNumber: s.creditNoteNumber,
+        })),
+        rto: vehicleData.rto ? {
+          id: vehicleData.rto.id,
+          status: vehicleData.rto.status,
+          office: vehicleData.rto.office,
+          agent: vehicleData.rto.agent,
+          hirePurchase: vehicleData.rto.hirePurchase,
+          financer: vehicleData.rto.financer,
+          validities: {
+            tax: { status: vehicleData.rto.tax[0], validUntil: vehicleData.rto.tax[1] },
+            fitness: { status: vehicleData.rto.fitness[0], validUntil: vehicleData.rto.fitness[1] },
+            insurance: { status: vehicleData.rto.insurance[0], validUntil: vehicleData.rto.insurance[1] },
+            puc: { status: vehicleData.rto.puc[0], validUntil: vehicleData.rto.puc[1] },
+            hsrp: { status: vehicleData.rto.hsrp[0], number: vehicleData.rto.hsrp[1] },
+          },
+          tasks: vehicleData.rto.tasks,
+        } : null,
+        sections: vehicleData.sections,
+        checklist: checklistSummary,
+        documents: docsWithUrls,
+        dossierDownloads: {
+          detailsPdfUrl,
+          allDocsZipUrl,
+          sectionZipUrls,
+        },
+      };
+
+      const pendingList = checklistSummary.items
+        .filter((item) => item.state === 'NA')
+        .map((item) => ({
+          task: item.label,
+          taskKey: item.key,
+          status: 'PENDING',
+          optional: false,
+          proofUploaded: false,
+          updatedAt: new Date().toISOString(),
+          dueDate: null,
+        }));
+
+      return {
+        found: true,
+        requestedRegistration: query,
+        vehicleNumber: vNum,
+        item: vehicleItem,
+        items: [
+          {
+            vehicleNumber: vNum,
+            vehicle: { brand: vehicleData.brand, type: vehicleData.category, model: vehicleData.model },
+            rtoOffice: vehicleData.rto?.office ?? null,
+            rtoStatus: vehicleData.rto?.status ?? null,
+            documents: {
+              tax: { status: vehicleData.rto?.tax[0] ?? null, validUntil: vehicleData.rto?.tax[1] ?? null },
+              fitness: { status: vehicleData.rto?.fitness[0] ?? null, validUntil: vehicleData.rto?.fitness[1] ?? null },
+              insurance: { status: vehicleData.rto?.insurance[0] ?? null, validUntil: vehicleData.rto?.insurance[1] ?? null },
+              puc: { status: vehicleData.rto?.puc[0] ?? null, validUntil: vehicleData.rto?.puc[1] ?? null },
+              hsrp: { status: vehicleData.rto?.hsrp[0] ?? null, validUntil: null },
+            },
+            pendingDocuments: pendingList,
+          },
+        ],
+        dueDateStatus: 'NOT_CONFIGURED',
+        dueDateMessage: 'RTO transfer task schema में due date field configured नहीं है; कोई अनुमानित date नहीं दिखाई गई।',
+        maskedFields: [],
+      };
+    }
+
+    // Fallback to vehicleRtoRecord if vehicle docs aggregator didn't find records
     const records = await prisma.vehicleRtoRecord.findMany({
       where: { OR: variants.map((vehicleNumber) => ({ vehicleNumber: { equals: vehicleNumber, mode: 'insensitive' as const } })) },
       orderBy: { updatedAt: 'desc' },
@@ -3085,6 +3841,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         transferTasks: { select: { taskKey: true, label: true, status: true, isOptional: true, documents: true, updatedAt: true } },
       },
     });
+
     const items = records.map((record) => {
       const pendingDocuments = record.transferTasks
         .filter((task) => !isTransferTaskDone(task.status))
@@ -3115,13 +3872,631 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         updatedAt: record.updatedAt.toISOString(),
       };
     });
+
     return {
       found: items.length > 0,
       requestedRegistration: query,
       items,
       dueDateStatus: 'NOT_CONFIGURED',
       dueDateMessage: 'RTO transfer task schema में due date field configured नहीं है; कोई अनुमानित date नहीं दिखाई गई।',
-      maskedFields: ['rtoRecordId', 'listingId', 'customerName', 'customerNumber', 'ownerName', 'documentUrl', 'fileUrl'],
+      maskedFields: [],
+    };
+  },
+
+  async vehicleDocumentsSummary(_context, args) {
+    const q = String(args.query ?? '').trim();
+    const limit = Math.min(50, Math.max(1, Math.floor(args.limit ?? 25)));
+    const matchedVehicles = await listVehicleDocs({ q });
+
+    const totalVehicles = matchedVehicles.length;
+    const totalDocuments = matchedVehicles.reduce((sum, v) => sum + (v.documents || 0), 0);
+    const dealStatusBreakdown: Record<string, number> = {};
+    const rtoStatusBreakdown: Record<string, number> = {};
+    const listingStatusBreakdown: Record<string, number> = {};
+
+    for (const v of matchedVehicles) {
+      if (v.dealStatus) dealStatusBreakdown[v.dealStatus] = (dealStatusBreakdown[v.dealStatus] || 0) + 1;
+      if (v.rtoStatus) rtoStatusBreakdown[v.rtoStatus] = (rtoStatusBreakdown[v.rtoStatus] || 0) + 1;
+      if (v.listingStatus) listingStatusBreakdown[v.listingStatus] = (listingStatusBreakdown[v.listingStatus] || 0) + 1;
+    }
+
+    let filtered = matchedVehicles;
+    if (args.dealStatus) {
+      filtered = filtered.filter((v) => v.dealStatus === args.dealStatus);
+    }
+    if (args.rtoStatus) {
+      filtered = filtered.filter((v) => v.rtoStatus === args.rtoStatus);
+    }
+
+    const items = filtered.slice(0, limit).map((v) => ({
+      vehicleNumber: v.vehicleNumber,
+      title: v.title,
+      owner: v.owner,
+      buyer: v.buyer,
+      chassisNumber: v.chassisNumber,
+      engineNumber: v.engineNumber,
+      dealStatus: v.dealStatus,
+      rtoStatus: v.rtoStatus,
+      listingStatus: v.listingStatus,
+      documentsCount: v.documents,
+      detailsPdfUrl: `/api/vehicle-docs/${encodeURIComponent(v.vehicleNumber)}/details.pdf?inline=1`,
+      allDocsZipUrl: `/api/vehicle-docs/${encodeURIComponent(v.vehicleNumber)}/zip`,
+      updatedAt: v.updatedAt,
+    }));
+
+    return {
+      found: items.length > 0,
+      scope: 'CURRENT_REALTIME_INVENTORY',
+      isRealtimeCurrentState: true,
+      periodDays: null,
+      totalVehicles,
+      totalDocuments,
+      dealStatusBreakdown,
+      rtoStatusBreakdown,
+      listingStatusBreakdown,
+      returnedCount: items.length,
+      vehicles: items,
+      maskedFields: [],
+    };
+  },
+
+  async tasksComplianceOverview(_context, args) {
+    const limit = Math.min(50, Math.max(1, Math.floor(args.limit ?? 25)));
+    const allTasks = await listRtoTransferTasks();
+    const query = String(args.query ?? '').trim().toLowerCase();
+
+    const vehicleMap = new Map<string, {
+      vehicleNumber: string;
+      title: string;
+      customerName: string;
+      dealNumber: string;
+      rtoOffice: string;
+      rtoStatus: string;
+      tasks: typeof allTasks;
+    }>();
+
+    for (const t of allTasks) {
+      const vNum = t.rtoRecord?.vehicleNumber || 'UNKNOWN';
+      if (!vehicleMap.has(vNum)) {
+        vehicleMap.set(vNum, {
+          vehicleNumber: vNum,
+          title: t.rtoRecord?.sellAccount?.listingTitle || t.rtoRecord?.sellAccount?.brandName || 'Vehicle',
+          customerName: t.rtoRecord?.customerName || t.rtoRecord?.sellAccount?.purchaserName || '—',
+          dealNumber: t.rtoRecord?.sellAccount?.recordNumber || '—',
+          rtoOffice: t.rtoRecord?.rtoOffice || '—',
+          rtoStatus: t.rtoRecord?.rtoStatus || '—',
+          tasks: [],
+        });
+      }
+      vehicleMap.get(vNum)!.tasks.push(t);
+    }
+
+    let vehicles = [...vehicleMap.values()].map((v) => {
+      const done = v.tasks.filter((t) => isTransferTaskDone(t.status)).length;
+      const pending = v.tasks.filter((t) => t.status === 'PENDING' || t.status === 'DOCUMENT_EXPIRED').length;
+      const inProc = v.tasks.filter((t) => t.status === 'TRANSFER_INITIATED' || t.status === 'RENEWAL_IN_PROGRESS').length;
+      const issues = v.tasks.filter((t) => t.status === 'ISSUE_REPORTED').length;
+      const total = v.tasks.length;
+      const percentage = total > 0 ? Math.round((done / total) * 100) : 0;
+      return {
+        vehicleNumber: v.vehicleNumber,
+        title: v.title,
+        customerName: v.customerName,
+        dealNumber: v.dealNumber,
+        rtoOffice: v.rtoOffice,
+        rtoStatus: v.rtoStatus,
+        milestonesDone: done,
+        milestonesTotal: total,
+        pendingCount: pending,
+        inProcessingCount: inProc,
+        blockersCount: issues,
+        completionPercentage: percentage,
+        pendingLabels: v.tasks.filter((t) => !isTransferTaskDone(t.status)).map((t) => t.label),
+      };
+    });
+
+    if (query) {
+      vehicles = vehicles.filter((v) =>
+        v.vehicleNumber.toLowerCase().includes(query) ||
+        v.title.toLowerCase().includes(query) ||
+        v.customerName.toLowerCase().includes(query) ||
+        v.dealNumber.toLowerCase().includes(query) ||
+        v.rtoOffice.toLowerCase().includes(query)
+      );
+    }
+
+    if (args.office) {
+      const off = args.office.toLowerCase();
+      vehicles = vehicles.filter((v) => v.rtoOffice.toLowerCase().includes(off));
+    }
+
+    const totalVehicles = vehicles.length;
+    const totalMilestones = allTasks.length;
+    const pendingAction = allTasks.filter((t) => t.status === 'PENDING' || t.status === 'DOCUMENT_EXPIRED').length;
+    const inProcessing = allTasks.filter((t) => t.status === 'TRANSFER_INITIATED' || t.status === 'RENEWAL_IN_PROGRESS').length;
+    const issuesReported = allTasks.filter((t) => t.status === 'ISSUE_REPORTED').length;
+    const transferredOrDone = allTasks.filter((t) => isTransferTaskDone(t.status)).length;
+    const completionPercentage = totalMilestones > 0 ? Math.round((transferredOrDone / totalMilestones) * 100) : 0;
+    const mandatoryCount = allTasks.filter((t) => !t.isOptional).length;
+    const optionalCount = allTasks.filter((t) => t.isOptional).length;
+
+    return {
+      found: totalVehicles > 0,
+      scope: 'CURRENT_REALTIME_OPERATIONS',
+      isRealtimeCurrentState: true,
+      periodDays: null,
+      totalVehicles,
+      totalMilestones,
+      pendingAction,
+      inProcessing,
+      issuesReported,
+      transferredOrDone,
+      completionPercentage,
+      mandatoryCount,
+      optionalCount,
+      returnedCount: Math.min(vehicles.length, limit),
+      vehicles: vehicles.slice(0, limit),
+      maskedFields: [],
+    };
+  },
+
+  async tasksComplianceDetail(_context, args) {
+    const rawTarget = (args.query || args.vehicleNumber || args.recordNumber || args.customerName || args.rtoId || '').trim();
+    const compactTarget = rawTarget.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    const rtoRecords = await prisma.vehicleRtoRecord.findMany({
+      where: rawTarget ? {
+        OR: [
+          { vehicleNumber: { contains: rawTarget, mode: 'insensitive' } },
+          ...(compactTarget.length >= 4 ? [{ vehicleNumber: { contains: compactTarget, mode: 'insensitive' } }] : []),
+          { customerName: { contains: rawTarget, mode: 'insensitive' } },
+          { purchaserName: { contains: rawTarget, mode: 'insensitive' } },
+          { sellAccount: { is: { recordNumber: { contains: rawTarget, mode: 'insensitive' } } } },
+          ...(args.rtoId ? [{ id: args.rtoId }] : []),
+        ],
+      } : {},
+      include: {
+        transferTasks: {
+          orderBy: { sortOrder: 'asc' },
+          include: { logs: { orderBy: { createdAt: 'desc' }, take: 20 } },
+        },
+        sellAccount: {
+          include: { payments: true, statusHistory: true },
+        },
+        listing: {
+          include: { brand: true, model: true, media: true },
+        },
+        statusLogs: { orderBy: { createdAt: 'desc' }, take: 20 },
+      },
+      take: 5,
+    });
+
+    if (!rtoRecords.length) {
+      return {
+        found: false,
+        requestedQuery: rawTarget,
+        scope: 'CURRENT_REALTIME_OPERATIONS',
+        isRealtimeCurrentState: true,
+        periodDays: null,
+        message: `No active RTO transfer task record found matching "${rawTarget}".`,
+        maskedFields: [],
+      };
+    }
+
+    const rec = rtoRecords[0];
+    const sale = rec.sellAccount;
+    const list = rec.listing;
+    const vNum = rec.vehicleNumber || list?.registrationNumberKey || 'Vehicle';
+    const tasks = rec.transferTasks || [];
+    const done = tasks.filter((t) => isTransferTaskDone(t.status)).length;
+    const total = tasks.length;
+    const percentage = total > 0 ? Math.round((done / total) * 100) : 0;
+
+    const milestones = tasks.map((t) => ({
+      id: t.id,
+      taskKey: t.taskKey,
+      label: t.label,
+      isOptional: t.isOptional,
+      sortOrder: t.sortOrder,
+      status: t.status,
+      remark: t.remark,
+      documents: Array.isArray(t.documents) ? t.documents : [],
+      updatedAt: t.updatedAt.toISOString(),
+      logs: Array.isArray(t.logs) ? t.logs.map((log) => ({
+        oldStatus: log.oldStatus,
+        newStatus: log.newStatus,
+        remark: log.remark,
+        createdAt: log.createdAt.toISOString(),
+      })) : [],
+    }));
+
+    const payments = sale?.payments || [];
+    const totalReceived = payments
+      .filter((p: any) => p.status === 'RECEIVED' || p.status === 'VERIFIED')
+      .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+
+    return {
+      found: true,
+      scope: 'CURRENT_REALTIME_OPERATIONS',
+      isRealtimeCurrentState: true,
+      periodDays: null,
+      vehicleNumber: vNum,
+      title: list?.title || `${rec.brandName} ${rec.vehicleModel}`.trim() || 'Vehicle',
+      brandName: rec.brandName || list?.brand?.name || '—',
+      vehicleModel: rec.vehicleModel || list?.model?.name || '—',
+      vehicleType: rec.vehicleType || '—',
+      chassisNumber: sale?.chassisNumber || list?.chassisNumberKey || '—',
+      engineNumber: sale?.engineNumber || list?.engineNumber || '—',
+      completionPercentage: percentage,
+      milestonesDone: done,
+      milestonesTotal: total,
+      milestones,
+      parties: {
+        customer: {
+          name: rec.customerName || sale?.purchaserName || '—',
+          number: rec.customerNumber || sale?.purchaserNumber || '—',
+          city: sale?.purchaserCity || '—',
+          state: sale?.purchaserState || '—',
+        },
+        seller: {
+          name: rec.sellerName || sale?.sellerName || '—',
+          number: rec.sellerNumber || sale?.sellerNumber || '—',
+          city: sale?.sellerCity || '—',
+          state: sale?.sellerState || '—',
+        },
+      },
+      deal: {
+        recordNumber: sale?.recordNumber || '—',
+        dealStatus: sale?.dealStatus || '—',
+        purchaseAmount: Number(sale?.purchaseAmount || 0),
+        sellAmount: Number(sale?.sellAmount || 0),
+        received: totalReceived,
+        paidToSeller: Number(sale?.paidToSeller || 0),
+        invoiceNumber: sale?.invoiceNumber || null,
+      },
+      rto: {
+        id: rec.id,
+        office: rec.rtoOffice || '—',
+        masterStatus: rec.rtoStatus || '—',
+        agent: {
+          name: rec.rtoAgentName || '—',
+          number: rec.rtoAgentNumber || '—',
+          city: [rec.rtoAgentCity, rec.rtoAgentState].filter(Boolean).join(', ') || '—',
+        },
+        expenses: {
+          total: Number(rec.rtoExpenses || 0),
+          advance: Number(rec.rtoExpensesAdvance || 0),
+          balance: Number(rec.rtoExpenses || 0) - Number(rec.rtoExpensesAdvance || 0),
+        },
+        isLocked: rec.isLocked,
+      },
+      rtoCertificateUrl: percentage === 100 ? `/api/recruitment/admin/rto-records/${rec.id}/transfer-certificate` : null,
+      maskedFields: [],
+    };
+  },
+
+  async partnerVerificationQueue(_context, args) {
+    const limit = Math.min(50, Math.max(1, Math.floor(args.limit ?? 25)));
+    const statusFilter = args.status && args.status !== 'ALL'
+      ? [args.status as any]
+      : [KycStatus.SUBMITTED, KycStatus.UNDER_REVIEW, KycStatus.CHANGES_REQUESTED];
+
+    const partners = await prisma.user.findMany({
+      where: {
+        partnerProfile: {
+          is: {
+            kycStatus: { in: statusFilter },
+            ...(args.partnerType && args.partnerType !== 'ALL' ? { partnerType: args.partnerType as any } : {}),
+          },
+        },
+      } as any,
+      include: {
+        partnerProfile: {
+          include: {
+            city: true,
+            state: true,
+            kycDocuments: { select: { documentType: true, status: true, reviewComment: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const query = String(args.query || '').trim().toLowerCase();
+    const filteredPartners = query
+      ? partners.filter((p) => {
+          const prof = p.partnerProfile;
+          return [
+            prof?.businessName,
+            prof?.ownerName,
+            prof?.partnerCode,
+            p.name,
+            p.email,
+            p.mobile,
+            prof?.district,
+            prof?.city?.name,
+            prof?.state?.name,
+          ].some((val) => val && String(val).toLowerCase().includes(query));
+        })
+      : partners;
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const submittedCount = partners.filter((p) => p.partnerProfile?.kycStatus === 'SUBMITTED').length;
+    const underReviewCount = partners.filter((p) => p.partnerProfile?.kycStatus === 'UNDER_REVIEW').length;
+    const changesRequestedCount = partners.filter((p) => p.partnerProfile?.kycStatus === 'CHANGES_REQUESTED').length;
+    const showroomCount = partners.filter((p) => p.partnerProfile?.partnerType === 'SHOWROOM').length;
+    const brokerCount = partners.filter((p) => p.partnerProfile?.partnerType === 'BROKER').length;
+    const todayCount = partners.filter((p) => new Date(p.createdAt) >= startOfToday).length;
+
+    const sortedByOldest = [...partners].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const oldestPending = sortedByOldest.length > 0 ? {
+      businessName: sortedByOldest[0]?.partnerProfile?.businessName || sortedByOldest[0]?.name || 'Partner',
+      appliedOn: sortedByOldest[0]?.createdAt.toISOString(),
+      daysWaiting: Math.floor((Date.now() - new Date(sortedByOldest[0]?.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
+    } : null;
+
+    const items = filteredPartners.slice(0, limit).map((p) => {
+      const prof = p.partnerProfile;
+      const slug = prof?.businessName
+        ? prof.businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+        : 'partner';
+      const reviewRoute = `/admin/verifications/${slug}-${p.id.slice(0, 13)}`;
+      return {
+        id: p.id,
+        partnerCode: prof?.partnerCode || null,
+        businessName: prof?.businessName || p.name || 'Unnamed Partner',
+        ownerName: prof?.ownerName || p.name || '—',
+        partnerType: prof?.partnerType || 'SHOWROOM',
+        mobile: p.mobile || prof?.alternateMobile || null,
+        email: p.email,
+        city: prof?.city?.name || p.city || prof?.district || null,
+        state: prof?.state?.name || p.state || null,
+        appliedOn: p.createdAt.toISOString(),
+        kycStatus: prof?.kycStatus || 'SUBMITTED',
+        onboardingStatus: prof?.onboardingStatus || 'ACCOUNT_CREATED',
+        documentsCount: prof?.kycDocuments?.length || 0,
+        reviewUrl: reviewRoute,
+      };
+    });
+
+    return {
+      scope: 'CURRENT_REALTIME_OPERATIONS',
+      isRealtimeCurrentState: true,
+      periodDays: null,
+      totalQueue: partners.length,
+      filteredCount: filteredPartners.length,
+      submittedCount,
+      underReviewCount,
+      changesRequestedCount,
+      showroomCount,
+      brokerCount,
+      todayCount,
+      oldestPending,
+      items,
+      maskedFields: [],
+    };
+  },
+
+  async partnerVerificationDossier(_context, args) {
+    const rawTarget = String(args.query || args.partnerCode || args.partnerId || '').trim();
+    const routeSuffixMatch = rawTarget.match(/([0-9a-f]{8}-[0-9a-f]{4})$/i)?.[1];
+
+    let user: any = null;
+
+    if (routeSuffixMatch) {
+      user = await prisma.user.findFirst({
+        where: { id: { startsWith: routeSuffixMatch.toLowerCase() }, partnerProfile: { isNot: null } },
+        include: {
+          partnerProfile: {
+            include: {
+              city: true,
+              state: true,
+              kycDocuments: { orderBy: { uploadedAt: 'asc' } },
+              agreements: { orderBy: { acceptedAt: 'asc' } },
+              kycReviews: { orderBy: { createdAt: 'desc' }, take: 20 },
+            },
+          },
+        },
+      });
+    }
+
+    if (!user && args.partnerId) {
+      user = await prisma.user.findUnique({
+        where: { id: args.partnerId },
+        include: {
+          partnerProfile: {
+            include: {
+              city: true,
+              state: true,
+              kycDocuments: { orderBy: { uploadedAt: 'asc' } },
+              agreements: { orderBy: { acceptedAt: 'asc' } },
+              kycReviews: { orderBy: { createdAt: 'desc' }, take: 20 },
+            },
+          },
+        },
+      });
+    }
+
+    if (!user && rawTarget) {
+      const candidates = await prisma.user.findMany({
+        where: {
+          partnerProfile: { isNot: null },
+          OR: [
+            { partnerProfile: { is: { partnerCode: { equals: rawTarget, mode: 'insensitive' } } } },
+            { partnerProfile: { is: { businessName: { contains: rawTarget, mode: 'insensitive' } } } },
+            { partnerProfile: { is: { ownerName: { contains: rawTarget, mode: 'insensitive' } } } },
+            { partnerProfile: { is: { gstNumber: { equals: rawTarget, mode: 'insensitive' } } } },
+            { name: { contains: rawTarget, mode: 'insensitive' } },
+            { email: { equals: rawTarget, mode: 'insensitive' } },
+            { mobile: { contains: rawTarget.replace(/[^0-9]/g, '') } },
+          ],
+        },
+        include: {
+          partnerProfile: {
+            include: {
+              city: true,
+              state: true,
+              kycDocuments: { orderBy: { uploadedAt: 'asc' } },
+              agreements: { orderBy: { acceptedAt: 'asc' } },
+              kycReviews: { orderBy: { createdAt: 'desc' }, take: 20 },
+            },
+          },
+        },
+        take: 5,
+      });
+
+      if (candidates.length > 0) {
+        const exactCode = candidates.find((c) => c.partnerProfile?.partnerCode?.toUpperCase() === rawTarget.toUpperCase());
+        const exactPhone = candidates.find((c) => c.mobile && c.mobile.replace(/[^0-9]/g, '') === rawTarget.replace(/[^0-9]/g, ''));
+        user = exactCode || exactPhone || candidates[0];
+      }
+    }
+
+    if (!user || !user.partnerProfile) {
+      return {
+        found: false,
+        requestedQuery: rawTarget,
+        scope: 'CURRENT_REALTIME_OPERATIONS',
+        isRealtimeCurrentState: true,
+        periodDays: null,
+        message: `No partner verification record found matching "${rawTarget}".`,
+        maskedFields: [],
+      };
+    }
+
+    const prof = user.partnerProfile;
+    const slug = prof.businessName ? prof.businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'partner';
+    const reviewUrl = `/admin/verifications/${slug}-${user.id.slice(0, 13)}`;
+
+    const ALL_DOC_TYPES = [
+      'GST_CERTIFICATE',
+      'PAN_CARD',
+      'AADHAAR_CARD',
+      'PASSPORT_PHOTO',
+      'CANCELLED_CHEQUE',
+      'AUTHORIZED_PERSON_ID',
+    ] as const;
+
+    const storedDocs = prof.kycDocuments || [];
+
+    const documentsList = ALL_DOC_TYPES.map((docType) => {
+      const match = storedDocs.find((d: any) => d.documentType === docType);
+      const isMandatory = docType === 'GST_CERTIFICATE';
+      if (!match) {
+        if (docType === 'GST_CERTIFICATE' && prof.gstNumber && prof.gstVerificationRecordId) {
+          return {
+            documentType: 'GST_CERTIFICATE',
+            label: 'GST Certificate',
+            isMandatory: true,
+            isUploaded: true,
+            status: 'VERIFIED',
+            documentNumber: prof.gstNumber,
+            nameOnDocument: prof.businessName,
+            reviewComment: null,
+            verificationStatus: 'SUCCESS',
+            verificationRecordId: prof.gstVerificationRecordId,
+            fileUrl: null,
+            templateUrl: `/api/admin/verifications/${user.id}/documents/signup-gst-${prof.id}/template`,
+            uploadedAt: prof.createdAt?.toISOString() || null,
+          };
+        }
+        return {
+          documentType: docType,
+          label: docType.replace(/_/g, ' '),
+          isMandatory,
+          isUploaded: false,
+          status: 'MISSING',
+          documentNumber: null,
+          nameOnDocument: null,
+          reviewComment: null,
+          verificationStatus: 'NOT_STARTED',
+          verificationRecordId: null,
+          fileUrl: null,
+          templateUrl: null,
+          uploadedAt: null,
+        };
+      }
+
+      return {
+        documentType: match.documentType,
+        label: match.documentType.replace(/_/g, ' '),
+        isMandatory,
+        isUploaded: true,
+        status: match.status,
+        documentNumber: match.documentNumber || null,
+        nameOnDocument: match.nameOnDocument || null,
+        reviewComment: match.reviewComment || null,
+        verificationStatus: match.verificationStatus || 'NOT_STARTED',
+        verificationMessage: match.verificationMessage || null,
+        verificationRecordId: match.verificationRecordId || null,
+        fileUrl: match.fileUrl || null,
+        templateUrl: match.verificationRecordId ? `/api/admin/verifications/${user.id}/documents/${match.id}/template` : null,
+        uploadedAt: match.uploadedAt?.toISOString() || null,
+      };
+    });
+
+    const reviewHistory = (prof.kycReviews || []).map((r: any) => ({
+      id: r.id,
+      action: r.action,
+      comment: r.comment,
+      createdAt: r.createdAt?.toISOString() || null,
+    }));
+
+    const agreements = (prof.agreements || []).map((a: any) => ({
+      agreementType: a.agreementType,
+      version: a.version,
+      acceptedAt: a.acceptedAt?.toISOString() || null,
+    }));
+
+    return {
+      found: true,
+      scope: 'CURRENT_REALTIME_OPERATIONS',
+      isRealtimeCurrentState: true,
+      periodDays: null,
+      partnerId: user.id,
+      partnerCode: prof.partnerCode,
+      businessName: prof.businessName || user.name || 'Unnamed Partner',
+      ownerName: prof.ownerName || user.name || '—',
+      partnerType: prof.partnerType || 'SHOWROOM',
+      contact: {
+        mobile: user.mobile || prof.alternateMobile || '—',
+        alternateMobile: prof.alternateMobile || null,
+        whatsappNumber: user.whatsappNumber || user.mobile || null,
+        email: user.email || '—',
+      },
+      location: {
+        businessAddress: prof.businessAddress || '—',
+        district: prof.district || '—',
+        pinCode: prof.pinCode || '—',
+        city: prof.city?.name || user.city || '—',
+        state: prof.state?.name || user.state || '—',
+        googleMapsLocation: prof.googleMapsLocation || null,
+      },
+      businessDetails: {
+        gstNumber: prof.gstNumber || null,
+        businessRegistrationNumber: prof.businessRegistrationNumber || null,
+        businessExperience: prof.businessExperience || null,
+        yearsInBusiness: prof.yearsInBusiness || null,
+        teamSize: prof.teamSize || null,
+        expectedMonthlyListings: prof.expectedMonthlyListings || null,
+        websiteUrl: prof.websiteUrl || null,
+        serviceAreas: prof.serviceAreas || null,
+        workingHours: prof.workingHours || null,
+      },
+      status: {
+        kycStatus: prof.kycStatus || 'SUBMITTED',
+        onboardingStatus: prof.onboardingStatus || 'ACCOUNT_CREATED',
+        accountStatus: prof.accountStatus || 'PENDING',
+        approvedAt: prof.approvedAt?.toISOString() || null,
+        appliedOn: user.createdAt?.toISOString() || null,
+      },
+      documents: documentsList,
+      reviewHistory,
+      agreements,
+      reviewUrl,
+      maskedFields: [],
     };
   },
 
@@ -3263,6 +4638,48 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
 
   async soldVehicleAnalytics(_context, args) {
     return getSoldVehicleAnalytics(prisma, args);
+  },
+
+  async rtoWorkDetail(_context, args) {
+    const data = await buildRtoWorkDossier(prisma as never, args);
+    if (!data.found) return data;
+    const actions: AiFileAction[] = [];
+    const vehicle = asRecord(data.vehicle);
+    const vehicleNumber = typeof vehicle.registrationNumber === 'string' ? vehicle.registrationNumber : null;
+    if (vehicleNumber) {
+      const encodedVehicle = encodeURIComponent(vehicleNumber);
+      const details = buildAiFileAction({
+        label: `${vehicleNumber} Â· Vehicle details PDF`,
+        fileName: `${vehicleNumber} - Vehicle Details.pdf`,
+        mimeType: 'application/pdf',
+        url: `/api/vehicle-docs/${encodedVehicle}/details.pdf?inline=1`,
+      });
+      const archive = buildAiFileAction({
+        label: `${vehicleNumber} Â· All vehicle documents`,
+        fileName: `${vehicleNumber} - Vehicle Documents.zip`,
+        mimeType: 'application/zip',
+        url: `/api/vehicle-docs/${encodedVehicle}/zip`,
+      });
+      if (details) actions.push(details);
+      if (archive) actions.push(archive);
+      const tasks = asRecord(data.tasks).items;
+      if (Array.isArray(tasks)) for (const taskValue of tasks) {
+        const task = asRecord(taskValue);
+        const documents = Array.isArray(task.documents) ? task.documents : [];
+        for (const documentValue of documents) {
+          const document = asRecord(documentValue);
+          if (typeof task.id !== 'string' || typeof document.id !== 'string') continue;
+          const action = buildAiFileAction({
+            label: `${vehicleNumber} Â· ${String(task.label || 'RTO task')} Â· ${String(document.fileName || 'document')}`,
+            fileName: String(document.fileName || `${vehicleNumber}-${task.id}.pdf`),
+            mimeType: typeof document.mimeType === 'string' ? document.mimeType : 'application/octet-stream',
+            url: `/api/vehicle-docs/${encodedVehicle}/files/${encodeURIComponent(`rto-task-${task.id}-${document.id}`)}`,
+          });
+          if (action) actions.push(action);
+        }
+      }
+    }
+    return { data, uiActions: actions };
   },
 
   async inventoryTrend(_context, args) {
@@ -4676,25 +6093,38 @@ export class AiReadOnlyToolsService {
       if (error instanceof AiToolError) throw error;
       throw new AiToolError('The requested data is unavailable right now.', 503, 'AI_TOOL_DATA_UNAVAILABLE');
     }
-    const isSoldVehicleTool = [
+    const isVehicleOperationalTool = [
       'sold.vehicles',
       'sold.vehicle.search',
       'sold.vehicle.detail',
       'sold.vehicle.analytics',
+      'rto.work.detail',
       'sell.accounts.summary',
+      'listing.detail',
+      'listing.search',
+      'listing.summary',
+      'vehicle.identity',
+      'vehicle.documents.detail',
+      'vehicle.documents.summary',
+      'tasks.compliance.overview',
+      'tasks.compliance.detail',
+      'partner.verification.queue',
+      'partner.verification.dossier',
     ].includes(definition.name);
-    const exactSoldVehicleOperatorScope = isSoldVehicleTool
-      && (context.role === 'SUPER_ADMIN' || context.role === 'ADMIN' || context.role === 'EMPLOYEE' || context.permissions.some((permission) => SOLD_VEHICLE_PERMISSIONS.includes(permission as typeof SOLD_VEHICLE_PERMISSIONS[number])));
-    const operatorPresentation = presentAiToolDataForOperator(data, context, { allowOperationalPii: exactSoldVehicleOperatorScope });
+    const exactVehicleOperatorScope = isVehicleOperationalTool
+      && (context.role === 'SUPER_ADMIN' || context.role === 'ADMIN' || context.role === 'EMPLOYEE' || context.permissions.some((permission) => [...SOLD_VEHICLE_PERMISSIONS, ...LISTING_READ_PERMISSIONS, ...VEHICLE_IDENTITY_PERMISSIONS, ...RTO_DOCUMENTS_PERMISSIONS, ...PARTNER_VERIFICATION_PERMISSIONS].includes(permission as any)));
+    const operatorPresentation = presentAiToolDataForOperator(data, context, { allowOperationalPii: exactVehicleOperatorScope });
     const secured = sanitizeAiToolData(data, context);
+    // Provider-facing tool data is always sanitized. Authorized portal operators
+    // receive the richer presentation separately through operatorData.
     data = secured.data;
     const availability = dataAvailabilityFor(data);
     const durationMs = Math.max(0, Date.now() - startedAt);
     const forecastConfidence = forecastConfidenceFor(data);
     const contractSource = definition.name === 'knowledge.search' ? 'cache' : 'database';
-    const activeMaskedFields = exactSoldVehicleOperatorScope
+    const activeMaskedFields = exactVehicleOperatorScope
       ? [...new Set([...maskedFieldsFor(data), ...operatorPresentation.maskedFields])].filter(
-        (field) => !/(?:owner|buyer|seller|purchaser|customer|broker|party|vehicle|chassis|model|brand|listing|mobile|phone|contact)(?:Name|Number|Title)?$/iu.test(field)
+        (field) => !/(?:owner|buyer|seller|purchaser|customer|broker|party|partner|vehicle|chassis|engine|registration|model|brand|listing|mobile|phone|contact|gst|pan|document|email)(?:Name|Number|Title)?$/iu.test(field)
       )
       : [...new Set([...maskedFieldsFor(data), ...secured.maskedFields])];
     const contract = createAiDataContract({
@@ -4725,7 +6155,7 @@ export class AiReadOnlyToolsService {
       toolName: definition.name,
       label: definition.label,
       data,
-      ...(canReadAiSensitiveField(context, 'mobile') || exactSoldVehicleOperatorScope ? { operatorData: operatorPresentation.data } : {}),
+      ...(canReadAiSensitiveField(context, 'mobile') || exactVehicleOperatorScope ? { operatorData: operatorPresentation.data } : {}),
       contract,
       dataAvailability: availability.status,
       ...(availability.message ? { dataAvailabilityMessage: availability.message } : {}),

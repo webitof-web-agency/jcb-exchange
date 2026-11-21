@@ -17,7 +17,7 @@ type AiSecurityAuditPayloadInput = {
   rawValue?: unknown;
 };
 
-const DOCUMENT_URL_FIELD_PATTERN = /(?:^|_)(?:url|uri|download|signed|attachment|file)(?:$|_)/iu;
+const DOCUMENT_URL_FIELD_PATTERN = /(?:^|_)(?:urls?|uri|download|signed|attachment)(?:$|_)/iu;
 const SECRET_FIELD_PATTERN = /(?:^|_)(?:token|secret|password|passcode|api[_-]?key|private[_-]?key|authorization|signature|credential|cookie|hash)(?:$|_)/iu;
 const MOBILE_FIELD_PATTERN = /(?:^|_)(?:phone|mobile|contact)(?:$|_)/iu;
 const EMAIL_FIELD_PATTERN = /(?:^|_)email(?:$|_)/iu;
@@ -106,6 +106,14 @@ export const sanitizeAiToolData = (
         output[key] = visit(child, childPath);
         continue;
       }
+      if (kind === 'documentUrl' && child !== null && typeof child === 'object') {
+        output[key] = Object.fromEntries(Object.entries(child as Record<string, unknown>).map(([nestedKey, nestedValue]) => {
+          const nestedPath = pathFor(childPath, nestedKey);
+          maskedFields.add(nestedPath);
+          return [nestedKey, maskValueForKind(nestedValue, 'documentUrl')];
+        }));
+        continue;
+      }
       if (kind) {
         output[key] = maskValueForKind(child, kind);
         maskedFields.add(childPath);
@@ -143,7 +151,17 @@ export const presentAiToolDataForOperator = (value: unknown, context: AiFieldSec
       if (OPERATOR_ALWAYS_MASK_PATTERN.test(normalized) && kind) {
         output[key] = maskValueForKind(child, kind);
         maskedFields.add(childPath);
-      } else if (kind === 'secret' || kind === 'documentUrl') {
+      } else if (kind === 'secret') {
+        output[key] = maskValueForKind(child, kind);
+        maskedFields.add(childPath);
+      } else if (kind === 'documentUrl' && child !== null && typeof child === 'object') {
+        output[key] = Object.fromEntries(Object.entries(child as Record<string, unknown>).map(([nestedKey, nestedValue]) => {
+          const nestedPath = pathFor(childPath, nestedKey);
+          maskedFields.add(nestedPath);
+          return [nestedKey, maskValueForKind(nestedValue, 'documentUrl')];
+        }));
+      } else if (kind === 'documentUrl') {
+        // File access must go through authenticated UI actions, never raw locators.
         output[key] = maskValueForKind(child, kind);
         maskedFields.add(childPath);
       } else if (kind && !options.allowOperationalPii && !canReadAiSensitiveField(context, key)) {

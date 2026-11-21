@@ -686,6 +686,33 @@ test('routes Vehicle Identity and RTO/Documents questions to bounded read-only t
   });
 });
 
+test('keeps a vehicle identity follow-up scoped to the same identifier', () => {
+  const context: AiIntentContextMessage[] = [
+    { role: 'USER', content: 'CG04CX2978 ye number konse vehicle ka hai?' },
+    { role: 'ASSISTANT', content: 'Vehicle identity fetched.', toolName: 'vehicle.identity', toolArguments: { query: 'CG04CX2978' } },
+  ];
+
+  assert.deepEqual(resolveAiMessage('is module me', context), {
+    kind: 'tool',
+    request: { name: 'vehicle.identity', arguments: { query: 'CG04CX2978' } },
+  });
+});
+
+test('routes complete RTO questions in English, Hinglish and common spelling mistakes to the exact dossier', () => {
+  assert.deepEqual(routeAiMessage('RTO status, blockers, payment and documents for CG04NX2753'), {
+    name: 'rto.work.detail',
+    arguments: { vehicleNumber: 'CG04NX2753' },
+  });
+  assert.deepEqual(routeAiMessage('CG 04 NX 2753 ka RTO sttaus aur pending taks btao'), {
+    name: 'rto.work.detail',
+    arguments: { vehicleNumber: 'CG04NX2753' },
+  });
+  assert.deepEqual(routeAiMessage('RTO documnts aur insurence details CG04NX2753'), {
+    name: 'rto.work.detail',
+    arguments: { vehicleNumber: 'CG04NX2753' },
+  });
+});
+
 test('routes Phase 3 verification and provider status questions to safe summaries', () => {
   assert.deepEqual(routeAiMessage('PAN GST Aadhaar verification status btao'), {
     name: 'verification.summary',
@@ -890,5 +917,32 @@ test('keeps a natural follow-up on sell.accounts.summary for pronoun contact que
   assert.deepEqual(result, {
     kind: 'tool',
     request: { name: 'sell.accounts.summary', arguments: { allRecords: true } },
+  });
+});
+
+test('routes vehicle registration and chassis requests for photos, invoices, and financials to listing.detail', () => {
+  assert.deepEqual(routeAiMessage('CG11BN7867 ka photo dikhao'), {
+    name: 'listing.detail',
+    arguments: { query: 'CG11BN7867' },
+  });
+  assert.deepEqual(routeAiMessage('CG11BN7867 ka meter reading ya dashboard photo dikhao'), {
+    name: 'listing.detail',
+    arguments: { query: 'CG11BN7867' },
+  });
+  assert.deepEqual(routeAiMessage('CG11BN7867 ka invoice ya bill do'), {
+    name: 'listing.detail',
+    arguments: { query: 'CG11BN7867' },
+  });
+  assert.deepEqual(routeAiMessage('CG11BN7867 ka margin aur net profit kitna hua'), {
+    name: 'listing.detail',
+    arguments: { query: 'CG11BN7867' },
+  });
+  assert.deepEqual(routeAiMessage('chassis RAJ3DXINA03449629 ka detail batao'), {
+    name: 'listing.detail',
+    arguments: { query: 'RAJ3DXINA03449629' },
+  });
+  assert.deepEqual(routeAiMessage('chassis RAJ3DXINA03449629 ka photo dikhao'), {
+    name: 'listing.detail',
+    arguments: { query: 'RAJ3DXINA03449629' },
   });
 });

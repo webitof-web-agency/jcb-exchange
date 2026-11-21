@@ -234,7 +234,6 @@ const verificationStatusMeta = (status?: string | null) => {
 
 type ParsedListingDetails = {
   rawDescription: string;
-  variant: string;
   registrationDate: string;
   registrationUpto: string;
   registrationYear: string;
@@ -279,7 +278,6 @@ type ListingEditForm = {
   pinCode: string;
   nearbyLandmark: string;
   condition: string;
-  variant: string;
   operatingHours: string;
   fuelType: string;
   transmission: string;
@@ -297,7 +295,6 @@ type ListingEditForm = {
 
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   rawDescription: '',
-  variant: '',
   registrationDate: '',
   registrationUpto: '',
   registrationYear: '',
@@ -331,7 +328,6 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
     const key = match[1].trim().toLowerCase();
     const value = match[2].trim();
     switch (key) {
-      case 'variant': parsed.variant = value; break;
       case 'registration year': parsed.registrationYear = value; break;
       case 'registration date': parsed.registrationDate = value; break;
       case 'registration upto':
@@ -451,7 +447,6 @@ const resolveDealerTypeLabel = (listing: ListingDetail) => {
 
 const buildListingDescription = (form: ListingEditForm) => {
   const detailLines = [
-    ['Variant', form.variant],
     ['Registration Date', form.registrationDate],
     ['Registration Upto', form.registrationUpto],
     ['Registration No', form.registrationNo],
@@ -587,7 +582,6 @@ const createEditForm = (listing: ListingDetail): ListingEditForm => {
     pinCode: parsed.pinCode || '',
     nearbyLandmark: parsed.nearbyLandmark || '',
     condition: listing.condition || '',
-    variant: parsed.variant || '',
     operatingHours: listing.operatingHours ? String(listing.operatingHours) : '',
     fuelType: parsed.fuelType || '',
     transmission: parsed.transmission || '',
@@ -639,7 +633,6 @@ const sectionHasChanges = (section: DetailSection, current: ListingEditForm, bas
     pricing: ['price', 'isNegotiable', 'categoryId', 'categoryName', 'brandName', 'modelName', 'manufacturingYear'],
     sellerLocation: ['locationState', 'locationCity', 'address', 'pinCode', 'nearbyLandmark', 'condition'],
     technical: [
-      'variant',
       'operatingHours',
       'fuelType',
       'transmission',
@@ -1058,7 +1051,6 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
         categoryName: categoryMatch?.name || mapped.categoryName || current.categoryName,
         brandName: brandMatch?.name || mapped.brandName || current.brandName,
         modelName: mapped.model || current.modelName,
-        variant: mapped.variant || current.variant,
         manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
         registrationDate: mapped.registrationDate || current.registrationDate,
         registrationUpto: mapped.registrationUpto || current.registrationUpto,
@@ -1142,7 +1134,6 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       }
 
       if (section === 'technical') {
-        next.variant = baseForm.variant;
         next.operatingHours = baseForm.operatingHours;
         next.fuelType = baseForm.fuelType;
         next.transmission = baseForm.transmission;
@@ -2293,15 +2284,6 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
             <div className="p-4">
               {isEditing ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label={t('listingDetails.variant', 'Variant')} apiFill={vehicleApiFill}>
-                    <input
-                      value={form.variant}
-                      onChange={(event) => updateForm('variant', event.target.value)}
-                      className={inputClassName}
-                      placeholder="e.g. Standard / Heavy Duty"
-                    />
-                  </Field>
-
                   <Field label={t('listingDetails.operatingHours', 'Operating Hours (Meter)')}>
                     <input
                       value={form.operatingHours}
@@ -2485,13 +2467,6 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
                       <Truck className="h-3.5 w-3.5 text-slate-400" /> Model
                     </span>
                     <span className="font-semibold text-slate-900">{listing.model?.name || 'N/A'}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between border-b border-slate-100 py-1.5">
-                    <span className="text-slate-500 flex items-center gap-1.5 font-medium">
-                      <Tag className="h-3.5 w-3.5 text-slate-400" /> Variant
-                    </span>
-                    <span className="font-semibold text-slate-900">{parsedDetails.variant || 'Standard'}</span>
                   </div>
 
                   <div className="flex items-center justify-between border-b border-slate-100 py-1.5">

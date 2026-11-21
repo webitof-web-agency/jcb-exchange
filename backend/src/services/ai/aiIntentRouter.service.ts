@@ -47,7 +47,8 @@ const DEVANAGARI_CODEPOINT_ALIASES: Array<[RegExp, string]> = [
   [/\u092a\u0942\u0930\u094d\u0935\u093e\u0928\u0941\u092e\u093e\u0928/gu, 'forecast'],
   [/\u0905\u0917\u0932\u0947|\u0905\u0917\u0932\u0940|\u0905\u0917\u0932\u093e/gu, 'agle'],
   [/\u0906\u0930\u091f\u0940\u0913/gu, 'rto'],
-  [/\u0915\u093e\u0930\u094d\u092f/gu, 'task'],
+  [/\u0905\u0928\u0941\u092a\u093e\u0932\u0928/gu, 'compliance'],
+  [/\u0915\u093e\u0930\u094d\u092f\u094b\u0902|\u0915\u093e\u0930\u094d\u092f/gu, 'task'],
   [/\u0926\u0938\u094d\u0924\u093e\u0935\u0947\u091c\u093c|\u0926\u0938\u094d\u0924\u093e\u0935\u0947\u091c/gu, 'documents'],
   [/\u092b\u0949\u0932\u094b\u0905\u092a|\u092b\u0949\u0932\u094b\u0905\u092a\u094d\u0938/gu, 'followups'],
   [/\u092d\u0930\u094d\u0924\u0940/gu, 'recruitment'],
@@ -102,6 +103,15 @@ const SPELLING_ALIASES: Array<[RegExp, string]> = [
   [/\bpartnrs?\b/gu, 'partners'],
   [/\bperformnce\b/gu, 'performance'],
   [/\bfinace\b/gu, 'finance'],
+  [/\bsttaus\b/gu, 'status'],
+  [/\bdocumnts?\b/gu, 'documents'],
+  [/\binsurence\b/gu, 'insurance'],
+  [/\bexpences?\b/gu, 'expenses'],
+  [/\bpaym(?:e|a)nt(?:s)?\b/gu, 'payment'],
+  [/\bblokers?\b/gu, 'blockers'],
+  [/\bchasssis\b/gu, 'chassis'],
+  [/\bengne\b/gu, 'engine'],
+  [/\binvoic\b/gu, 'invoice'],
   [/\bforcast\b/gu, 'forecast'],
   [/\bpendng\b/gu, 'pending'],
   [/\b(?:tsk|taks)\b/gu, 'task'],
@@ -128,6 +138,10 @@ const SPELLING_ALIASES: Array<[RegExp, string]> = [
   [/\bkon\b/gu, 'kaun'],
   [/\bleds?\b/gu, 'leads'],
   [/\bwhatasapp\b/gu, 'whatsapp'],
+  [/\bverfication(s)?\b/gu, 'verification'],
+  [/\bverificaton(s)?\b/gu, 'verification'],
+  [/\bverfiy\b/gu, 'verify'],
+  [/\bdossir\b/gu, 'dossier'],
 ];
 
 const normalizeMessage = (message: string) => {
@@ -432,8 +446,8 @@ const extractDocumentSearchQuery = (message: string): string | null => {
     .trim();
   const startsWithDocument = /^(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\b/iu.test(withoutAction);
   const patterns = startsWithDocument
-    ? [ /\b(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\s+(?:of|for|ka|ki|ke)?\s*(.+)$/iu ]
-    : [ /\b(.+?)\s+(?:ka|ki|ke)\s+(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\b.*$/iu ];
+    ? [/\b(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\s+(?:of|for|ka|ki|ke)?\s*(.+)$/iu]
+    : [/\b(.+?)\s+(?:ka|ki|ke)\s+(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\b.*$/iu];
   for (const pattern of patterns) {
     const query = pattern.exec(withoutAction)?.[1]
       ?.replace(/\s+(?:ka|ki|ke)\s+(?:pdf|document|file)\s*$/iu, '')
@@ -469,7 +483,9 @@ const extractVehicleIdentityQuery = (message: string): string | null => {
   for (const pattern of patterns) {
     const match = pattern.exec(message);
     const query = match?.[1]?.trim().replace(/^(?:vehicle|gaadi|gadi)\s+/u, '').trim();
-    if (query && !/^(?:the|a|an|this|that)$/u.test(query)) return query.slice(0, 100);
+    if (query && !/^(?:the|a|an|this|that|ki\s+|ka\s+|ke\s+|photo|photos|image|images|pic|pics|meter|reading|dashboard|dikhao|batao|btao)$/iu.test(query)) {
+      return query.slice(0, 100);
+    }
   }
   return null;
 };
@@ -512,8 +528,55 @@ const extractChassisNumber = (message: string): string | null => {
   return /^(?:ka|ke|ki|batao|btao|show|details?|detail|number|no)$/iu.test(candidate) ? null : candidate;
 };
 
+const extractTasksSubject = (message: string): string | null => {
+  const normalized = message.trim();
+  const m = /^([A-Za-z0-9\s]{3,40})\s+(?:ke|ki|ka)\s+(?:compliance|transfer|rto\s+transfer|rto|tasks?|milestones?)/iu.exec(normalized);
+  if (m?.[1]) {
+    const candidate = m[1].trim();
+    if (!/^(?:tasks?|rto|compliance|vehicle|gaadi|gadi|desk|hamare|hamari|platform|yahan|total|saare|sare|all)$/iu.test(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+};
+
+const extractSoldParty = (message: string): string | null => {
+  const normalized = message.trim();
+  if (/\b(?:how\s+many|kitne|kitni|kitna|count|total|summary|trend|statistics|stats)\b/iu.test(message) && !/\b(?:ko|se)\s+(?:bechi|beche|biki|bika|bik|sold|sale)\b/iu.test(message)) {
+    return null;
+  }
+  const pattern1 = /^(.+?)\s+(?:ko|se|wali|wala)?\s*(?:bechi|beche|biki|bika|bik|sold|sale)\s+(?:gayi|gaye|gaya|hui|hue|vehicle|machine|gaadi|gadi|deal)/iu;
+  const m1 = pattern1.exec(normalized);
+  if (m1?.[1]) {
+    const party = m1[1]!.trim().replace(/^(?:hume|humko|mujhe|please|plz)\s+/iu, '');
+    if (party.length >= 2 && !/^(?:vehicle|gaadi|gadi|machine|deal|how\s+many|how|what|which|who|whom|kitne|kitni|kitna|kaun|kisko|kise)$/iu.test(party)) return party;
+  }
+  const pattern2 = /(?:bechi|beche|biki|bika|bik|sold|sale)\s+(?:gayi|gaye|gaya|hui|hue|vehicle|machine|gaadi|gadi|deal)(?:\s+(?:to|ko|for))?\s+([A-Za-z0-9\s]{2,40})/iu;
+  const m2 = pattern2.exec(normalized);
+  if (m2?.[1]) {
+    const party = m2[1]!.trim();
+    if (party.length >= 2 && !/^(?:vehicle|gaadi|gadi|machine|deal|how\s+many|how|what|which|who|whom|kitne|kitni|kitna|kaun|kisko|kise)$/iu.test(party)) return party;
+  }
+  return null;
+};
+
+const VEHICLE_BRAND_MODEL_PATTERN = /\b(?:jcb|caterpillar|cat|hitachi|komatsu|tata|hyundai|sany|kobelco|escorts|kubota|volvo|bobcat|mahindra|backhoe|loader|excavator|compactor|crane|tipper|dumper|tractor|3dx|424b|424|ex200|pc200|210)\b/iu;
+
+const extractVehicleSubject = (message: string): string | null => {
+  const normalized = message.trim();
+  const pattern = /^(.+?)(?:\s+(?:wali|wala|wale|waali))?(?:\s+(?:gaadi|gadi|machine|vehicle|equipment))?\s+(?:ki|ke|ka|ko|me|mein|se)\s+(?:(?:vehicle|gaadi|gadi)\s+)?(?:meter|reading|photo|photos|image|images|pic|pics|dashboard|status|owner|malik|rto|validity|details?|jankari|pura|poora|sab|bina|invoice|bill|receipt|margin|profit|saare|sare|all|kagaz|kaagaz|paper|papers|document|documents|docs?|dossier|checklist|zip|pdf|deed|aadhaar|pan|gst|kyc|kaun|kya)/iu;
+  const match = pattern.exec(normalized);
+  if (!match?.[1]) return null;
+  const subject = match[1]!.trim().replace(/^(?:hume|humko|mujhe|please|plz)\s+/iu, '');
+  if (/^(?:vehicle|gaadi|gadi|machine|equipment|total|all|sab|kisi|partners?|dealers?|leads?|users?|show|more)$/iu.test(subject)) return null;
+  const isVehicle = VEHICLE_BRAND_MODEL_PATTERN.test(subject) || /\b(?:wali|wala|wale|waali)\s+(?:gaadi|gadi|machine|vehicle|equipment)\b/iu.test(normalized);
+  return isVehicle && subject.length >= 2 ? subject : null;
+};
+
 const extractSoldVehicleSearchRequest = (message: string, pageContext: FinancePageContext): Record<string, unknown> | null => {
-  const soldContext = pageContext.moduleKey === 'sold-vehicles' || /\b(?:sold\s+vehicle|sold\s+vehicles|sold\s+deal|sell\s+account|sale\s+account|deal)\b/iu.test(message);
+  const soldContext = pageContext.moduleKey === 'sold-vehicles'
+    || /\b(?:sold\s+vehicles?|sold\s+deals?|sell\s+accounts?|sale\s+accounts?|deal)\b/iu.test(message)
+    || /\b(?:bech[aie]\s+(?:gayi|gaye|gaya)|bik[ie]\s+(?:gayi|gaye|gaya|hui|hue)|bikri)\b/iu.test(message);
   if (!soldContext) return null;
   const registration = extractRegistrationNumber(message);
   if (registration) return { vehicleNumber: registration };
@@ -523,6 +586,23 @@ const extractSoldVehicleSearchRequest = (message: string, pageContext: FinancePa
   if (invoiceNumber) return { invoiceNumber: invoiceNumber.toUpperCase() };
   const listingId = extractUuid(message);
   if (listingId && /\blisting\b/iu.test(message)) return { listingId };
+  const party = extractSoldParty(message);
+  if (party) return { query: party };
+  return null;
+};
+
+const extractRtoWorkDossierRequest = (message: string, pageContext: FinancePageContext): Record<string, unknown> | null => {
+  const rtoContext = pageContext.moduleKey === 'rto-work'
+    || /\brto\b/iu.test(message);
+  if (!rtoContext) return null;
+  const registration = extractRegistrationNumber(message);
+  if (registration) return { vehicleNumber: registration };
+  const chassisNumber = extractChassisNumber(message);
+  if (chassisNumber) return { chassisNumber: chassisNumber.toUpperCase() };
+  const invoiceNumber = extractInvoiceNumber(message);
+  if (invoiceNumber) return { invoiceNumber: invoiceNumber.toUpperCase() };
+  const recordNumber = extractSoldVehicleDetailRequest(message)?.recordNumber;
+  if (recordNumber) return { recordNumber };
   return null;
 };
 
@@ -533,10 +613,96 @@ const extractPartnerIdentifier = (message: string): { partnerId?: string; partne
   return UUID_PATTERN.test(value) ? { partnerId: value } : { partnerCode: value };
 };
 
+const extractPartnerSubject = (message: string): string | null => {
+  const directId = extractPartnerIdentifier(message);
+  if (directId?.partnerCode) return directId.partnerCode;
+  if (directId?.partnerId) return directId.partnerId;
+
+  const codeMatch = /\b((?:JCB-)?PAR-[A-Z0-9_-]+)\b/iu.exec(message);
+  if (codeMatch?.[1]) return codeMatch[1].trim();
+
+  const uuidMatch = extractUuid(message);
+  if (uuidMatch) return uuidMatch;
+  const suffixMatch = message.match(/\b([0-9a-f]{8}-[0-9a-f]{4})\b/i);
+  if (suffixMatch?.[1]) return suffixMatch[1].trim();
+
+  // Devanagari pattern: "<Name> का/की/के सत्यापन/विवरण/केवाईसी"
+  const mHindi = /([A-Za-z0-9\s]{2,40}?)\s*(?:का|की|के|को)?\s*(?:सत्यापन|विवरण|केवाईसी)/u.exec(message);
+  if (mHindi?.[1]) {
+    const candidate = mHindi[1].trim().replace(/\b(?:show|tell|batao|dikhao)\b/giu, '').trim();
+    if (candidate.length >= 2 && !/\b(?:partner|dealer|queue|pending|all|pan|gst|aadhaar|aadhar)\b/iu.test(candidate) && !/आधार|पैन|जीएसटी/u.test(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Check on normalized message so typos like verfication, dossir are already corrected
+  const norm = normalizeMessage(message);
+  const mEng = /([A-Za-z0-9\s]{2,40}?)\s+(?:ka|ki|ke|ko)?\s*(?:kyc|verification|verifications|verify|dossier|documents?|docs?|gst|pan|aadhaar|changes\s+requested|sudhar|review|status)\b/iu.exec(norm);
+  if (mEng?.[1]) {
+    const candidate = mEng[1].trim().replace(/\b(?:show|tell|check|verify|give|find|kripya|please|batao|btao|dikhao|karo)\b/giu, '').trim();
+    if (candidate.length >= 2 && !/\b(?:rc|rto|vehicle|vehicles|gaadi|machine|listing|listings|inventory|deal|deals|invoice|payment|crm|lead|leads|task|tasks|compliance|partner|dealer|showroom|broker|queue|all|pending|kitne|total|full|today|summary|software|pan|gst|aadhaar|aadhar)\b/iu.test(candidate) && !/आधार|पैन|जीएसटी/u.test(candidate)) {
+      const rawMatch = new RegExp(`\\b${candidate}\\b`, 'iu').exec(message);
+      return rawMatch ? rawMatch[0] : candidate;
+    }
+  }
+
+  // "(?:for|of) <Name>"
+  const mFor = /\b(?:for|of|partner|dealer)\s+([A-Za-z0-9\s]{2,40})/iu.exec(norm);
+  if (mFor?.[1]) {
+    const candidate = mFor[1].trim().replace(/\b(?:the|a|an)\b/giu, '').trim();
+    if (candidate.length >= 2 && !/\b(?:rc|rto|vehicle|vehicles|gaadi|machine|listing|listings|inventory|deal|deals|invoice|payment|crm|lead|leads|task|tasks|compliance|queue|all|pending|kitne|total|full|today|verification|dossier|summary|software|pan|gst|aadhaar|aadhar)\b/iu.test(candidate) && !/आधार|पैन|जीएसटी/u.test(candidate)) {
+      const rawMatch = new RegExp(`\\b${candidate}\\b`, 'iu').exec(message);
+      return rawMatch ? rawMatch[0] : candidate;
+    }
+  }
+
+  return null;
+};
+
+const isPartnerVerificationIntent = (normalized: string, message: string): boolean => {
+  const hasRegNo = Boolean(extractRegistrationNumber(message));
+  if (hasRegNo) return false;
+
+  if (hasAny(normalized, [
+    /\b(?:vehicle\s+docs?|vehicle\s+documents?|gaadi\s+ke\s+papers?|gaadi\s+ke\s+kagaz)\b/u,
+    /\b(?:rto|challan|chassis|engine|rc)\b/u,
+    /\bcopilot\b/u,
+    /\breview\s+(?:pending\s+)?kyc\s+for\s+partner\s+code\b/u,
+  ]) || (/\bpending\s+kyc\b/u.test(normalized) && hasAny(normalized, [/\bchecklist\b/u, /\bmissing\b/u, /\bmismatch\b/u, /\bexpired\b/u, /\brecommendation\b/u, /\breview\b/u]))) {
+    return false;
+  }
+
+  // Pure Identity checks without partner context belong to verification.summary / identity hub
+  const hasPartnerSubject = Boolean(extractPartnerSubject(message));
+  const hasPartnerMention = /\b(?:partner|dealer|showroom|broker|onboarding)\b/u.test(normalized);
+  if (!hasPartnerSubject && !hasPartnerMention && (hasAny(normalized, [/\b(?:pan|aadhaar|aadhar|driving\s+license|dl)\b/u]) || /आधार|पैन|जीएसटी/u.test(message))) {
+    return false;
+  }
+
+  return hasAny(normalized, [
+    /\b(?:partner\s+verifications?|verifications?\s+queue|kyc\s+queue|partner\s+queue)\b/u,
+    /\b(?:partner\s+kyc|partner\s+dossier|partner\s+onboarding\s+kyc)\b/u,
+    /\b(?:changes\s+requested|sudhar\s+chahiye|reviewer\s+comments?)\b/u,
+    /\b(?:sabse\s+purana\s+pending|aaj\s+kitne\s+(?:submission|cases?)|showroom\s+verification|broker\s+verification)\b/u,
+    /पार्टनर\s+सत्यापन/u,
+    /सत्यापन\s+कतार/u,
+    /केवाईसी\s+कतार/u,
+  ]) || (
+    hasAny(normalized, [/\bverifications?\b/u, /\bverfy\b/u, /\bverifiy\b/u, /सत्यापन/u])
+    && hasAny(normalized, [/\b(queue|pending|desk|list|show|batao|btao|dikhao|kitne|cases?|partner|dealer)\b/u, /कतार|लंबित/u])
+    && !hasAny(normalized, [/\brc\b/u, /\bchallan\b/u, /\bvehicle\b/u, /\btransport\b/u, /\bidentity\s+hub\b/u, /\bsurepass\b/u])
+  ) || (
+    Boolean(extractPartnerSubject(message))
+    && hasAny(normalized, [/\b(?:kyc|verification|verifications|verfy|verifiy|documents?|docs?|gst|pan|aadhaar|dossier|review)\b/u])
+  );
+};
+
 const hasMutationIntent = (message: string) => {
-  const withoutSellAccountModule = message.replace(/\bsell\s+accounts?\b/gu, '');
-  return hasAny(withoutSellAccountModule, MUTATION_PATTERNS)
-    || SELL_MUTATION_PATTERN.test(withoutSellAccountModule);
+  const withoutDeedsOrModules = message
+    .replace(/\b(?:purchase|sale)\s+deed\b/giu, '')
+    .replace(/\bsell\s+accounts?\b/giu, '');
+  return hasAny(withoutDeedsOrModules, MUTATION_PATTERNS)
+    || SELL_MUTATION_PATTERN.test(withoutDeedsOrModules);
 };
 
 const rangeToolNames = new Set<AiReadOnlyToolName>([
@@ -587,6 +753,7 @@ const rangeToolNames = new Set<AiReadOnlyToolName>([
   'whatsapp.campaigns.summary',
   'communication.delivery.summary',
   'verification.summary',
+  'partner.verification.queue',
   'sms.activity.summary',
   'notifications.summary',
 ]);
@@ -672,14 +839,14 @@ const followUpRequestFor = (
   const previousArguments = previousArgumentsFor(context, previousRequest);
   const continuation = hasAny(normalized, [
     /^\s*(and|also|aur|or|plus)\b/u,
-    /\b(iska|iske|uska|uske|this|that|same|more|again|bhi|it|its|ye|yeh|woh|vo|owner|malik|status|details?|number|engine|chassis|rc)\b/u,
+    /\b(iska|iske|uska|uske|this|that|same|more|again|bhi|it|its|ye|yeh|woh|vo|module|modul|owner|malik|status|details?|number|engine|chassis|rc|photo|photos|image|images|video|meter|dashboard|invoice|bill|receipt|challan|margin|profit|tax|fitness|insurance|zip|pdf|dossier|checklist|pending|missing|na|aadhaar|aadhar|pan|gst|deed|kyc|papers?|kagaz|documents?|docs?)\b/u,
   ]) || Boolean(rangeArguments(normalized).days);
   if (!continuation) return null;
 
   if (previousTool === 'listing.detail' || previousTool === 'vehicle.identity') {
     const inheritedQuery = typeof previousArguments.query === 'string' ? previousArguments.query : undefined;
     const inheritedListingId = typeof previousArguments.listingId === 'string' ? previousArguments.listingId : undefined;
-    if (previousTool === 'listing.detail' && /\b(invoice|bill|receipt)\b/u.test(normalized)) {
+    if (previousTool === 'listing.detail' && /\b(invoice|bill|receipt|challan|photo|photos|image|images|video|meter|dashboard|margin|profit|tax|fitness|insurance|rc|rto)\b/u.test(normalized)) {
       return {
         name: 'listing.detail',
         arguments: inheritedListingId ? { listingId: inheritedListingId } : inheritedQuery ? { query: inheritedQuery } : {},
@@ -702,7 +869,9 @@ const followUpRequestFor = (
   if ((previousTool === 'sold.vehicle.detail'
     || previousTool === 'sell.accounts.summary'
     || previousTool === 'sold.vehicles'
-    || previousTool === 'sold.vehicle.search') && continuation) {
+    || previousTool === 'sold.vehicle.search'
+    || previousTool === 'vehicle.documents.detail'
+    || previousTool === 'vehicle.documents.summary') && continuation) {
     return { name: previousTool, arguments: { ...previousArguments } };
   }
 
@@ -753,7 +922,9 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
     /\b(create|add|delete|remove|update|edit|approve|reject|assign|send|buy)\b/u,
     /\b(banao|bnao|hatao|bhejo|badlo|becho|kharido)\b/u,
   ]);
-  if (hasAny(normalized, MUTATION_PATTERNS) && (!financePageKey || explicitFinanceMutation)) return null;
+  const isDeedOrDocRead = /\b(?:deed|kagaz|kaagaz|papers?|documents?|docs?|zip|pdf)\b/u.test(normalized)
+    && !explicitFinanceMutation;
+  if (hasAny(normalized, MUTATION_PATTERNS) && !isDeedOrDocRead && (!financePageKey || explicitFinanceMutation)) return null;
 
   const soldVehicleAnalytics = soldVehicleAnalyticsRequest(message, normalized);
   if (soldVehicleAnalytics && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
@@ -782,8 +953,12 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
   if (financePageKey && financePageReadQuestion && !explicitFinanceMutation && !legacyAccountingSummary) {
     return { name: 'finance.hub.page', arguments: { pageKey: financePageKey, ...rangeArguments(normalized) } };
   }
+  const isComplianceOrDocsRequest = hasAny(normalized, [
+    /\b(?:compliance\s+(?:tasks?|tsks?)|transfer\s+(?:tasks?|tsks?)|milestones?|tasks?\s+desk)\b/u,
+    /\b(?:deed|kagaz|kaagaz|papers?|documents?|docs?|all\s+docs|zip|pdf\s+dossier)\b/u,
+  ]);
   const exactSoldVehicle = extractSoldVehicleDetailRequest(message);
-  if (exactSoldVehicle && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
+  if (exactSoldVehicle && !isComplianceOrDocsRequest && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
     return { name: 'sold.vehicle.detail', arguments: exactSoldVehicle };
   }
   const soldVehicleSearch = extractSoldVehicleSearchRequest(message, pageContext);
@@ -797,7 +972,38 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
   if (pageContext.moduleKey === 'sold-vehicles' && financePageReadQuestion && !explicitFinanceMutation) {
     return { name: 'sell.accounts.summary', arguments: { ...rangeArguments(normalized), allRecords: true } };
   }
-  if (hasAny(normalized, MUTATION_PATTERNS)) return null;
+  if (pageContext.moduleKey === 'vehicle-docs' && pageContext.recordId && !explicitFinanceMutation) {
+    return { name: 'vehicle.documents.detail', arguments: { query: pageContext.recordId } };
+  }
+  if (pageContext.moduleKey === 'vehicle-docs' && !explicitFinanceMutation) {
+    const requestedNumber = extractRegistrationNumber(message) || extractVehicleSubject(message);
+    if (requestedNumber) {
+      return { name: 'vehicle.documents.detail', arguments: { query: requestedNumber } };
+    }
+    return { name: 'vehicle.documents.summary', arguments: {} };
+  }
+  if (pageContext.moduleKey === 'tasks' && !explicitFinanceMutation) {
+    const requestedTarget = extractRegistrationNumber(message) || extractVehicleSubject(message) || extractSoldParty(message) || pageContext.recordId;
+    if (requestedTarget) {
+      return { name: 'tasks.compliance.detail', arguments: { query: requestedTarget } };
+    }
+    return { name: 'tasks.compliance.overview', arguments: {} };
+  }
+  if (pageContext.moduleKey === 'verification-detail' && !explicitFinanceMutation) {
+    const target = extractPartnerSubject(message) || pageContext.recordId;
+    if (target) {
+      return { name: 'partner.verification.dossier', arguments: { query: target, partnerId: pageContext.recordId } };
+    }
+    return { name: 'partner.verification.dossier', arguments: { partnerId: pageContext.recordId } };
+  }
+  if (pageContext.moduleKey === 'verifications' && !explicitFinanceMutation) {
+    const requestedTarget = extractPartnerSubject(message);
+    if (requestedTarget && !/\b(?:queue|list|all|pending)\b/iu.test(requestedTarget)) {
+      return { name: 'partner.verification.dossier', arguments: { query: requestedTarget } };
+    }
+    return { name: 'partner.verification.queue', arguments: {} };
+  }
+  if (hasAny(normalized, MUTATION_PATTERNS) && !isDeedOrDocRead) return null;
   if (hasMutationIntent(normalized)) return null;
 
   const administrationPageKey = administrationPageKeyFor(message, pageContext);
@@ -830,7 +1036,7 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
   }
   const sellAccountReadQuery = /\b(?:sell\s+accounts?|sale\s+accounts?|commercial\s+accounts?)\b/u.test(normalized)
     && hasAny(normalized, [/\b(summary|status|list|details?|count|total|report|batao|btao|dikhao)\b/u]);
-  if (hasAny(normalized, MUTATION_PATTERNS) && !sellAccountReadQuery) return null;
+  if (hasAny(normalized, MUTATION_PATTERNS) && !sellAccountReadQuery && !isDeedOrDocRead) return null;
 
   if (hasAny(normalized, [
     /\b(?:overall|complete|full|whole|entire|all|poora|pura|poore|sampurn)\b/u,
@@ -881,15 +1087,15 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
   }
 
   if (/\bcrm\s+(?:dashboard|home|overview)\b/u.test(normalized)
-    && hasAny(normalized, [ /\b(summary|status|report|data|batao|btao|dikhao|complete|full)\b/u ])) {
+    && hasAny(normalized, [/\b(summary|status|report|data|batao|btao|dikhao|complete|full)\b/u])) {
     return { name: 'crm.dashboard.summary', arguments: rangeArguments(normalized) };
   }
   if (/\bcrm\s+(?:campaign|campaigns|segment|segments)\b/u.test(normalized)
-    && hasAny(normalized, [ /\b(summary|status|stat|report|list|data|batao|btao|dikhao)\b/u ])) {
+    && hasAny(normalized, [/\b(summary|status|stat|report|list|data|batao|btao|dikhao)\b/u])) {
     return rangeTool('crm.campaigns.summary', normalized);
   }
   if (/\bcrm\s+import(?:\s+history)?\b/u.test(normalized)
-    && hasAny(normalized, [ /\b(summary|status|report|list|history|histroy|record|data|batao|btao|dikhao)\b/u ])) {
+    && hasAny(normalized, [/\b(summary|status|report|list|history|histroy|record|data|batao|btao|dikhao)\b/u])) {
     return { name: 'crm.import.summary', arguments: {} };
   }
 
@@ -903,9 +1109,113 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
   const invoiceNumber = extractInvoiceNumber(message);
   const partnerIdentifier = extractPartnerIdentifier(message);
   const registrationNumber = extractRegistrationNumber(message);
+  const chassisNumber = extractChassisNumber(message);
+  const vehicleSubject = extractVehicleSubject(message);
   const entityLookupIntent = hasAny(normalized, [
     /\b(details?|information|info|status|show|tell|give|what|which|number|owner|malik|verification|batao|btao|dikhao)\b/u,
   ]);
+  const vehicleRichQuery = registrationNumber || chassisNumber;
+  if (listingId && /\blisting\b/iu.test(message)) {
+    return { name: 'listing.detail', arguments: { listingId } };
+  }
+  const isVehicleMediaOrDocumentOrCommercialIntent = hasAny(normalized, [
+    /\b(photo|photos|image|images|pic|pics|picture|pictures|video|videos|dashboard|meter|reading)\b/u,
+    /\b(invoice|bill|receipt|receipts|challan|delivery\s+challan|bill\s+of\s+supply)\b/u,
+    /\b(margin|profit|deal|pricing|expense|expenses|kharcha|kharch|kharid|bikri|net\s+profit)\b/u,
+    /\b(listing|spec|specs|specification|specifications|full\s+details?|puri\s+jankari|sab\s+kuch)\b/u,
+  ]);
+
+  if (hasAny(normalized, [/\brto\b/u, /आरटीओ/u])
+    && hasAny(normalized, [/\b(pending|backlog|लंबित|pendng)\b/u])
+    && hasAny(normalized, [/\b(task|tasks|कार्य|tsk)\b/u])
+    && !extractRegistrationNumber(message)) {
+    return { name: 'rto.pending.tasks', arguments: {} };
+  }
+
+  const isTasksComplianceIntent = (
+    hasAny(normalized, [
+      /\b(?:transfer\s+(?:tasks?|tsks?)|compliance\s+(?:tasks?|tsks?)|complianc\s+(?:tasks?|tsks?)|complance\s+(?:tasks?|tsks?)|tasks?\s+desk|tsks?\s+desk|rto\s+transfer\s+(?:tasks?|tsks?)|milestones?)\b/u,
+      /\b(?:fitness\s+certificate|road\s+tax|hsrp\s+plate|noc\s+clearance|hypothecation\s+clearance|rc\s+transfer\s+task|puc\s+certificate)\b/u,
+      /\b(?:dsa\s+(?:is\s+)?working|dsa\s+remark|task\s+remark|compliance\s+remark)\b/u,
+      /अनुपालन\s+कार्यों/u,
+      /कार्यों\s+का\s+विवरण/u,
+      /\b(?:tasks?|tsks?)\s+(?:ka|ki|ke)?\s*विवरण/u,
+      /\bcomplianc(?:e)?\b/u,
+    ])
+    || (
+      Boolean(extractRegistrationNumber(message))
+      && !hasAny(normalized, [/\brto\b/u, /आरटीओ/u])
+      && hasAny(normalized, [/\b(?:tasks?|tsks?)\b/u, /कार्य|कार्यों/u])
+    )
+  );
+  if (isTasksComplianceIntent && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
+    const target = extractRegistrationNumber(message) || extractVehicleSubject(message) || extractTasksSubject(message) || extractSoldParty(message) || extractSoldVehicleDetailRequest(message)?.recordNumber;
+    if (target) {
+      return { name: 'tasks.compliance.detail', arguments: { query: target } };
+    }
+    return { name: 'tasks.compliance.overview', arguments: {} };
+  }
+
+  if (isPartnerVerificationIntent(normalized, message) && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
+    const isQueueExplicit = hasAny(normalized, [
+      /\b(?:queue|katar|line|desk|all|pending\s+cases?|pending\s+list|kitne|kitni)\b/u,
+      /कतार|लंबित\s+मामले|कितने/u,
+    ]) || /\b(?:sabse\s+purana\s+pending|aaj\s+kitne\s+submission|showroom\s+verification\s+pending|broker\s+verification\s+pending)\b/u.test(normalized);
+
+    const hasDirectCode = Boolean(extractPartnerIdentifier(message) || /\b(?:JCB-)?PAR-[A-Z0-9_-]+\b/iu.test(message));
+
+    if (isQueueExplicit && !hasDirectCode) {
+      return { name: 'partner.verification.queue', arguments: {} };
+    }
+
+    const target = extractPartnerSubject(message);
+    if (target && !/\b(?:queue|list|all|pending\s+cases?|kitne|overview|dikhao|batao)\b/iu.test(target)) {
+      return { name: 'partner.verification.dossier', arguments: { query: target } };
+    }
+    return { name: 'partner.verification.queue', arguments: {} };
+  }
+
+  const rtoWorkDossier = extractRtoWorkDossierRequest(message, pageContext);
+  const rtoDossierIntent = hasAny(normalized, [
+    /\b(?:status|details?|information|info|history|task|tasks|compliance|owner|seller|buyer|purchaser|expense|expenses|fee|fees|payment|record|case|dossier|agent|office|blocker|blockers)\b/iu,
+  ]) && !hasAny(normalized, [
+    /\b(?:download|upload|pdf|file|files)\b/iu,
+  ]);
+  if (rtoWorkDossier && rtoDossierIntent) {
+    return { name: 'rto.work.detail', arguments: rtoWorkDossier };
+  }
+  if (vehicleRichQuery && isVehicleMediaOrDocumentOrCommercialIntent) {
+    return { name: 'listing.detail', arguments: { query: vehicleRichQuery } };
+  }
+  if (chassisNumber && entityLookupIntent) {
+    return { name: 'listing.detail', arguments: { query: chassisNumber } };
+  }
+  const vehicleDocumentSignals = hasAny(normalized, [
+    /\b(?:paper|papers|document|documents|docs?|kagaz|kaagaz|dossier|checklist)\b/u,
+    /\b(?:zip|zip\s+file|all\s+docs?\s+zip|details\s+pdf|vehicle\s+details?\s+pdf|dossier\s+pdf)\b/u,
+    /\b(?:deed|sale\s+deed|purchase\s+deed)\b/u,
+    /\b(?:seller|buyer)\s*(?:ka|ki|ke)?\s*(?:aadhaar|aadhar|pan|gst|kyc|deed)\b/u,
+    /\b(?:aadhaar|aadhar|pan|gst|kyc)\b/u,
+    /\b(?:missing|pending|na)\s*(?:doc(?:ument)?s?|papers?|files?)?\b/u,
+  ]) && (
+      hasAny(normalized, [
+        /\b(?:pending|status|details?|information|info|what|which|batao|btao|dikhao|do|de|download|link|list|kaun|kya|missing|na|available|uploaded|hai|hain)\b/u,
+      ])
+      || /\b(?:zip|pdf|checklist|dossier|deed|kyc)\b/u.test(normalized)
+    ) && !/\b(?:vehicle\s+docs?\s+download|rto\s+document(?:\s+pdf)?\s+dikhao)\b/iu.test(normalized);
+  if ((registrationNumber || vehicleSubject) && vehicleDocumentSignals) {
+    return { name: 'vehicle.documents.detail', arguments: { query: registrationNumber || vehicleSubject } };
+  }
+  const isGeneralVehicleDocsIntent = hasAny(normalized, [
+    /\b(?:vehicle|gaadi|gadi)\s+(?:docs?|documents?|dossier|kagaz|kaagaz|papers?)\b/u,
+    /\b(?:saare|sare|all)\s+(?:(?:vehicle|gaadi|gadi)\s+)?(?:docs?|documents?|dossier|kagaz|kaagaz|papers?)\b/u,
+    /\bgaadi\s+ke\s+(?:kagaz|kaagaz|documents?|papers?)\b/u,
+  ]) && hasAny(normalized, [
+    /\b(?:summary|status|list|overview|kitne|kitna|kitni|total|count|pending|batao|btao|dikhao|kya|show|all|real\s*time|current|live|module)\b/u,
+  ]);
+  if (isGeneralVehicleDocsIntent && !hasAny(normalized, MUTATION_PATTERNS) && !hasMutationIntent(normalized)) {
+    return { name: 'vehicle.documents.summary', arguments: {} };
+  }
   const storedFileRequest = hasAny(normalized, [
     /\b(?:resume|cv|invoice|bill|aadhaar|aadhar|pan|gst|rto|insurance|fitness|puc|hsrp|offer(?:\s+letter)?|vehicle\s+docs?|verification\s+templates?|document|pdf|file)\b/u,
   ]) && hasAny(normalized, [
@@ -922,7 +1232,7 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
     /\b(?:summary|status|count|total|report|statistics|stats|history|trend|readiness)\b/u.test(normalized)
     && !/\b(?:pdf|file|document)\b/u.test(normalized)
     && !/\b(?:download|open|view|send|bhejo|nikal|nikaal)\b/u.test(normalized)
-  );
+  ) && !/\b(?:saare|sare|all\s+docs|zip|dossier|checklist|deed|pending|missing|na)\b/u.test(normalized);
   if (storedFileRequest) {
     const query = extractDocumentSearchQuery(message);
     if (query) return { name: 'ai.documents.search', arguments: { query, kind: documentKindFor(message), limit: 10 } };
@@ -936,6 +1246,9 @@ export const routeAiMessage = (message: string, pageContext: FinancePageContext 
   }
   if (invoiceNumber && (entityLookupIntent || /\b(?:invoice|bill)\b/u.test(normalized))) {
     return { name: 'listing.detail', arguments: { invoiceNumber } };
+  }
+  if (vehicleSubject && (isVehicleMediaOrDocumentOrCommercialIntent || hasAny(normalized, [/\b(owner|malik|status|rto|validity|details?|info)\b/u]))) {
+    return { name: 'listing.detail', arguments: { query: vehicleSubject } };
   }
   const customerDetailQuery = extractCustomerDetailQuery(normalized);
   if (customerSignals.test(normalized) && listingId && entityLookupIntent) {
@@ -1430,12 +1743,23 @@ export const resolveAiMessage = (
   context: readonly AiIntentContextMessage[] = [],
   pageContext: FinancePageContext = {},
 ): AiIntentResolution => {
-  const contextualFollowUp = followUpRequestFor(message, context);
+  const hasExplicitVehicleIdentifier = Boolean(
+    extractRegistrationNumber(message) || extractChassisNumber(message)
+  );
+  const contextualFollowUp = !hasExplicitVehicleIdentifier ? followUpRequestFor(message, context) : null;
   const normalized = normalizeMessage(message);
-  const shouldPreferContext = Boolean(contextualFollowUp) && hasAny(normalized, [
+  const shouldPreferContext = Boolean(contextualFollowUp) && (hasAny(normalized, [
     /^\s*(?:and|also|aur|or|plus)\b/u,
     /\b(?:iska|iske|uska|uske|this|that|same|again|bhi|it|its|ye|yeh|woh|vo)\b/u,
-  ]);
+  ]) || (
+      contextualFollowUp?.name === 'listing.detail' && hasAny(normalized, [
+        /\b(?:photo|photos|image|images|pic|pics|picture|pictures|video|videos|dashboard|meter|reading|invoice|bill|receipt|challan|margin|profit|pricing|tax|fitness|insurance|rc|rto|engine|chassis|owner|malik)\b/u,
+      ])
+    ) || (
+      contextualFollowUp?.name === 'vehicle.documents.detail' && hasAny(normalized, [
+        /\b(?:doc|docs|document|documents|kagaz|kaagaz|paper|papers|dossier|checklist|pending|missing|na|zip|pdf|aadhaar|aadhar|pan|gst|deed|sale\s+deed|purchase\s+deed|challan|receipt|invoice|bill|rto|noc|buyer|seller)\b/u,
+      ])
+    ));
   if (shouldPreferContext && contextualFollowUp) return { kind: 'tool', request: contextualFollowUp };
   const request = routeAiMessage(message, pageContext);
   if (request) return { kind: 'tool', request };

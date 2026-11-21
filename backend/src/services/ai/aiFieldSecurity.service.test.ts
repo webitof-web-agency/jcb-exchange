@@ -62,6 +62,23 @@ test('keeps authorized business details in the portal while always hiding creden
   assert.equal(data.listingId, 'listing-123');
 });
 
+test('never exposes document locators even for the authorized operational presentation', () => {
+  const result = presentAiToolDataForOperator({
+    fileUrl: '/api/documents/secure/drive-private-file',
+    documentUrl: 'https://drive.google.com/uc?id=private-file',
+    ownerName: 'Ramesh Kumar',
+    mobileNumber: '9876543210',
+  }, { role: 'EMPLOYEE', permissions: ['accounts.rto.read'] }, { allowOperationalPii: true });
+  const data = result.data as Record<string, unknown>;
+
+  assert.equal(data.fileUrl, '[REDACTED_DOCUMENT_URL]');
+  assert.equal(data.documentUrl, '[REDACTED_DOCUMENT_URL]');
+  assert.equal(data.ownerName, 'Ramesh Kumar');
+  assert.equal(data.mobileNumber, '9876543210');
+  assert.ok(result.maskedFields.includes('fileUrl'));
+  assert.ok(result.maskedFields.includes('documentUrl'));
+});
+
 test('security audit payload contains metadata only and no sensitive values', () => {
   const payload = buildAiSecurityAuditPayload({
     action: 'AI_SENSITIVE_DATA_MASKED',

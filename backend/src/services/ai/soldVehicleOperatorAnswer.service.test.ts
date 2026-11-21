@@ -118,3 +118,46 @@ test('answers contact numbers and vehicle number from detail projection', () => 
   });
   assert.equal(vehNum, 'Vehicle registration number: CG11BN7867');
 });
+
+test('formats an RTO dossier as readable operational text without stored file URLs', () => {
+  const answer = buildSoldVehicleOperatorAnswer({
+    message: 'RTO status batao',
+    toolName: 'rto.work.detail',
+    operatorData: {
+      found: true,
+      rto: { office: 'Raipur RTO', status: 'RTO_WORK_IN_PROGRESS', expenses: { total: 5000, advance: 2000, balance: 3000 } },
+      vehicle: { registrationNumber: 'CG04NX2753', chassisNumber: 'CHASSIS-1', engineNumber: 'ENGINE-1', brand: 'JCB', model: '3DX' },
+      parties: { customer: { name: 'Customer' }, seller: { name: 'Seller' }, purchaser: { name: 'Purchaser' } },
+      compliance: { tax: { status: 'VALID' }, fitness: { status: 'VALID' }, insurance: { status: 'VALID' }, puc: { status: 'VALID' } },
+      tasks: { total: 1, completed: 0, items: [{ label: 'RC Transfer', status: 'PENDING', remark: 'Need RC', id: 'task-1', documents: [] }] },
+      documents: { total: 0, availableCount: 0 },
+    },
+  });
+  assert.match(answer || '', /CG04NX2753/);
+  assert.match(answer || '', /Raipur RTO/);
+  assert.match(answer || '', /Balance due: ₹3,000/);
+  assert.doesNotMatch(answer || '', /fileUrl|https?:\/\//iu);
+});
+
+test('includes the complete RTO answer sections for an operational question', () => {
+  const answer = buildSoldVehicleOperatorAnswer({
+    message: 'RTO ka complete status batao',
+    toolName: 'rto.work.detail',
+    operatorData: {
+      found: true,
+      rto: { office: 'Raipur RTO', status: 'RTO_WORK_IN_PROGRESS', agent: { name: 'Agent One', city: 'Raipur', number: '9999999999' }, expenses: { total: 5000, advance: 2000, balance: 3000 } },
+      vehicle: { registrationNumber: 'CG04NX2753', chassisNumber: 'CHASSIS-1', engineNumber: 'ENGINE-1', brand: 'JCB', model: '3DX' },
+      parties: { customer: { name: 'Customer' }, seller: { name: 'Seller' }, purchaser: { name: 'Purchaser' } },
+      compliance: { tax: { status: 'VALID' }, fitness: { status: 'VALID' }, insurance: { status: 'VALID' }, puc: { status: 'VALID' }, hsrp: { status: 'AVAILABLE', number: 'HSRP-1' } },
+      tasks: { total: 2, completed: 1, pending: 1, items: [{ label: 'RC Transfer', status: 'COMPLETED', remark: '', id: 'task-1', documents: [] }, { label: 'NOC', status: 'PENDING', remark: 'NOC required', id: 'task-2', documents: [] }] },
+      documents: { total: 2, availableCount: 1 },
+      soldVehicle: { recordNumber: 'SA-2026-001', invoiceNumber: 'INV-001', status: 'COMPLETED', purchaseAmount: 100000, sellAmount: 125000, expenses: 5000, netProfit: 20000, paymentCount: 2, refundCount: 0 },
+      missingFields: [],
+    },
+  });
+  assert.match(answer || '', /Agent details/);
+  assert.match(answer || '', /Invoice\/finance status/);
+  assert.match(answer || '', /INV-001/);
+  assert.match(answer || '', /Next action/);
+  assert.match(answer || '', /NOC required/);
+});

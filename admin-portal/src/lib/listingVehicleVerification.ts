@@ -174,12 +174,22 @@ export const getVehicleVerificationSubmitValidationError = ({
 };
 
 const validProviderDate = (value: unknown) => {
-  const candidate = text(value).split('T')[0].trim().replace(/[/.]/g, '-');
-  const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(candidate);
-  const dmyMatch = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(candidate);
-  const year = Number(isoMatch?.[1] || dmyMatch?.[3] || 0);
-  const month = Number(isoMatch?.[2] || dmyMatch?.[2] || 0);
-  const day = Number(isoMatch?.[3] || dmyMatch?.[1] || 0);
+  const raw = text(value).split('T')[0].trim().replace(/,/g, ' ');
+  if (!raw) return '';
+  const tokens = raw.replace(/[/.]/g, '-').replace(/\s+/g, '-').split('-').filter(Boolean);
+  const months: Record<string, number> = { jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12 };
+  const numeric = (token: string) => /^\d+$/.test(token) ? Number(token) : 0;
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  if (tokens.length === 3) {
+    const monthToken = tokens[1]!.toLowerCase();
+    if (/^\d{4}$/.test(tokens[0]!) && (numeric(tokens[1]!) || months[monthToken])) {
+      year = numeric(tokens[0]!); month = numeric(tokens[1]!) || months[monthToken]!; day = numeric(tokens[2]!);
+    } else if (/^\d{4}$/.test(tokens[2]!) && (numeric(tokens[1]!) || months[monthToken])) {
+      day = numeric(tokens[0]!); month = numeric(tokens[1]!) || months[monthToken]!; year = numeric(tokens[2]!);
+    }
+  }
   if (!year || !month || !day) return '';
   const date = new Date(Date.UTC(year, month - 1, day));
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return '';
@@ -258,11 +268,11 @@ export const mapProviderVehicleToListing = (result: ProviderVehicleResult, now =
   const insuranceExpiry = dateOnly(firstText(data.insuranceUpto, data.insurance_upto, data.insuranceValidUpto, data.insurance_valid_upto, data.insuranceExpiryDate, data.insurance_expiry_date));
   const fitnessValidUntil = dateOnly(firstText(data.fitUpTo, data.fit_up_to, data.fitnessUpto, data.fitness_upto, data.fitnessValidUpto, data.fitness_valid_upto));
   const taxValidUntil = dateOnly(firstText(data.taxUpto, data.tax_upto, data.taxPaidUpto, data.tax_paid_upto, data.taxValidUpto, data.tax_valid_upto));
-  const pucValidUntil = dateOnly(firstText(data.puccUpto, data.pucc_upto, data.pucUpto, data.puc_upto, data.pucValidUpto, data.puc_valid_upto));
+  const pucValidUntil = dateOnly(firstText(data.puccUpto, data.pucc_upto, data.puccValidUpto, data.pucc_valid_upto, data.puccExpiryDate, data.pucc_expiry_date, data.puccValidUntil, data.pucc_valid_until, data.pucUpto, data.puc_upto, data.pucValidUpto, data.puc_valid_upto, data.pucExpiryDate, data.puc_expiry_date, data.pucValidUntil, data.puc_valid_until, data.pollutionUpto, data.pollution_upto, data.pollutionValidUpto, data.pollution_valid_upto, data.pollutionExpiryDate, data.pollution_expiry_date, data.pollutionValidUntil, data.pollution_valid_until));
   const taxStatusFromProvider = normalizeValidityStatus(firstText(data.taxStatus, data.tax_status, data.taxValidity, data.tax_validity));
   const fitnessStatusFromProvider = normalizeValidityStatus(firstText(data.fitnessStatus, data.fitness_status, data.fitnessValidity, data.fitness_validity));
   const insuranceStatusFromProvider = normalizeValidityStatus(firstText(data.insuranceStatus, data.insurance_status, data.insuranceValidity, data.insurance_validity));
-  const pucStatusFromProvider = normalizeValidityStatus(firstText(data.pucStatus, data.puc_status, data.pucValidity, data.puc_validity));
+  const pucStatusFromProvider = normalizeValidityStatus(firstText(data.pucStatus, data.puc_status, data.pucValidity, data.puc_validity, data.puccStatus, data.pucc_status, data.pollutionStatus, data.pollution_status, data.pollutionValidity, data.pollution_validity));
   const taxStatus = taxValidUntil ? getProviderDateStatus(taxValidUntil, now) : taxStatusFromProvider || 'NOT_AVAILABLE';
   const fitnessStatus = fitnessValidUntil ? getProviderDateStatus(fitnessValidUntil, now) : fitnessStatusFromProvider === 'LIFETIME' ? 'VALID' : fitnessStatusFromProvider || 'NOT_AVAILABLE';
   const insuranceStatus = insuranceExpiry ? getProviderDateStatus(insuranceExpiry, now) : insuranceStatusFromProvider === 'LIFETIME' ? 'VALID' : insuranceStatusFromProvider || 'NOT_AVAILABLE';

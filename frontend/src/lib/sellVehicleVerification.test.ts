@@ -130,6 +130,17 @@ test('maps provider status, HSRP and non-ISO date aliases into the matching form
   assert.equal(mapped.rtoDetails.rtoOffice, 'Raipur RTO, Chhattisgarh');
 });
 
+test('maps pollution aliases and month-name dates for PUC autofill', () => {
+  const mapped = mapProviderVehicleToListing({
+    pollution_valid_upto: '20-Jan-2038',
+    pollution_status: 'ACTIVE',
+  });
+
+  assert.equal(mapped.rtoDetails.pucStatus, 'VALID');
+  assert.equal(mapped.rtoDetails.pucValidUntil, '2038-01-20');
+  assert.equal(getProviderDateStatus('20-Jan-2038', new Date('2026-10-10T00:00:00.000Z')), 'VALID');
+});
+
 test('does not call a missing or malformed provider date valid', () => {
   assert.equal(getProviderDateStatus('', new Date('2026-10-10T00:00:00.000Z')), 'NOT_AVAILABLE');
   assert.equal(getProviderDateStatus('2026-02-30', new Date('2026-10-10T00:00:00.000Z')), 'NOT_AVAILABLE');

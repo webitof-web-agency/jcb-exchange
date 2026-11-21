@@ -166,13 +166,22 @@ const dateFromParts = (year: number, month: number, day: number) => {
 };
 
 const safeProviderDate = (value: unknown) => {
-  const date = safeText(value, 40)?.split('T')[0]?.trim().replace(/[/.]/g, '-');
-  if (!date) return null;
-  const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(date);
-  const dmyMatch = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(date);
-  const year = Number(isoMatch?.[1] || dmyMatch?.[3] || 0);
-  const month = Number(isoMatch?.[2] || dmyMatch?.[2] || 0);
-  const day = Number(isoMatch?.[3] || dmyMatch?.[1] || 0);
+  const raw = safeText(value, 40)?.split('T')[0]?.trim().replace(/,/g, ' ');
+  if (!raw) return null;
+  const tokens = raw.replace(/[/.]/g, '-').replace(/\s+/g, '-').split('-').filter(Boolean);
+  const months: Record<string, number> = { jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12 };
+  const numeric = (token: string) => /^\d+$/.test(token) ? Number(token) : 0;
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  if (tokens.length === 3) {
+    const monthToken = tokens[1]!.toLowerCase();
+    if (/^\d{4}$/.test(tokens[0]!) && (numeric(tokens[1]!) || months[monthToken])) {
+      year = numeric(tokens[0]!); month = numeric(tokens[1]!) || months[monthToken]!; day = numeric(tokens[2]!);
+    } else if (/^\d{4}$/.test(tokens[2]!) && (numeric(tokens[1]!) || months[monthToken])) {
+      day = numeric(tokens[0]!); month = numeric(tokens[1]!) || months[monthToken]!; year = numeric(tokens[2]!);
+    }
+  }
   if (!dateFromParts(year, month, day)) return null;
   return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 };
@@ -353,7 +362,7 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
     ['taxStatus', firstProviderValue(data.tax_status, data.taxStatus, data.tax_validity, data.taxValidity)],
     ['fitnessStatus', firstProviderValue(data.fitness_status, data.fitnessStatus, data.fitness_validity, data.fitnessValidity)],
     ['insuranceStatus', firstProviderValue(data.insurance_status, data.insuranceStatus, data.insurance_validity, data.insuranceValidity)],
-    ['pucStatus', firstProviderValue(data.puc_status, data.pucStatus, data.puc_validity, data.pucValidity)],
+    ['pucStatus', firstProviderValue(data.puc_status, data.pucStatus, data.puc_validity, data.pucValidity, data.pucc_status, data.puccStatus, data.pollution_status, data.pollutionStatus, data.pollution_validity, data.pollutionValidity)],
   ];
   for (const [key, rawValue] of validityStatuses) {
     const normalized = normalizeValidityStatus(rawValue);
@@ -368,7 +377,7 @@ export const normalizeRcOwnerHistoryResult = (value: unknown): RcOwnerHistoryRes
     ['latestBy', data.latest_by ?? data.latestBy],
     ['taxUpto', data.tax_upto ?? data.taxUpto],
     ['taxPaidUpto', data.tax_paid_upto ?? data.taxPaidUpto],
-    ['puccUpto', data.pucc_upto ?? data.puccUpto],
+    ['puccUpto', firstProviderValue(data.pucc_upto, data.puccUpto, data.pucc_valid_upto, data.puccValidUpto, data.pucc_expiry_date, data.puccExpiryDate, data.pucc_valid_until, data.puccValidUntil, data.puc_upto, data.pucUpto, data.puc_valid_upto, data.pucValidUpto, data.puc_expiry_date, data.pucExpiryDate, data.puc_valid_until, data.pucValidUntil, data.pollution_upto, data.pollutionUpto, data.pollution_valid_upto, data.pollutionValidUpto, data.pollution_expiry_date, data.pollutionExpiryDate, data.pollution_valid_until, data.pollutionValidUntil)],
     ['permitIssueDate', data.permit_issue_date ?? data.permitIssueDate],
     ['permitValidFrom', data.permit_valid_from ?? data.permitValidFrom],
     ['permitValidUpto', data.permit_valid_upto ?? data.permitValidUpto],

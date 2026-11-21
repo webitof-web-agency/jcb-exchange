@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { documentSearchActionLimit } from './aiReadOnlyTools.service';
 import {
   AI_READ_ONLY_TOOL_NAMES,
   AiReadOnlyToolsService,
@@ -216,6 +217,7 @@ const dependencies: AiReadOnlyToolDependencies = {
   forecastOperations: async () => ({ metric: 'sales', confidenceScore: 75 }),
   vehicleIdentity: async () => ({ found: true, matches: [] }),
   vehicleDocumentsDetail: async () => ({ found: true, items: [] }),
+  vehicleDocumentsSummary: async () => ({ found: true, items: [] }),
   rtoDocumentsSummary: async () => ({ total: 0, items: [] }),
   verificationSummary: async () => ({ periodDays: 30, total: 4, sources: [] }),
   verificationHistory: async () => ({ group: 'identity', returned: 0, items: [] }),
@@ -314,6 +316,12 @@ test('keeps file actions in the portal response and out of the provider contract
   assert.equal(result.uiActions?.[0]?.url, '/api/documents/secure/drive-private-file-123');
   assert.equal(JSON.stringify(result.contract).includes('/api/documents/secure/drive-private-file-123'), false);
   assert.equal(JSON.stringify(result.contract).includes('uiActions'), false);
+});
+
+test('keeps vehicle aggregate PDF/ZIP actions without truncating the requested file actions', () => {
+  assert.equal(documentSearchActionLimit('vehicle', 10, 2), 12);
+  assert.equal(documentSearchActionLimit('rto', 10, 0), 10);
+  assert.equal(documentSearchActionLimit('all', 10, 2), 10);
 });
 
 test('accepts authorized RTO proofs and offer letters as retrievable document kinds', async () => {

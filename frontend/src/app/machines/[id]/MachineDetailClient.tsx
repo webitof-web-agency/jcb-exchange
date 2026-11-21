@@ -16,7 +16,6 @@ import {
   Cpu,
   FileText,
   Fuel,
-  GitBranch,
   Globe,
   HelpCircle,
   MapPin,
@@ -157,7 +156,6 @@ const getDialNumber = (phoneNumber?: string | null) => {
 };
 
 type ParsedListingDetails = {
-  variant: string;
   registrationDate: string;
   registrationUpto: string;
   registrationYear: string;
@@ -201,7 +199,6 @@ const maskName = (name: string) => {
 };
 
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
-  variant: '',
   registrationDate: '',
   registrationUpto: '',
   registrationYear: '',
@@ -248,7 +245,6 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
 
     switch (key) {
       case 'variant':
-        parsed.variant = value;
         break;
       case 'registration year':
         parsed.registrationYear = value;
@@ -467,7 +463,6 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
   const supportWhatsappUrl = getWhatsappUrl(supportContact.supportWhatsappNumber);
   const parsedDetails = parseListingDescription(listing.description);
   const descriptionParts = getDescriptionParts(listing);
-  const detailVariant = listing.variant || parsedDetails.variant;
   const detailRegistrationDate = parsedDetails.registrationDate || (listing.registrationYear ? String(listing.registrationYear) : parsedDetails.registrationYear);
   const detailRegistrationUpto = parsedDetails.registrationUpto;
   const detailRegistrationNo = listing.registrationNo || parsedDetails.registrationNo;
@@ -1010,7 +1005,6 @@ export default function MachineDetailClient({ listing }: MachineDetailClientProp
                         items={[
                           { icon: <Award className="h-4 w-4" />, label: t('machineDetails.brandLabel'), value: listing.brand?.name || t('machineDetails.na') },
                           { icon: <Cpu className="h-4 w-4" />, label: t('machineDetails.modelLabel'), value: listing.model?.name || t('machineDetails.na') },
-                          { icon: <GitBranch className="h-4 w-4" />, label: t('machineDetails.variantLabel'), value: detailVariant || t('machineDetails.na') },
                           { icon: <Truck className="h-4 w-4" />, label: t('machineDetails.equipmentTypeLabel'), value: listing.category?.name || t('machineDetails.na') },
                           { icon: <Calendar className="h-4 w-4" />, label: t('machineDetails.manufacturingYearLabel'), value: listing.manufacturingYear ? String(listing.manufacturingYear) : t('machineDetails.na') },
                           { icon: <Clock className="h-4 w-4" />, label: t('machineDetails.operatingHoursLabel'), value: listing.operatingHours ? t('machineDetails.hoursValue', { count: listing.operatingHours }) : t('machineDetails.na') },

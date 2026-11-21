@@ -64,7 +64,6 @@ type ListingFormState = {
   category: string;
   brand: string;
   model: string;
-  variant: string;
   manufacturingYear: string;
   registrationDate: string;
   registrationUpto: string;
@@ -278,7 +277,6 @@ type MediaSlotConfig = {
 
 type ParsedListingDetails = {
   rawDescription: string;
-  variant: string;
   registrationDate: string;
   registrationUpto: string;
   registrationYear: string;
@@ -301,7 +299,6 @@ const initialForm: ListingFormState = {
   category: '',
   brand: '',
   model: '',
-  variant: '',
   manufacturingYear: '',
   registrationDate: '',
   registrationUpto: '',
@@ -551,7 +548,6 @@ const formatCurrency = (value: string | number) => {
 
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   rawDescription: '',
-  variant: '',
   registrationDate: '',
   registrationUpto: '',
   registrationYear: '',
@@ -593,11 +589,9 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
 
     const key = match[1].trim().toLowerCase();
     const value = match[2].trim();
+    if (key === 'variant') continue;
 
     switch (key) {
-      case 'variant':
-        parsed.variant = value;
-        break;
       case 'registration year':
         parsed.registrationYear = value;
         break;
@@ -661,7 +655,6 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
 const buildListingDescription = (form: ListingFormState) =>
   [
     form.description.trim(),
-    form.variant ? `Variant: ${form.variant}` : '',
     form.registrationDate ? `Registration date: ${form.registrationDate}` : '',
     form.registrationUpto ? `Registration upto: ${form.registrationUpto}` : '',
     form.registrationNo ? `Registration no: ${form.registrationNo}` : '',
@@ -707,7 +700,6 @@ const matchesListingQuery = (listing: ListingRecord, rawQuery: string) => {
     listing.brand?.name,
     listing.model?.name,
     listing.category?.name,
-    parsedDetails.variant,
     `${listing.brand?.name || ''} ${listing.model?.name || ''}`.trim(),
 
     // 2. Model
@@ -1857,7 +1849,6 @@ export default function PartnerListingsPage() {
       category: listing.category?.id || '',
       brand: listing.brand?.name || '',
       model: listing.model?.name || '',
-      variant: parsedDetails.variant,
       manufacturingYear: String(listing.manufacturingYear || ''),
       registrationDate: parsedDetails.registrationDate,
       registrationUpto: parsedDetails.registrationUpto,
@@ -2091,7 +2082,6 @@ export default function PartnerListingsPage() {
         category: categoryId || current.category,
         brand: brandName || current.brand,
         model: mapped.model || current.model,
-        variant: mapped.variant || current.variant,
         manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
         registrationDate: mapped.registrationDate || current.registrationDate,
         registrationUpto: mapped.registrationUpto || current.registrationUpto,
@@ -2194,7 +2184,6 @@ export default function PartnerListingsPage() {
         category: categoryId || current.category,
         brand: brandName || current.brand,
         model: mapped.model || current.model,
-        variant: mapped.variant || current.variant,
         manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
         registrationDate: mapped.registrationDate || current.registrationDate,
         registrationUpto: mapped.registrationUpto || current.registrationUpto,

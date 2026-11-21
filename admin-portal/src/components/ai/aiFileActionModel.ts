@@ -11,6 +11,10 @@ export type AiFileAction = {
 const INTERNAL_FILE_ACTION_PATHS = [
   /^\/api\/documents\/secure\/[A-Za-z0-9._~%()-]+$/,
   /^\/api\/recruitment\/admin\/sell-accounts\/[A-Za-z0-9-]+\/invoice$/,
+  /^\/api\/recruitment\/admin\/sell-accounts\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/payments\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/receipt$/iu,
+  /^\/api\/recruitment\/admin\/sell-accounts\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/(?:credit-note|delivery-challan)$/iu,
+  /^\/api\/recruitment\/admin\/sell-accounts\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/refunds\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/advice$/iu,
+  /^\/api\/recruitment\/admin\/rto-records\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/transfer-certificate$/iu,
   /^\/api\/vehicle-docs\/[A-Za-z0-9._~%()-]+\/details\.pdf(?:\?inline=1)?$/,
   /^\/api\/vehicle-docs\/[A-Za-z0-9._~%()-]+\/files\/[A-Za-z0-9._~%()-]+$/,
   /^\/api\/vehicle-docs\/[A-Za-z0-9._~%()-]+\/zip$/,

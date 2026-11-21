@@ -72,6 +72,19 @@ test('builds vehicle document preview and download actions only for internal veh
   assert.equal(archive?.downloadable, true);
 });
 
+test('builds a downloadable vehicle video action without exposing an external URL', () => {
+  const action = buildAiFileAction({
+    label: 'Vehicle video',
+    fileName: 'CG04NF0268 vehicle video.mp4',
+    mimeType: 'video/mp4',
+    url: '/api/vehicle-docs/CG04NF0268/files/media-video-1',
+  });
+
+  assert.equal(action?.previewable, false);
+  assert.equal(action?.downloadable, true);
+  assert.equal(action?.url.startsWith('/api/'), true);
+});
+
 test('builds verification template actions only for internal verification routes', () => {
   const action = buildAiFileAction({
     label: 'PAN verification template',
@@ -82,6 +95,16 @@ test('builds verification template actions only for internal verification routes
 
   assert.equal(action?.previewable, true);
   assert.equal(action?.downloadable, true);
+
+  const partnerAction = buildAiFileAction({
+    label: 'GST Certificate template',
+    fileName: 'gst-template.pdf',
+    mimeType: 'application/pdf',
+    url: '/api/admin/verifications/32e28d69-5b6e-41b8-a1dd-850528f6ad09/documents/GST_CERTIFICATE/template',
+  });
+
+  assert.equal(partnerAction?.previewable, true);
+  assert.equal(partnerAction?.downloadable, true);
 });
 
 test('builds Payroll CSV actions only for authenticated internal export routes', () => {

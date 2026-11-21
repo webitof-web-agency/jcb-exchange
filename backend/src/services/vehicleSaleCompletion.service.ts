@@ -8,6 +8,7 @@ import { dispatchConfiguredSms } from './smsIntegration.service';
 import { issueInvoiceToken, nextVehicleSaleInvoiceNumberFor, vehicleTitleOf } from './vehicleSaleInvoice.service';
 import { buildVehicleSaleInvoiceDeliveryMessage, isVehicleSaleInvoiceResendable } from './vehicleSaleInvoiceDelivery';
 import { dispatchConfiguredWhatsApp } from './whatsappIntegration.service';
+import { syncListingSoldStatusFromSellAccount } from './sellAccountListingSync';
 
 export class VehicleSaleCompletionError extends Error {
   constructor(message: string, readonly statusCode = 400) {
@@ -117,6 +118,17 @@ export const issueAndDeliverVehicleSaleInvoiceAfterFullPayment = async (
         invoiceTokenExpiresAt: issued.expiresAt,
       },
     });
+
+    await syncListingSoldStatusFromSellAccount(
+      tx,
+      {
+        ...current,
+        invoiceNumber,
+      },
+      true,
+      { sourceReason: 'Vehicle sale invoice issued after full payment' },
+    );
+
     return { id: current.id, alreadyIssued: false };
   });
   if (!prepared) return null;
@@ -186,6 +198,20 @@ export const completeVehicleSale = async (
         data: { sellAccountId: current.id, oldStatus: current.dealStatus, newStatus: SellAccountDealStatus.DEAL_DONE, reason: remark, changedById: actorId || null },
       });
     }
+
+    // Auto-mark listing as SOLD and upsert confidential SaleRecord upon Deal Completion
+    await syncListingSoldStatusFromSellAccount(
+      tx,
+      {
+        ...current,
+        dealStatus: SellAccountDealStatus.DEAL_DONE,
+        completedAt: now,
+        invoiceNumber,
+      },
+      true,
+      { actorId, sourceReason: 'Deal completed via completeVehicleSale' },
+    );
+
     return { id: current.id, token: issued?.token || null };
   });
 

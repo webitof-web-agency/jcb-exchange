@@ -66,7 +66,6 @@ const mixedTextFields = new Set([
   'brandName',
   'model',
   'modelName',
-  'variant',
   'nearbyLandmark',
   'locationState',
   'locationCity',

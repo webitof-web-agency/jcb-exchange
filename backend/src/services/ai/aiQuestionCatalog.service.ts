@@ -408,7 +408,12 @@ const MODULE_SPECS: readonly ModuleSpec[] = [
   },
   {
     id: 'listings',
-    aliases: moduleAliases(['listing', 'listings', 'vehicle listing', 'vehicles'], ['लिस्टिंग', 'सूची', 'वाहन'], ['listing', 'listng', 'vehicle wali listing', 'gaadi'], ['listing', 'listng', 'vehicle', 'gaadi']),
+    aliases: moduleAliases(
+      ['listing', 'listings', 'vehicle listing', 'vehicles', 'machine', 'machinery', 'equipment', 'vehicle photos', 'vehicle documents', 'vehicle invoice', 'vehicle bill', 'vehicle details'],
+      ['लिस्टिंग', 'सूची', 'वाहन', 'गाड़ी', 'मशीन', 'गाड़ी की फोटो', 'गाड़ी के दस्तावेज', 'बिल'],
+      ['listing', 'listng', 'vehicle wali listing', 'gaadi', 'gadi', 'machine', 'jcb', 'photo dikhao', 'image do', 'invoice do', 'bill do', 'meter reading', 'dashboard photo', 'chassis number', 'rc details', 'tax status', 'insurance expiry'],
+      ['listing', 'listng', 'vehicle', 'gaadi', 'gadi', 'machine', 'photo', 'image', 'bill', 'invoice'],
+    ),
     tools: { summary: 'listing.statistics', list: 'listing.summary', search: 'listing.search', detail: 'listing.detail', status: 'listing.summary', history: 'listing.statistics', activity: 'listing.statistics', compare: 'listing.statistics', trend: 'inventory.trend', forecast: 'forecast.operations' },
     plannedTools: allPlanned('listings'),
   },
@@ -447,8 +452,13 @@ const MODULE_SPECS: readonly ModuleSpec[] = [
   },
   {
     id: 'vehicle-docs',
-    aliases: moduleAliases(['vehicle docs', 'vehicle documents', 'vehicle document vault'], ['à¤µà¤¾à¤¹à¤¨ à¤¦à¤¸à¥à¤¤à¤¾à¤µà¥‡à¤œ'], ['vehicle docs ka', 'vehicle document ka', 'gaadi ke documents'], ['vehicle docs', 'vehicle documents']),
-    tools: { summary: 'rto.documents.summary', list: 'rto.documents.summary', search: 'ai.documents.search', detail: 'vehicle.documents.detail', status: 'rto.documents.summary', history: 'rto.documents.summary', activity: 'rto.copilot', trend: 'rto.documents.summary' },
+    aliases: moduleAliases(
+      ['vehicle docs', 'vehicle documents', 'vehicle document vault', 'vehicle dossier', 'vehicle papers', 'all docs zip', 'vehicle details pdf'],
+      ['वाहन दस्तावेज़', 'गाड़ी के कागजात', 'दस्तावेज़ डॉसियर', 'सारे कागज़'],
+      ['vehicle docs ka', 'vehicle document ka', 'gaadi ke documents', 'gaadi ke kagaz', 'saare kagaz', 'saare documents', 'all docs zip', 'pending kagaz', 'missing documents'],
+      ['vehicle docs', 'vehicle documents', 'vehicle dossier', 'all docs zip', 'papers']
+    ),
+    tools: { summary: 'vehicle.documents.summary', list: 'vehicle.documents.summary', search: 'ai.documents.search', detail: 'vehicle.documents.detail', status: 'vehicle.documents.summary', history: 'vehicle.documents.summary', activity: 'vehicle.documents.summary', trend: 'vehicle.documents.summary' },
     plannedTools: allPlanned('vehicle-docs'),
   },
   {
@@ -584,6 +594,27 @@ const MODULE_SPECS: readonly ModuleSpec[] = [
     plannedTools: allPlanned('kyc-review'),
   },
   {
+    id: 'partner-verifications',
+    aliases: moduleAliases(
+      ['partner verifications', 'partner verification', 'partner verification queue', 'partner kyc queue', 'kyc queue', 'verifications queue', 'partner review dossier'],
+      ['पार्टनर सत्यापन', 'केवाईसी कतार', 'सत्यापन कतार'],
+      ['partner verification queue', 'kyc queue', 'pending partner verification', 'partner kyc dossier'],
+      ['verifications', 'partner verification', 'kyc queue']
+    ),
+    tools: {
+      summary: 'partner.verification.queue',
+      list: 'partner.verification.queue',
+      search: 'partner.verification.dossier',
+      detail: 'partner.verification.dossier',
+      status: 'partner.verification.queue',
+      history: 'partner.verification.dossier',
+      activity: 'partner.verification.dossier',
+      compare: 'partner.verification.queue',
+      trend: 'partner.verification.queue',
+    },
+    plannedTools: allPlanned('partner-verifications'),
+  },
+  {
     id: 'surepass',
     aliases: moduleAliases(['surepass', 'identity api', 'verification provider'], ['सुरेपस', 'पहचान एपीआई'], ['surepass ka', 'surepass status'], ['surepass', 'api status']),
     tools: { summary: 'surepass.status', status: 'surepass.status', history: 'surepass.status', activity: 'surepass.status' },
@@ -639,9 +670,20 @@ const MODULE_SPECS: readonly ModuleSpec[] = [
   },
   {
     id: 'tasks',
-    aliases: moduleAliases(['task', 'tasks', 'work items', 'pending work'], [], ['task ka', 'pending task', 'kaam ka'], ['tasks', 'work', 'pending']),
+    aliases: moduleAliases(['task', 'tasks', 'work items', 'pending work'], ['कार्य', 'लंबित कार्य'], ['task ka', 'pending task', 'kaam ka'], ['tasks', 'work', 'pending']),
     tools: { summary: 'tasks.summary', list: 'tasks.summary', search: 'tasks.summary', detail: 'tasks.summary', status: 'tasks.summary', history: 'tasks.summary', activity: 'tasks.summary', trend: 'tasks.summary' },
     plannedTools: allPlanned('tasks'),
+  },
+  {
+    id: 'tasks-compliance',
+    aliases: moduleAliases(
+      ['compliance tasks', 'rto transfer tasks', 'transfer tasks', 'milestones', 'rto checklist'],
+      ['अनुपालन कार्य', 'मील के पत्थर'],
+      ['task ka', 'tasks desk', 'compliance tasks', 'transfer tasks', 'rto tasks', 'dsa remark', 'fitness certificate', 'road tax'],
+      ['compliance', 'transfer', 'milestones']
+    ),
+    tools: { summary: 'tasks.compliance.overview', list: 'tasks.compliance.overview', search: 'tasks.compliance.detail', detail: 'tasks.compliance.detail', status: 'tasks.compliance.overview', history: 'tasks.compliance.overview', activity: 'tasks.compliance.detail', trend: 'tasks.compliance.overview' },
+    plannedTools: allPlanned('tasks-compliance'),
   },
   {
     id: 'finance-hub',

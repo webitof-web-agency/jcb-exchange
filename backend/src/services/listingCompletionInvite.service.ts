@@ -325,7 +325,6 @@ export const submitListingCompletion = async (token: string, payload: ListingCom
       ...(payload.description === undefined ? {} : {
         description: [
           payload.description,
-          payload.variant ? `Variant: ${payload.variant}` : '',
           payload.registrationDate ? `Registration date: ${payload.registrationDate}` : '',
           payload.registrationUpto ? `Registration upto: ${payload.registrationUpto}` : '',
           payload.registrationNo ? `Registration No: ${payload.registrationNo}` : '',

@@ -84,7 +84,6 @@ type ListingFormState = {
   category: string;
   brand: string;
   model: string;
-  variant: string;
   manufacturingYear: string;
   registrationDate: string;
   registrationUpto: string;
@@ -234,7 +233,6 @@ type MediaSlotConfig = {
 
 type ParsedListingDetails = {
   rawDescription: string;
-  variant: string;
   registrationDate: string;
   registrationUpto: string;
   registrationYear: string;
@@ -320,7 +318,6 @@ const initialForm: ListingFormState = {
   category: '',
   brand: '',
   model: '',
-  variant: '',
   manufacturingYear: '',
   registrationDate: '',
   registrationUpto: '',
@@ -584,7 +581,6 @@ const listingStatusToAvailability = (value: string) => {
 
 const createEmptyParsedListingDetails = (): ParsedListingDetails => ({
   rawDescription: '',
-  variant: '',
   registrationDate: '',
   registrationUpto: '',
   registrationYear: '',
@@ -627,9 +623,6 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
     const value = match[2].trim();
 
     switch (key) {
-      case 'variant':
-        parsed.variant = value;
-        break;
       case 'registration year':
         parsed.registrationYear = value;
         break;
@@ -693,7 +686,6 @@ const parseListingDescription = (description?: string | null): ParsedListingDeta
 const buildListingDescription = (form: ListingFormState) =>
   [
     form.description.trim(),
-    form.variant ? `Variant: ${form.variant}` : '',
     form.registrationDate ? `Registration date: ${form.registrationDate}` : '',
     form.registrationUpto ? `Registration upto: ${form.registrationUpto}` : '',
     form.registrationNo ? `Registration no: ${form.registrationNo}` : '',
@@ -1084,7 +1076,6 @@ export default function SellVehicleModal({
       category: listing.category?.id || '',
       brand: listing.brand?.name || '',
       model: listing.model?.name || '',
-      variant: parsedDetails.variant,
       manufacturingYear: String(listing.manufacturingYear || ''),
       registrationDate: parsedDetails.registrationDate,
       registrationUpto: parsedDetails.registrationUpto,
@@ -1409,7 +1400,6 @@ export default function SellVehicleModal({
         category: categoryId || current.category,
         brand: brandName || current.brand,
         model: mapped.model || current.model,
-        variant: mapped.variant || current.variant,
         manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
         registrationDate: mapped.registrationDate || current.registrationDate,
         registrationUpto: mapped.registrationUpto || current.registrationUpto,
@@ -1513,7 +1503,6 @@ export default function SellVehicleModal({
         category: categoryId || current.category,
         brand: brandName || current.brand,
         model: mapped.model || current.model,
-        variant: mapped.variant || current.variant,
         manufacturingYear: mapped.manufacturingYear || current.manufacturingYear,
         registrationDate: mapped.registrationDate || current.registrationDate,
         registrationUpto: mapped.registrationUpto || current.registrationUpto,
@@ -3296,7 +3285,6 @@ export default function SellVehicleModal({
                       <section className="rounded-2xl border border-gray-100 bg-white p-5">
                         <h3 className="text-base font-bold text-gray-900">{t('sellModal.registrationIdentity', 'Registration & Identity')}</h3>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <DetailItem label={t('sellModal.variant', 'Variant')} value={parsedDetails.variant || 'N/A'} />
                           <DetailItem label={t('sellModal.registrationDate', 'Registration Date')} value={parsedDetails.registrationDate || parsedDetails.registrationYear || 'N/A'} />
                           <DetailItem label={t('sellModal.registrationUpto', 'Registration Upto')} value={parsedDetails.registrationUpto || 'N/A'} />
                           <DetailItem label={t('sellModal.registrationNumber', 'Registration No.')} value={viewListing.rtoRecords?.[0]?.vehicleNumber || parsedDetails.registrationNo || 'N/A'} />

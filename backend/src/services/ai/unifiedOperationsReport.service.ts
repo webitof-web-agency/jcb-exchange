@@ -366,7 +366,7 @@ export const buildUnifiedOperationsReport = async (input: UnifiedOperationsRepor
     if (forReport) {
       if (toolName === 'dashboard.summary' || toolName === 'revenue.summary' || toolName === 'margin.summary' || toolName === 'sell.accounts.summary' || toolName === 'accounting.summary' || toolName === 'journal.summary') return { days };
       if (toolName === 'crm.followups' || toolName === 'partner.statistics' || toolName === 'recruitment.summary') return toolName === 'crm.followups' ? { owner: 'all' } : {};
-      if (toolName === 'crm.leads.summary' || toolName === 'listing.summary' || toolName === 'tasks.summary' || toolName === 'rto.pending.tasks') return { limit: 20 };
+      if (toolName === 'crm.leads.summary' || toolName === 'listing.summary' || toolName === 'tasks.summary' || toolName === 'rto.pending.tasks' || toolName === 'vehicle.documents.summary') return { limit: 20 };
       if (toolName === 'sold.vehicles' || toolName === 'rto.documents.summary' || toolName === 'payment.summary') return { days, limit: 20 };
     }
     if (toolName === 'knowledge.search') return { query: 'connectivity check', limit: 1 };
@@ -376,7 +376,7 @@ export const buildUnifiedOperationsReport = async (input: UnifiedOperationsRepor
     if (toolName === 'forecast.operations') return { metric: 'sales', days, horizon: 7 };
     if (toolName === 'crm.followups') return { owner: 'all' };
     if (toolName === 'pending.kyc' || toolName === 'hot.leads' || toolName === 'rto.pending.tasks' || toolName === 'tasks.summary') return { limit: 1 };
-    if (toolName === 'partner.statistics' || toolName === 'recruitment.summary' || toolName === 'recruitment.copilot' || toolName === 'surepass.status') return {};
+    if (toolName === 'partner.statistics' || toolName === 'recruitment.summary' || toolName === 'recruitment.copilot' || toolName === 'surepass.status' || toolName === 'vehicle.documents.summary') return {};
     if (toolName === 'dashboard.summary' || toolName === 'lead.statistics' || toolName === 'listing.statistics' || toolName === 'inventory.trend' || toolName === 'revenue.summary' || toolName === 'finance.trend' || toolName === 'finance.copilot' || toolName === 'whatsapp.activity.summary' || toolName === 'verification.summary' || toolName === 'whatsapp.status' || toolName === 'whatsapp.campaigns.summary' || toolName === 'communication.delivery.summary' || toolName === 'sms.activity.summary' || toolName === 'notifications.summary' || toolName === 'fraud.signals') return { days };
     return { days, limit: 1 };
   };

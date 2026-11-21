@@ -272,6 +272,36 @@ export const matchFinanceAiPageContext = (pathname: string) => {
       recordId,
     };
   }
+  const vehicleDocsMatch = /^\/(?:admin|employee)\/accounts\/vehicle-docs(?:\/([^/]+))?\/?$/u.exec(pathname);
+  if (vehicleDocsMatch) {
+    const recordId = vehicleDocsMatch[1];
+    return {
+      groupKey: 'accounts',
+      moduleKey: 'vehicle-docs',
+      moduleLabel: recordId ? `Vehicle Docs ${decodeURIComponent(recordId)}` : 'Vehicle Docs',
+      ...(recordId ? { recordId: decodeURIComponent(recordId) } : {}),
+    };
+  }
+  const tasksMatch = /^\/(?:admin|employee)\/tasks(?:\/([^/]+))?\/?$/u.exec(pathname);
+  if (tasksMatch) {
+    const recordId = tasksMatch[1];
+    return {
+      groupKey: 'operations',
+      moduleKey: 'tasks',
+      moduleLabel: recordId ? `Compliance Tasks ${decodeURIComponent(recordId)}` : 'RTO Transfer & Compliance Tasks',
+      ...(recordId ? { recordId: decodeURIComponent(recordId) } : {}),
+    };
+  }
+  const verificationsMatch = /^\/(?:admin|employee)\/verifications(?:\/([^/]+))?\/?$/u.exec(pathname);
+  if (verificationsMatch) {
+    const recordId = verificationsMatch[1];
+    return {
+      groupKey: 'operations',
+      moduleKey: recordId ? 'verification-detail' : 'verifications',
+      moduleLabel: recordId ? `Partner KYC Review ${decodeURIComponent(recordId)}` : 'Partner KYC Verifications Queue',
+      ...(recordId ? { recordId: decodeURIComponent(recordId) } : {}),
+    };
+  }
   return null;
 };
 

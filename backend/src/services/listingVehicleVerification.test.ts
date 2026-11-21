@@ -88,6 +88,16 @@ test('marks a listing API verified when saved values match the provider snapshot
   });
 });
 
+test('normalizes pollution aliases and month-name dates in the provider snapshot', () => {
+  const provider = buildProviderListingVerificationSnapshot({
+    pollution_valid_upto: '20-Jan-2038',
+    pollution_status: 'ACTIVE',
+  });
+
+  assert.equal(provider.pucStatus, 'VALID');
+  assert.equal(provider.pucValidUntil, '2038-01-20');
+});
+
 test('uses the structured engine number when building the current listing snapshot', () => {
   const current = buildCurrentListingVerificationSnapshot({
     engineNumber: 'D4FCJM12345',
