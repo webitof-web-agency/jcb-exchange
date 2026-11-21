@@ -3,8 +3,8 @@ import { detachLeadsFromListing } from '../utils/soldListingRetention';
 import { toVehicleIdentityKey } from './listingVehicleIdentity';
 
 export interface SyncListingSoldOptions {
-  actorId?: string;
-  sourceReason?: string;
+  actorId?: string | null | undefined;
+  sourceReason?: string | undefined;
 }
 
 export interface SyncListingSoldResult {

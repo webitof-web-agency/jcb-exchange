@@ -4044,17 +4044,19 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     const rawTarget = (args.query || args.vehicleNumber || args.recordNumber || args.customerName || args.rtoId || '').trim();
     const compactTarget = rawTarget.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
+    const where: Prisma.VehicleRtoRecordWhereInput = rawTarget ? {
+      OR: [
+        { vehicleNumber: { contains: rawTarget, mode: Prisma.QueryMode.insensitive } },
+        ...(compactTarget.length >= 4 ? [{ vehicleNumber: { contains: compactTarget, mode: Prisma.QueryMode.insensitive } }] : []),
+        { customerName: { contains: rawTarget, mode: Prisma.QueryMode.insensitive } },
+        { purchaserName: { contains: rawTarget, mode: Prisma.QueryMode.insensitive } },
+        { sellAccount: { is: { recordNumber: { contains: rawTarget, mode: Prisma.QueryMode.insensitive } } } },
+        ...(args.rtoId ? [{ id: args.rtoId }] : []),
+      ],
+    } : {};
+
     const rtoRecords = await prisma.vehicleRtoRecord.findMany({
-      where: rawTarget ? {
-        OR: [
-          { vehicleNumber: { contains: rawTarget, mode: 'insensitive' } },
-          ...(compactTarget.length >= 4 ? [{ vehicleNumber: { contains: compactTarget, mode: 'insensitive' } }] : []),
-          { customerName: { contains: rawTarget, mode: 'insensitive' } },
-          { purchaserName: { contains: rawTarget, mode: 'insensitive' } },
-          { sellAccount: { is: { recordNumber: { contains: rawTarget, mode: 'insensitive' } } } },
-          ...(args.rtoId ? [{ id: args.rtoId }] : []),
-        ],
-      } : {},
+      where,
       include: {
         transferTasks: {
           orderBy: { sortOrder: 'asc' },
@@ -4071,7 +4073,8 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       take: 5,
     });
 
-    if (!rtoRecords.length) {
+    const rec = rtoRecords[0];
+    if (!rtoRecords.length || !rec) {
       return {
         found: false,
         requestedQuery: rawTarget,
@@ -4083,16 +4086,15 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       };
     }
 
-    const rec = rtoRecords[0];
     const sale = rec.sellAccount;
     const list = rec.listing;
     const vNum = rec.vehicleNumber || list?.registrationNumberKey || 'Vehicle';
-    const tasks = rec.transferTasks || [];
-    const done = tasks.filter((t) => isTransferTaskDone(t.status)).length;
+    const tasks = (rec.transferTasks || []) as any[];
+    const done = tasks.filter((t: any) => isTransferTaskDone(t.status)).length;
     const total = tasks.length;
     const percentage = total > 0 ? Math.round((done / total) * 100) : 0;
 
-    const milestones = tasks.map((t) => ({
+    const milestones = tasks.map((t: any) => ({
       id: t.id,
       taskKey: t.taskKey,
       label: t.label,
@@ -4101,18 +4103,21 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       status: t.status,
       remark: t.remark,
       documents: Array.isArray(t.documents) ? t.documents : [],
-      updatedAt: t.updatedAt.toISOString(),
-      logs: Array.isArray(t.logs) ? t.logs.map((log) => ({
+      updatedAt: t.updatedAt instanceof Date ? t.updatedAt.toISOString() : String(t.updatedAt || ''),
+      logs: Array.isArray(t.logs) ? t.logs.map((log: any) => ({
         oldStatus: log.oldStatus,
         newStatus: log.newStatus,
         remark: log.remark,
-        createdAt: log.createdAt.toISOString(),
+        createdAt: log.createdAt instanceof Date ? log.createdAt.toISOString() : String(log.createdAt || ''),
       })) : [],
     }));
 
     const payments = sale?.payments || [];
     const totalReceived = payments
-      .filter((p: any) => p.status === 'RECEIVED' || p.status === 'VERIFIED')
+      .filter((p: any) => p.side === 'PURCHASER_RECEIPT' && p.receiptStatus !== 'CANCELLED')
+      .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+    const paidToSeller = payments
+      .filter((p: any) => p.side === 'SELLER_PAYMENT' && p.receiptStatus !== 'CANCELLED')
       .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
 
     return {
@@ -4126,7 +4131,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
       vehicleModel: rec.vehicleModel || list?.model?.name || '—',
       vehicleType: rec.vehicleType || '—',
       chassisNumber: sale?.chassisNumber || list?.chassisNumberKey || '—',
-      engineNumber: sale?.engineNumber || list?.engineNumber || '—',
+      engineNumber: list?.engineNumber || '—',
       completionPercentage: percentage,
       milestonesDone: done,
       milestonesTotal: total,
@@ -4151,7 +4156,7 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
         purchaseAmount: Number(sale?.purchaseAmount || 0),
         sellAmount: Number(sale?.sellAmount || 0),
         received: totalReceived,
-        paidToSeller: Number(sale?.paidToSeller || 0),
+        paidToSeller,
         invoiceNumber: sale?.invoiceNumber || null,
       },
       rto: {
@@ -4231,10 +4236,11 @@ const defaultDependencies: AiReadOnlyToolDependencies = {
     const todayCount = partners.filter((p) => new Date(p.createdAt) >= startOfToday).length;
 
     const sortedByOldest = [...partners].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    const oldestPending = sortedByOldest.length > 0 ? {
-      businessName: sortedByOldest[0]?.partnerProfile?.businessName || sortedByOldest[0]?.name || 'Partner',
-      appliedOn: sortedByOldest[0]?.createdAt.toISOString(),
-      daysWaiting: Math.floor((Date.now() - new Date(sortedByOldest[0]?.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
+    const firstOldest = sortedByOldest[0];
+    const oldestPending = firstOldest ? {
+      businessName: firstOldest.partnerProfile?.businessName || firstOldest.name || 'Partner',
+      appliedOn: firstOldest.createdAt.toISOString(),
+      daysWaiting: Math.floor((Date.now() - firstOldest.createdAt.getTime()) / (1000 * 60 * 60 * 24)),
     } : null;
 
     const items = filteredPartners.slice(0, limit).map((p) => {
