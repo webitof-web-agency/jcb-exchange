@@ -8,8 +8,11 @@ type CacheEntry = {
 const verificationCache = new Map<string, CacheEntry>();
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 
-export const buildVerificationCacheKey = (operation: string, identifier: string) =>
-  `${operation.trim().toLowerCase()}:${identifier.trim().toUpperCase().replace(/\s+/g, '')}`;
+export const buildVerificationCacheKey = (operation: string, identifier: string, scope?: string) => {
+  const baseKey = `${operation.trim().toLowerCase()}:${identifier.trim().toUpperCase().replace(/\s+/g, '')}`;
+  const normalizedScope = scope?.trim();
+  return normalizedScope ? `${operation.trim().toLowerCase()}:${normalizedScope}:${identifier.trim().toUpperCase().replace(/\s+/g, '')}` : baseKey;
+};
 
 export function getVerificationCache<T>(key: string): T | null {
   const entry = verificationCache.get(key);

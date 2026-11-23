@@ -1013,7 +1013,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
     setChassisVerificationStatus('VERIFYING');
     setError(null);
     try {
-      const cacheKey = buildVerificationCacheKey('chassis-to-rc', chassisNumber);
+      const cacheKey = buildVerificationCacheKey('chassis-to-rc', chassisNumber, user?.id);
       const cachedResponse = getVerificationCache<ChassisVerificationResponse>(cacheKey);
       const responseData: ChassisVerificationResponse = cachedResponse
         ? { ...cachedResponse, cacheHit: true }
@@ -1076,7 +1076,7 @@ export default function ListingDetailPage({ listingId }: { listingId: string }) 
       setChassisVerificationStatus('FAILED');
       setError(getErrorMessage(verificationError, 'Vehicle verification failed. Please check the chassis number and try again.'));
     }
-  }, [brands, categories, form]);
+  }, [brands, categories, form, user]);
 
   const markMediaUnavailable = useCallback((mediaId: string) => {
     setUnavailableMediaIds((current) => (current.includes(mediaId) ? current : [...current, mediaId]));

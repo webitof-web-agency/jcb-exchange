@@ -38,6 +38,8 @@ import {
   updateOffer,
   updateOfferStatus,
   deleteOffer,
+  getPublicOfferResponse,
+  respondToPublicOffer,
   getRecruitmentSettings,
   createPipelineStage,
   updatePipelineStage,
@@ -168,6 +170,8 @@ const canUpdateRecruitmentSettings = requireSuperAdminOrEmployeePermissions(['re
 router.get('/public/jobs', getPublicJobs);
 router.get('/public/jobs/:slug', getPublicJobBySlug);
 router.post('/public/jobs/:slug/apply', jobApplicationRateLimit, resumeUpload.single('resume'), sanitizeRequestBody, applyForJob);
+router.get('/public/offers/:token', jobApplicationRateLimit, getPublicOfferResponse);
+router.post('/public/offers/:token/respond', jobApplicationRateLimit, sanitizeRequestBody, respondToPublicOffer);
 
 // Applicant protected endpoints
 router.get('/my-applications', requireAuth, getMyApplications);

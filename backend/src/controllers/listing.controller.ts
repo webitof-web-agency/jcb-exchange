@@ -59,10 +59,12 @@ import {
   buildRcFullVerificationFingerprint,
   buildCurrentListingVerificationSnapshot,
   buildProviderListingVerificationSnapshot,
+  chooseVerificationRecordForIdentity,
   getListingVerificationStatus,
   getVehicleVerificationIdentityMismatch,
   isUsableChassisVerification,
   isUsableRcFullVerification,
+  resolveListingRegistrationNumber,
   syncListingVehicleVerification,
 } from '../services/listingVehicleVerification';
 import { validateField } from '../utils/fieldValidation';
@@ -397,26 +399,37 @@ const getChassisVerificationContext = async ({
     return { record: null, error: 'Chassis number is required before posting this vehicle.' };
   }
 
-  let record: { id: string; status?: unknown; requestedById?: unknown; requestFingerprint?: unknown } | null = null;
+  let preferredRecord: { id: string; status?: unknown; requestedById?: unknown; requestFingerprint?: unknown } | null = null;
+  let fallbackRecord: { id: string; status?: unknown; requestedById?: unknown; requestFingerprint?: unknown } | null = null;
 
   if (normalizedVerificationId) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedVerificationId)) {
       return { record: null, error: canBypassVerification ? null : 'Verify the current chassis number before posting this vehicle.' };
     }
 
-    record = await prismaAny.chassisToRcVerificationRecord.findUnique({
+    preferredRecord = await prismaAny.chassisToRcVerificationRecord.findUnique({
       where: { id: normalizedVerificationId },
       select: { id: true, status: true, requestedById: true, requestFingerprint: true },
     });
-  } else if (normalizedChassis) {
+  }
+
+  if (normalizedChassis) {
     // Existing listings can be edited without making the user pay for a second lookup.
-    // The fingerprint and requester check still require a successful prior verification
-    // for this exact chassis and this exact account.
-    record = await prismaAny.chassisToRcVerificationRecord.findUnique({
+    // If a saved record id is stale or belongs to an older identity, recover the current
+    // successful record by its exact fingerprint instead of rejecting a valid verification.
+    fallbackRecord = await prismaAny.chassisToRcVerificationRecord.findFirst({
       where: { requestFingerprint: buildChassisVerificationFingerprint(normalizedChassis) },
+      orderBy: { completedAt: 'desc' },
       select: { id: true, status: true, requestedById: true, requestFingerprint: true },
     });
   }
+
+  const record = chooseVerificationRecordForIdentity({
+    source: 'CHASSIS',
+    identity: normalizedChassis,
+    preferredRecord,
+    fallbackRecord,
+  });
 
   const isOwnerMatch = Boolean(
     ownerUserId
@@ -490,17 +503,20 @@ const getListingVerificationContext = async ({
     return { record: null, error: 'Registration number is required before posting this vehicle.', source };
   }
 
-  let record: { id: string; status?: unknown; requestedById?: unknown; requestFingerprint?: unknown } | null = null;
+  let preferredRecord: { id: string; status?: unknown; requestedById?: unknown; requestFingerprint?: unknown } | null = null;
+  let fallbackRecord: { id: string; status?: unknown; requestedById?: unknown; requestFingerprint?: unknown } | null = null;
   if (normalizedVerificationId) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedVerificationId)) {
       return { record: null, error: canBypassVerification ? null : 'Verify the current registration number before posting this vehicle.', source };
     }
-    record = await prismaAny.rcOwnerHistoryRecord.findUnique({
+    preferredRecord = await prismaAny.rcOwnerHistoryRecord.findUnique({
       where: { id: normalizedVerificationId, serviceKey: 'RC_FULL' },
       select: { id: true, status: true, requestedById: true, requestFingerprint: true },
     });
-  } else if (normalizedRegistration) {
-    record = await prismaAny.rcOwnerHistoryRecord.findFirst({
+  }
+
+  if (normalizedRegistration) {
+    fallbackRecord = await prismaAny.rcOwnerHistoryRecord.findFirst({
       where: {
         serviceKey: 'RC_FULL',
         requestFingerprint: buildRcFullVerificationFingerprint(normalizedRegistration),
@@ -509,6 +525,13 @@ const getListingVerificationContext = async ({
       select: { id: true, status: true, requestedById: true, requestFingerprint: true },
     });
   }
+
+  const record = chooseVerificationRecordForIdentity({
+    source: 'RC_FULL',
+    identity: normalizedRegistration,
+    preferredRecord,
+    fallbackRecord,
+  });
 
   const isOwnerMatch = Boolean(
     ownerUserId
@@ -1042,6 +1065,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       vehicleVerificationId,
       vehicleVerificationSource,
       chassisOrSerialNo,
+      registrationNo,
       ownerName,
       engineNumber,
       title,
@@ -1102,9 +1126,18 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
     const parsedPrice = parseDecimal(price) || new Prisma.Decimal(0);
     const normalizedMedia = normalizeMedia(media);
 
-    const requestedRegistrationNumber = rtoDetails && typeof rtoDetails === 'object'
-      ? normalizeText((rtoDetails as Record<string, unknown>).registrationNo)
-      : parseListingDescriptionRegistration(normalizedDescription);
+    const requestedRegistrationNumber = resolveListingRegistrationNumber(
+      registrationNo,
+      rtoDetails && typeof rtoDetails === 'object'
+        ? (rtoDetails as Record<string, unknown>).registrationNo
+        : null,
+      parseListingDescriptionRegistration(normalizedDescription),
+    );
+    const effectiveRtoDetails = rtoDetails && typeof rtoDetails === 'object'
+      ? { ...(rtoDetails as Record<string, unknown>), registrationNo: requestedRegistrationNumber }
+      : requestedRegistrationNumber
+        ? { registrationNo: requestedRegistrationNumber }
+        : null;
     const vehicleVerification = vehicleListingVerificationEnabled
       ? await getListingVerificationContext({
         source: normalizedVehicleVerificationSource,
@@ -1198,7 +1231,7 @@ export const createListing = async (req: Request, res: Response, next: NextFunct
       description: normalizedDescription,
       chassisOrSerialNo: chassisOrSerialNo,
       engineNumber: normalizedEngineNumber,
-      rtoDetails: rtoDetails && typeof rtoDetails === 'object' ? rtoDetails : null,
+      rtoDetails: effectiveRtoDetails,
     });
     const verificationAssessment = getListingVerificationStatus(providerVerificationSnapshot, currentVerificationSnapshot);
     const identityMismatch = providerVerificationSnapshot
@@ -1677,6 +1710,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       vehicleVerificationId,
       vehicleVerificationSource,
       chassisOrSerialNo,
+      registrationNo,
       ownerName,
       engineNumber,
       title,
@@ -1760,10 +1794,25 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
           isFeatured: item.isFeatured,
           ...(item.aiAnalysis ? { aiAnalysis: normalizeListingImageAnalysis(item.aiAnalysis), aiAnalyzedAt: item.aiAnalyzedAt || new Date() } : {}),
         }));
-    const requestedRegistrationNumber = rtoDetails && typeof rtoDetails === 'object'
-      ? normalizeText((rtoDetails as Record<string, unknown>).registrationNo)
-      : normalizeText(existingListing.rtoRecords?.[0]?.vehicleNumber)
-        || parseListingDescriptionRegistration(normalizedDescription || '');
+    const requestedRegistrationNumber = resolveListingRegistrationNumber(
+      registrationNo,
+      rtoDetails && typeof rtoDetails === 'object'
+        ? (rtoDetails as Record<string, unknown>).registrationNo
+        : null,
+      existingListing.rtoRecords?.[0]?.vehicleNumber,
+      parseListingDescriptionRegistration(normalizedDescription || ''),
+    );
+    const effectiveRtoDetails = rtoDetails && typeof rtoDetails === 'object'
+      ? { ...(rtoDetails as Record<string, unknown>), registrationNo: requestedRegistrationNumber }
+      : existingListing.rtoRecords?.[0]
+        ? { ...existingListing.rtoRecords[0], registrationNo: requestedRegistrationNumber }
+        : requestedRegistrationNumber
+          ? { registrationNo: requestedRegistrationNumber }
+          : null;
+    const shouldSyncRto = Boolean(
+      (rtoDetails && typeof rtoDetails === 'object')
+      || (!saveAsDraft && hasOwnField('registrationNo')),
+    );
     const effectiveVerificationId = normalizedVehicleVerificationId
       || existingListing.vehicleVerification?.verificationRecordId
       || null;
@@ -1856,8 +1905,8 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       }
 
       const storedRto = existingListing.rtoRecords?.[0];
-      const rtoInput = rtoDetails && typeof rtoDetails === 'object'
-        ? rtoDetails
+      const rtoInput = shouldSyncRto
+        ? effectiveRtoDetails
         : storedRto
           ? {
               registrationNo: storedRto.vehicleNumber,
@@ -1962,25 +2011,7 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       description: normalizedDescription,
       chassisOrSerialNo: chassisOrSerialNo,
       engineNumber: normalizedEngineNumber,
-      rtoDetails: rtoDetails && typeof rtoDetails === 'object'
-        ? rtoDetails
-        : existingListing.rtoRecords?.[0]
-          ? {
-              registrationNo: existingListing.rtoRecords[0].vehicleNumber,
-              hirePurchaseStatus: existingListing.rtoRecords[0].hirePurchaseStatus,
-              financerName: existingListing.rtoRecords[0].financerName,
-              taxStatus: existingListing.rtoRecords[0].taxStatus,
-              taxValidUntil: existingListing.rtoRecords[0].taxValidUntil,
-              fitnessStatus: existingListing.rtoRecords[0].fitnessStatus,
-              fitnessValidUntil: existingListing.rtoRecords[0].fitnessValidUntil,
-              insuranceStatus: existingListing.rtoRecords[0].insuranceStatus,
-              insuranceValidUntil: existingListing.rtoRecords[0].insuranceValidUntil,
-              pucStatus: existingListing.rtoRecords[0].pucStatus,
-              pucValidUntil: existingListing.rtoRecords[0].pucValidUntil,
-              hsrpNumber: existingListing.rtoRecords[0].hsrpNumber,
-              rtoOffice: existingListing.rtoRecords[0].rtoOffice,
-            }
-          : null,
+      rtoDetails: effectiveRtoDetails,
     });
     const verificationAssessment = getListingVerificationStatus(providerVerificationSnapshot, currentVerificationSnapshot);
     const identityMismatch = providerVerificationSnapshot
@@ -2053,8 +2084,8 @@ export const updateListing = async (req: Request, res: Response, next: NextFunct
       },
       });
 
-      if (rtoDetails && typeof rtoDetails === 'object') {
-        await syncListingRtoForListing(tx, nextListing.id, rtoDetails);
+      if (shouldSyncRto && effectiveRtoDetails) {
+        await syncListingRtoForListing(tx, nextListing.id, effectiveRtoDetails);
       }
 
       await syncListingVehicleVerification(tx, {

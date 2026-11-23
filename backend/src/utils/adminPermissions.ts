@@ -55,6 +55,8 @@ export const allowedAdminPermissions = new Set([
   'whatsapp.manage',
   'sms.read',
   'sms.manage',
+  'email.read',
+  'email.manage',
   'translations.manage',
   'footer.manage',
   'partner.agreements.read',

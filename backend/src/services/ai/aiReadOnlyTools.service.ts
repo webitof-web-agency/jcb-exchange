@@ -1613,7 +1613,6 @@ const crmAccessFor = (context: AiToolContext): CrmAccess =>
 const hasVisitorWideAccess = (context: AiToolContext) =>
   context.role === 'SUPER_ADMIN'
   || context.role === 'ADMIN'
-  || context.role === 'EMPLOYEE'
   || context.permissions.includes('ALL_ACCESS')
   || context.permissions.includes('visitors.read');
 
@@ -1836,22 +1835,13 @@ const safeListingSummaryItem = (value: unknown) => {
 export const safePartnerSummaryItem = (value: unknown) => {
   const partner = asRecord(value);
   const createdAt = partner.createdAt instanceof Date ? partner.createdAt.toISOString() : partner.createdAt ?? null;
-  const user = asRecord(partner.user);
-  const city = asRecord(partner.city);
-  const state = asRecord(partner.state);
   return {
     partnerCode: typeof partner.partnerCode === 'string' ? partner.partnerCode : null,
     businessName: typeof partner.businessName === 'string' ? partner.businessName : null,
-    ownerName: typeof partner.ownerName === 'string' ? partner.ownerName : (typeof user.name === 'string' ? user.name : null),
     partnerType: typeof partner.partnerType === 'string' ? partner.partnerType : null,
     accountStatus: typeof partner.accountStatus === 'string' ? partner.accountStatus : null,
     kycStatus: typeof partner.kycStatus === 'string' ? partner.kycStatus : null,
     onboardingStatus: typeof partner.onboardingStatus === 'string' ? partner.onboardingStatus : null,
-    mobile: typeof user.mobile === 'string' ? user.mobile : (typeof partner.alternateMobile === 'string' ? partner.alternateMobile : null),
-    email: typeof user.email === 'string' ? user.email : null,
-    territory: typeof partner.serviceAreas === 'string' && partner.serviceAreas.trim() ? partner.serviceAreas : [typeof city.name === 'string' ? city.name : null, typeof partner.district === 'string' ? partner.district : null, typeof state.name === 'string' ? state.name : null].filter(Boolean).join(', ') || null,
-    inventoryCount: typeof partner.listingCount === 'number' ? partner.listingCount : (user._count && typeof user._count === 'object' && typeof (user._count as any).listings === 'number' ? (user._count as any).listings : 0),
-    joinedDate: typeof createdAt === 'string' ? createdAt.slice(0, 10) : null,
     createdAt: typeof createdAt === 'string' ? createdAt : null,
   };
 };

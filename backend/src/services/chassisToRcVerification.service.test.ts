@@ -4,6 +4,7 @@ import {
   ChassisToRcVerificationService,
   maskChassisNumber,
 } from './chassisToRcVerification.service';
+import { encryptPanData } from './panVerification.dataCrypto';
 
 const dataSecret = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
@@ -151,4 +152,57 @@ test('reuses the same successful record inside the 24-hour cache window', async 
   assert.equal(second.record.id, first.record.id);
   assert.equal(providerCalls, 1);
   assert.equal(records.length, 1);
+});
+
+test('does not reuse a chassis verification record created by another user', async () => {
+  let providerCalls = 0;
+  let createCalls = 0;
+  const existing = {
+    id: 'super-admin-chassis-record',
+    status: 'SUCCESS',
+    maskedChassisNumber: 'HAR3********9329',
+    requestFingerprint: 'fingerprint',
+    requestedById: 'super-admin-user',
+    encryptedResult: encryptPanData(JSON.stringify({ vehicle_chasi_number: 'HAR3DXINT03349329' }), dataSecret),
+    completedAt: new Date(),
+    createdAt: new Date(),
+  };
+  const service = new ChassisToRcVerificationService({
+    record: {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => {
+        if (where.requestedById === 'partner-user') return null;
+        if (where.status === 'PENDING') return null;
+        return existing;
+      },
+      findUnique: async () => null,
+      findMany: async () => [],
+      count: async () => 0,
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        createCalls += 1;
+        return { id: 'partner-chassis-record', ...data, createdAt: new Date(), completedAt: null };
+      },
+      update: async ({ data }: { where: { id: string }; data: Record<string, unknown> }) => ({ id: 'partner-chassis-record', ...data, createdAt: new Date() }),
+    } as any,
+    provider: {
+      verifyChassisToRc: async () => {
+        providerCalls += 1;
+        return {
+          success: true,
+          status_code: 200,
+          data: {
+            vehicle_chasi_number: 'HAR3DXINT03349329',
+            details: { vehicle_chasi_number: 'HAR3DXINT03349329' },
+          },
+        };
+      },
+    } as any,
+    dataSecret,
+  });
+
+  const result = await service.verifyChassisToRc({ chassis_number: 'HAR3DXINT03349329' }, 'partner-user');
+
+  assert.equal(providerCalls, 1);
+  assert.equal(createCalls, 1);
+  assert.equal(result.cacheHit, false);
+  assert.equal(result.record.id, 'partner-chassis-record');
 });

@@ -60,11 +60,13 @@ export const shouldSyncListingRto = ({
   saveAsDraft,
   editingListingId,
   hasInput,
+  registrationChanged = false,
 }: {
   saveAsDraft: boolean;
   editingListingId: string | null;
   hasInput: boolean;
-}) => !saveAsDraft && (!editingListingId || hasInput);
+  registrationChanged?: boolean;
+}) => !saveAsDraft && (!editingListingId || hasInput || registrationChanged);
 
 export const validateListingRtoForm = (
   form: ListingRtoFormState,

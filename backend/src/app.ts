@@ -144,7 +144,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     err.message.includes('Only JPG, PNG, and WEBP avatar images are allowed.') ||
     err.message.includes('PDF files must be 3MB or smaller.') ||
     err.message.includes('Image files must be 5MB or smaller.') ||
-    err.message.includes('Video files must be 15MB or smaller.') ||
+    err.message.includes('Video files must be 30MB or smaller.') ||
     err.message.includes('File too large') ||
     err.message.includes(FILE_CONTENT_MISMATCH_MESSAGE)
   ) {

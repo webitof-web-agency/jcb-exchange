@@ -1716,6 +1716,7 @@ export default function SellVehicleModal({
           : {}),
         brandName: sanitizedForm.brand,
         modelName: sanitizedForm.model,
+        registrationNo: sanitizedForm.registrationNo,
         chassisOrSerialNo: sanitizedForm.chassisOrSerialNo,
         ownerName: sanitizedForm.ownerName,
         title: sanitizedForm.title || `${sanitizedForm.brand} ${sanitizedForm.model}`.trim(),

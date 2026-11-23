@@ -5,6 +5,7 @@ export const employeeFooterPermissions = ['footer.manage'];
 export const employeePartnerAgreementPermissions = ['partner.agreements.read', 'partner.agreements.manage'];
 export const employeeWhatsAppPermissions = ['whatsapp.read', 'whatsapp.manage'];
 export const employeeSmsPermissions = ['sms.read', 'sms.manage'];
+export const employeeEmailPermissions = ['email.read', 'email.manage'];
 export const employeeBlogPermissions = ['blog.read', 'blog.create', 'blog.update', 'blog.delete'];
 
 import { accountAnyPermissions } from './accountsPermissions';
@@ -57,6 +58,11 @@ export const employeeRoutePermissions: EmployeeRoutePermission[] = [
     superadminPath: '/admin/sms',
     employeePath: '/employee/sms',
     permissions: employeeSmsPermissions,
+  },
+  {
+    superadminPath: '/admin/email',
+    employeePath: '/employee/email',
+    permissions: employeeEmailPermissions,
   },
   {
     superadminPath: '/admin/listings',

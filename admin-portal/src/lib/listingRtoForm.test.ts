@@ -13,6 +13,7 @@ test('draft saves never sync partial RTO data', () => {
   assert.equal(shouldSyncListingRto({ saveAsDraft: false, editingListingId: null, hasInput: false }), true);
   assert.equal(shouldSyncListingRto({ saveAsDraft: false, editingListingId: 'listing-1', hasInput: true }), true);
   assert.equal(shouldSyncListingRto({ saveAsDraft: false, editingListingId: 'listing-1', hasInput: false }), false);
+  assert.equal(shouldSyncListingRto({ saveAsDraft: false, editingListingId: 'listing-1', hasInput: false, registrationChanged: true }), true);
 });
 
 const base = {

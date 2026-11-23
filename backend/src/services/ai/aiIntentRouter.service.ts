@@ -533,7 +533,7 @@ const extractSoldVehicleDetailRequest = (message: string): Record<string, string
 };
 
 const extractRegistrationNumber = (message: string): string | null => {
-  const candidates = message.toUpperCase().match(/\b[A-Z]{2}[-\s]?\d{1,2}[-\s]?[A-Z]{1,3}[-\s]?\d{1,4}\b/g) || [];
+  const candidates = message.toUpperCase().match(/(?<![A-Z0-9])[A-Z]{2}[-\s]?\d{1,2}[-\s]?[A-Z]{1,3}[-\s]?\d{1,4}(?![A-Z0-9-])/g) || [];
   const candidate = candidates.find((value) => /[A-Z]/u.test(value) && /\d/u.test(value));
   return candidate ? candidate.replace(/[\s-]/gu, '') : null;
 };
@@ -661,6 +661,9 @@ const extractPartnerSubject = (message: string): string | null => {
   const knownPartners = /\b(satya\s+earth\s+movers|satya|webitof)\b/iu.exec(message);
   if (knownPartners?.[1]) return knownPartners[1].trim();
 
+  const dossierMatch = /\b(?:verification|kyc)\s+dossier\s+(?:for|of)\s+([A-Za-z][A-Za-z0-9&.\s-]{1,40}?)(?:\s+(?:please|show|tell|batao|btao|dikhao))?$/iu.exec(message);
+  if (dossierMatch?.[1]) return dossierMatch[1].trim();
+
   // Devanagari pattern: "<Name> का/की/के सत्यापन/विवरण/केवाईसी"
   const mHindi = /([A-Za-z0-9\s]{2,40}?)\s*(?:का|की|के|को)?\s*(?:सत्यापन|विवरण|केवाईसी)/u.exec(message);
   if (mHindi?.[1]) {
@@ -675,6 +678,7 @@ const extractPartnerSubject = (message: string): string | null => {
   const mEng = /([A-Za-z0-9\s]{2,40}?)\s+(?:ka|ki|ke|ko)?\s*(?:kyc|verification|verifications|verify|dossier|documents?|docs?|gst|pan|aadhaar|changes\s+requested|sudhar|review|status|details?|profile|contact|phone|mobile|number|address|pata|malik|owner|gaadiyan|gadiyan|inventory|stock|fleet|deals?|sold|biki\s+hui|rto|agreement|agreements|papers?|kagaz)\b/iu.exec(norm);
   if (mEng?.[1]) {
     const candidate = mEng[1].trim().replace(/\b(?:show|tell|check|verify|give|find|kripya|please|batao|btao|dikhao|karo)\b/giu, '').trim();
+    if (VEHICLE_BRAND_MODEL_PATTERN.test(candidate)) return null;
     if (candidate.length >= 2 && !/\b(?:rc|rto|vehicle|vehicles|gaadi|machine|listing|listings|inventory|deal|deals|invoice|payment|crm|lead|leads|task|tasks|compliance|partner|dealer|showroom|broker|queue|all|pending|kitne|total|full|today|summary|software|pan|gst|aadhaar|aadhar|customer|visitor|buyer|grahak|test0|chassis|engine|copilot)\b/iu.test(candidate) && !/आधार|पैन|जीएसटी/u.test(candidate) && !extractChassisNumber(candidate) && !extractRegistrationNumber(candidate)) {
       const rawMatch = new RegExp(`\\b${candidate}\\b`, 'iu').exec(message);
       return rawMatch ? rawMatch[0] : candidate;
@@ -720,7 +724,7 @@ const isPartnerVerificationIntent = (normalized: string, message: string): boole
   }
 
   return hasAny(normalized, [
-    /\b(?:partner\s+verifications?|verifications?\s+queue|kyc\s+queue|partner\s+queue)\b/u,
+    /\b(?:partner\s+verifications?|verifications?\s+queue|kyc\s+queue|partner\s+queue|(?:verification|kyc)\s+dossier)\b/u,
     /\b(?:partner\s+kyc|partner\s+dossier|partner\s+onboarding\s+kyc)\b/u,
     /\b(?:changes\s+requested|sudhar\s+chahiye|reviewer\s+comments?)\b/u,
     /\b(?:sabse\s+purana\s+pending|aaj\s+kitne\s+(?:submission|cases?)|showroom\s+verification|broker\s+verification)\b/u,
@@ -735,7 +739,8 @@ const isPartnerVerificationIntent = (normalized: string, message: string): boole
     Boolean(extractPartnerSubject(message))
     && (
       hasAny(normalized, [/\b(?:kyc|verification|verifications|verfy|verifiy|dossier|onboarding)\b/u])
-      || (hasAny(normalized, [/\b(?:partner|dealer)\b/u]) && hasAny(normalized, [/\b(?:profile|details?|contact|phone|mobile|number|address|pata|malik|owner|inventory|stock|fleet|deals?|sold|biki|rto|agreement|agreements|papers?|kagaz|gst|pan|aadhaar)\b/u]))
+      || (hasAny(normalized, [/\b(?:partner|dealer)\b/u]) && hasAny(normalized, [/\b(?:profile|details?|contact|phone|mobile|number|address|pata|malik|owner|inventory|stock|fleet|deals?|sold|biki|rto|agreement|agreements|papers?|documents?|docs?|kagaz|gst|pan|aadhaar)\b/u]))
+      || hasAny(normalized, [/\b(?:papers?|documents?|docs?|kagaz)\b/u])
       || /\b(satya|webitof)\b/iu.test(message)
     )
   );

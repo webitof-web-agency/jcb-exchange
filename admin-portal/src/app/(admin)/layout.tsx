@@ -23,7 +23,7 @@ import FinanceCommandPalette from '@/components/financeWorkspace/FinanceCommandP
 import AiFloatingChat from '@/components/ai/AiFloatingChat';
 import { CRM_READ_PERMISSIONS, CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
 import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, UserCheck, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo, Sparkles } from 'lucide-react';
-import { CalendarClock, Columns3, Contact, FileArchive, FileUp, ListChecks, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
+import { CalendarClock, Columns3, Contact, FileArchive, FileUp, ListChecks, Mail, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
 import {
@@ -35,6 +35,7 @@ import {
   employeeUsersPermissions,
   employeeWhatsAppPermissions,
   employeeSmsPermissions,
+  employeeEmailPermissions,
   getEmployeeLandingPath,
   resolveEmployeeRouteRedirect,
 } from '@/lib/portalRoutes';
@@ -67,6 +68,7 @@ const navItems = [
   { href: '/admin/customers', labelKey: 'admin.customers', defaultLabel: 'Won Customers', icon: UserCheck },
   { href: '/admin/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle },
   { href: '/admin/sms', labelKey: 'admin.smsNotifications', icon: Smartphone },
+  { href: '/admin/email', labelKey: 'admin.emailCommunications', defaultLabel: 'Email Communications', icon: Mail },
   { href: '/admin/categories', labelKey: 'admin.categories', icon: Tags },
   { href: '/admin/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee },
   { href: '/admin/recurrence', labelKey: 'admin.recurrence', icon: Repeat },
@@ -92,6 +94,7 @@ const employeeModuleNavItems = [
   { href: '/employee/customers', labelKey: 'admin.customers', defaultLabel: 'Won Customers', icon: UserCheck, permissions: ['visitors.read'] },
   { href: '/employee/whatsapp', labelKey: 'enquiryDetails.whatsapp', icon: MessageCircle, permissions: employeeWhatsAppPermissions },
   { href: '/employee/sms', labelKey: 'admin.smsNotifications', icon: Smartphone, permissions: employeeSmsPermissions },
+  { href: '/employee/email', labelKey: 'admin.emailCommunications', defaultLabel: 'Email Communications', icon: Mail, permissions: employeeEmailPermissions },
   { href: '/employee/categories', labelKey: 'admin.categories', icon: Tags, permissions: ['categories.read'] },
   { href: '/employee/brands', labelKey: 'admin.brands', icon: BadgeIndianRupee, permissions: ['brands.read'] },
   { href: '/employee/recurrence', labelKey: 'admin.recurrence', icon: Repeat, permissions: ['recurrence.manage'] },
@@ -703,6 +706,7 @@ export default function AdminLayout({
     '/employee/crm': t('admin.crmDashboard', 'CRM Dashboard'),
     '/admin/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
     '/admin/sms': t('smsModule.pageTitle', 'SMS Notifications'),
+    '/admin/email': t('emailModule.pageTitle', 'Email Communications'),
     '/admin/visitors': t('admin.visitors'),
     '/admin/customers': t('admin.customers', 'Won Customers'),
     '/admin/recurrence': t('admin.recurrence'),
@@ -734,6 +738,7 @@ export default function AdminLayout({
     '/employee/enquiries': t('admin.enquiryManagement'),
     '/employee/whatsapp': t('whatsappModule.pageTitle', 'WhatsApp Cloud API'),
     '/employee/sms': t('smsModule.pageTitle', 'SMS Notifications'),
+    '/employee/email': t('emailModule.pageTitle', 'Email Communications'),
     '/employee/verifications': t('admin.partnerVerifications'),
     '/employee/identity-hub': t('admin.identityHub', 'Identity Hub'),
     '/employee/vehicle-transport': t('admin.vehicleTransport', 'Vehicle & Transport'),
@@ -844,7 +849,7 @@ export default function AdminLayout({
   const financeNavGroups = isSuperAdmin ? financeWorkspaceGroups : getVisibleFinanceWorkspaceGroups(userPermissions, false);
   const hasFinanceNav = Boolean(getVisibleNavItem('/finance/workspace')) || financeNavGroups.length > 0 || financeLegacyLinks.some((link) => Boolean(getVisibleNavItem(link.suffix)));
   const hasReportsNav = Boolean(getVisibleNavItem('/analytics'));
-  const hasCommunicationsNav = ['/whatsapp', '/sms'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
+  const hasCommunicationsNav = ['/whatsapp', '/sms', '/email'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
   const hasContentNav = ['/blogs', '/categories', '/brands', '/footer', '/translations'].some((suffix) => Boolean(getVisibleNavItem(suffix)));
   const hasAdministrationNav = canShowUsersMenu || canShowSettingsLink;
   const isRouteUnder = (suffix: string) => pathname === `${routePrefix}${suffix}` || pathname.startsWith(`${routePrefix}${suffix}/`);

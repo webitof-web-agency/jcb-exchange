@@ -155,10 +155,11 @@ export class ChassisToRcVerificationService {
     }
   }
 
-  private async ensureNoRecentDuplicate(requestFingerprint: string) {
+  private async ensureNoRecentDuplicate(requestFingerprint: string, requestedById: string) {
     const existing = await this.record.findFirst({
       where: {
         requestFingerprint,
+        requestedById,
         status: CHASSIS_STATUS.PENDING,
         createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
       },
@@ -218,9 +219,9 @@ export class ChassisToRcVerificationService {
     const maskedChassisNumber = maskChassisNumber(chassisNumber);
     const cached = await this.findFreshCachedResult(requestFingerprint, runtime.dataSecret, requestedById);
     if (cached) return cached;
-    await this.ensureNoRecentDuplicate(requestFingerprint);
+    await this.ensureNoRecentDuplicate(requestFingerprint, requestedById);
 
-    const existing = await this.record.findFirst({ where: { requestFingerprint }, orderBy: { completedAt: 'desc' } });
+    const existing = await this.record.findFirst({ where: { requestFingerprint, requestedById }, orderBy: { completedAt: 'desc' } });
     const pendingData = {
       status: CHASSIS_STATUS.PENDING,
       maskedChassisNumber,
@@ -240,7 +241,7 @@ export class ChassisToRcVerificationService {
         pending = await this.record.create({ data: { status: CHASSIS_STATUS.PENDING, maskedChassisNumber, requestFingerprint, requestedById } });
       } catch (error) {
         if (!isUniqueConstraintError(error)) throw error;
-        const raceWinner = await this.record.findFirst({ where: { requestFingerprint }, orderBy: { completedAt: 'desc' } });
+        const raceWinner = await this.record.findFirst({ where: { requestFingerprint, requestedById }, orderBy: { completedAt: 'desc' } });
         if (!raceWinner) throw error;
         if (raceWinner.status === CHASSIS_STATUS.SUCCESS) {
           const racedCache = await this.findFreshCachedResult(requestFingerprint, runtime.dataSecret, requestedById);

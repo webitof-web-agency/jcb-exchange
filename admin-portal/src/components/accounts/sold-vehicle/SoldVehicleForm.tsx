@@ -550,12 +550,12 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       const data = response.data;
       if (cancelled || !hasPersistedVerificationPreview(data)) return;
       const preview: KycVerificationPreview = { side, kind, number, response: data };
-      setVerificationCache(buildVerificationCacheKey(kind, number), preview);
+      setVerificationCache(buildVerificationCacheKey(kind, number, currentUser?.id), preview);
       setVerificationPreviews((current) => ({ ...current, [`${side}-${kind}`]: preview }));
     })).catch(() => undefined);
 
     return () => { cancelled = true; };
-  }, [form, loading]);
+  }, [currentUser?.id, form, loading]);
 
   const update = <K extends keyof SellAccountFormState>(key: K, value: SellAccountFormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -614,7 +614,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
     const previewKey = `${side}-${kind}`;
     const cachedPreview = kind === 'aadhaar'
       ? null
-      : getVerificationCache<KycVerificationPreview>(buildVerificationCacheKey(kind, normalized));
+      : getVerificationCache<KycVerificationPreview>(buildVerificationCacheKey(kind, normalized, currentUser?.id));
     if (currentState.number !== normalized) {
       setVerificationPreviews((current) => {
         const next = { ...current };
@@ -679,7 +679,7 @@ export default function SoldVehicleForm({ recordId }: { recordId?: string }) {
       return;
     }
     const key = `${side}-${kind}`;
-    const cacheKey = buildVerificationCacheKey(kind, normalized);
+    const cacheKey = buildVerificationCacheKey(kind, normalized, currentUser?.id);
     const cachedPreview = getVerificationCache<KycVerificationPreview>(cacheKey);
     if (kind === 'aadhaar') {
       setKycBusyKey(key);

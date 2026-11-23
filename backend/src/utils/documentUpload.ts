@@ -85,7 +85,7 @@ const allowedListingMediaExtensionsByMimeType: Record<string, string[]> = {
 
 export const MAX_DOCUMENT_UPLOAD_SIZE = 5 * 1024 * 1024;
 export const MAX_PASSPORT_PHOTO_UPLOAD_SIZE = 3 * 1024 * 1024;
-export const MAX_LISTING_VIDEO_UPLOAD_SIZE = 15 * 1024 * 1024;
+export const MAX_LISTING_VIDEO_UPLOAD_SIZE = 30 * 1024 * 1024;
 export const MAX_FINANCE_SUPPORT_IMAGE_UPLOAD_SIZE = 2 * 1024 * 1024;
 export const MAX_BLOG_COVER_IMAGE_UPLOAD_SIZE = 5 * 1024 * 1024;
 export const MAX_HERO_IMAGE_UPLOAD_SIZE = 5 * 1024 * 1024;

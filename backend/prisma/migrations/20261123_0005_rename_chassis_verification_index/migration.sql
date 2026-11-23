@@ -1,0 +1,2 @@
+ALTER INDEX IF EXISTS "ChassisToRcVerificationRecord_requestFingerprint_requestedById_"
+  RENAME TO "ChassisVerification_fingerprint_requester_key";

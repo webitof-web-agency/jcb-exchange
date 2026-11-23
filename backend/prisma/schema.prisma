@@ -379,6 +379,21 @@ enum SmsOutboxStatus {
   CANCELLED
 }
 
+enum EmailMessageStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum EmailOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
 enum MobileOtpChallengeStatus {
   PENDING
   VERIFIED
@@ -682,6 +697,23 @@ model EmailOtpIntegrationSettings {
   otpLength            Int      @default(6)
   updatedAt            DateTime @updatedAt
   updatedByUserId      String?
+}
+
+model TransactionalEmailSettings {
+  id                    String   @id @default("default")
+  enabled               Boolean  @default(false)
+  smtpHost              String   @default("smtp.gmail.com")
+  smtpPort              Int      @default(465)
+  smtpSecure            Boolean  @default(true)
+  senderEmail           String?
+  senderName            String   @default("JCB Exchange")
+  replyToEmail          String?
+  encryptedSmtpPassword String?  @db.Text
+  lastTestedAt          DateTime?
+  lastTestStatus        String?
+  lastTestError         String?  @db.Text
+  updatedAt             DateTime @updatedAt
+  updatedByUserId       String?
 }
 
 model EmailOtpChallenge {
@@ -1095,7 +1127,7 @@ model ChassisToRcVerificationRecord {
   id                  String                        @id @default(uuid())
   status              ChassisToRcVerificationStatus @default(PENDING)
   maskedChassisNumber String
-  requestFingerprint  String                        @unique @db.VarChar(64)
+  requestFingerprint  String                        @db.VarChar(64)
   rcNumber            String?
   ownerName           String?
   rcStatus            String?
@@ -1116,6 +1148,7 @@ model ChassisToRcVerificationRecord {
   @@index([requestedById, createdAt])
   @@index([maskedChassisNumber, createdAt])
   @@index([rcNumber, createdAt])
+  @@unique([requestFingerprint, requestedById], map: "ChassisVerification_fingerprint_requester_key")
   @@index([requestFingerprint, status, completedAt], map: "ChassisToRcVerificationRecord_requestFingerprint_status_complet")
 }
 
@@ -3572,6 +3605,7 @@ model Offer {
   createdById         String?
   sentAt              DateTime?
   respondedAt         DateTime?
+  responseTokenVersion Int         @default(1)
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
@@ -3586,15 +3620,63 @@ model Offer {
 }
 
 model RecruitmentEmailTemplate {
-  id        String   @id @default(uuid())
-  name      String
-  code      String   @unique
-  subject   String
-  bodyHtml  String   @db.Text
-  variables String[]
-  isSystem  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String                  @id @default(uuid())
+  name           String
+  code           String                  @unique
+  subject        String
+  bodyHtml       String                  @db.Text
+  variables      String[]
+  enabled        Boolean                 @default(true)
+  attachmentMode String                  @default("NONE")
+  isSystem       Boolean                 @default(false)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  emailLogs TransactionalEmailLog[]
+}
+
+model TransactionalEmailLog {
+  id                String             @id @default(uuid())
+  eventCode         String
+  templateId        String?
+  relatedEntityType String?
+  relatedEntityId   String?
+  recipientEmail    String
+  subject           String
+  status            EmailMessageStatus @default(QUEUED)
+  errorMessage      String?            @db.Text
+  payloadSnapshot   Json?
+  dedupeKey         String?            @unique
+  sentAt            DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  template RecruitmentEmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  outbox   TransactionalEmailOutbox?
+
+  @@index([eventCode, createdAt])
+  @@index([relatedEntityType, relatedEntityId])
+  @@index([recipientEmail, status, createdAt])
+  @@map("transactional_email_logs")
+}
+
+model TransactionalEmailOutbox {
+  id            String            @id @default(uuid())
+  emailLogId    String            @unique
+  payload       Json
+  status        EmailOutboxStatus @default(PENDING)
+  attempts      Int               @default(0)
+  nextAttemptAt DateTime?         @default(now())
+  lockedAt      DateTime?
+  processedAt   DateTime?
+  lastError     String?           @db.Text
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  emailLog TransactionalEmailLog @relation(fields: [emailLogId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@map("transactional_email_outbox")
 }
 
 model RecruitmentActivityLog {

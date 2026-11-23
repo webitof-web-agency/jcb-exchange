@@ -67,6 +67,15 @@ const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Ar
       ],
     },
   ],
+  'Email Communications': [
+    {
+      groupName: 'Transactional Email',
+      permissions: [
+        { id: 'email.read', label: 'View Email Communications' },
+        { id: 'email.manage', label: 'Manage SMTP Settings & Email Delivery' },
+      ],
+    },
+  ],
   'Artificial Intelligence': [
     {
       groupName: 'JCB Intelligence Hub & Provider',

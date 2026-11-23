@@ -53,8 +53,10 @@ export const DEFAULT_EMAIL_TEMPLATES = [
     name: 'Offer Sent',
     code: 'OFFER_SENT',
     subject: 'Job Offer: {{job_title}} - JCB Exchange',
-    bodyHtml: `<p>Dear {{candidate_name}},</p><p>We are delighted to extend an offer of employment for the <strong>{{job_title}}</strong> position at JCB Exchange.</p><p>Expected Joining Date: <strong>{{joining_date}}</strong></p><p>Please review the details in your recruitment portal workspace or attached offer letter.</p><p>Best regards,<br/>Human Resources<br/>JCB Exchange</p>`,
-    variables: ['candidate_name', 'job_title', 'joining_date', 'company_name'],
+    bodyHtml: `<p>Dear {{candidate_name}},</p><p>We are delighted to extend an offer of employment for the <strong>{{job_title}}</strong> position at JCB Exchange.</p><p>Expected Joining Date: <strong>{{joining_date}}</strong></p><p>Please review the attached offer letter and use the secure link below to accept or decline the offer:</p><p><a href="{{offer_response_url}}">Review offer and respond</a></p><p>Best regards,<br/>Human Resources<br/>JCB Exchange</p>`,
+    variables: ['candidate_name', 'job_title', 'joining_date', 'company_name', 'designation', 'offer_response_url'],
+    enabled: true,
+    attachmentMode: 'DYNAMIC_OFFER_PDF',
     isSystem: true,
   },
 ];

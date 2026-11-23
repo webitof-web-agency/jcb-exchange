@@ -26,6 +26,26 @@ export const sanitizeLegalHtml = (value: unknown) => sanitizeHtml(String(value ?
   nonTextTags: DROP_WITH_CONTENT,
 }).trim();
 
+/** Recruitment email markup: safe presentation tags plus ordinary HTTPS/mail links. */
+export const sanitizeEmailHtml = (value: unknown) => sanitizeHtml(String(value ?? ''), {
+  allowedTags: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'h2', 'h3', 'span', 'div', 'a'],
+  allowedAttributes: { '*': ['class', 'style'], a: ['href', 'title', 'target', 'rel'] },
+  allowedClasses: { '*': ['legal-callout'] },
+  allowedStyles: {
+    '*': {
+      'font-size': [/^\d+(?:\.\d+)?(?:px|em|rem|%)$/],
+      'font-weight': [/^(?:normal|bold|bolder|lighter|[1-9]00)$/],
+      'font-style': [/^(?:normal|italic)$/],
+      'text-decoration': [/^[a-z -]{1,40}$/],
+      color: SAFE_COLOR,
+      'background-color': SAFE_COLOR,
+    },
+  },
+  allowedSchemes: ['http', 'https', 'mailto'],
+  allowProtocolRelative: false,
+  nonTextTags: DROP_WITH_CONTENT,
+}).trim();
+
 /**
  * First pass for blog articles: removes scripts, event handlers, comments and malformed markup with a real
  * HTML parser. The blog formatter then rebuilds each allowed tag in its fixed shape.

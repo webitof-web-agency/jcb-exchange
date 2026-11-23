@@ -14,7 +14,7 @@ export const MAX_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_PDF_INPUT_SIZE = 3 * 1024 * 1024;
 export const MAX_LISTING_VIDEO_INPUT_SIZE = 30 * 1024 * 1024;
 export const MAX_LISTING_VIDEO_DURATION_SECONDS = 120;
-const MAX_LISTING_VIDEO_UPLOAD_SIZE = 15 * 1024 * 1024;
+const MAX_LISTING_VIDEO_UPLOAD_SIZE = MAX_LISTING_VIDEO_INPUT_SIZE;
 export const MAX_FINANCE_SUPPORT_IMAGE_INPUT_SIZE = 2 * 1024 * 1024;
 export const MAX_HERO_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
 export const MAX_INSPECTION_SECTION_IMAGE_INPUT_SIZE = 5 * 1024 * 1024;
@@ -54,9 +54,12 @@ export type UploadPurpose = 'document' | 'passport-photo';
 export type ListingMediaKind = 'image' | 'video';
 
 export const getListingMediaPreparationPlan = (kind: ListingMediaKind) => ({
-  operation: kind === 'video' ? 'compress-video' : 'compress-image',
+  operation: kind === 'video' ? 'direct-upload-video' : 'compress-image',
   maxOutputBytes: kind === 'video' ? MAX_LISTING_VIDEO_UPLOAD_SIZE : LISTING_TARGET_MAX_IMAGE_SIZE,
 } as const);
+
+export const shouldCompressListingVideo = (fileSize: number) =>
+  fileSize > MAX_LISTING_VIDEO_UPLOAD_SIZE;
 
 export type UploadedFileResult = {
   access: UploadVisibility;
@@ -391,7 +394,7 @@ export const compressVideoForUpload = async (file: File) => {
     }
   }
 
-  throw new Error('The compressed video is still larger than 15MB. Please choose a shorter or lower-resolution video.');
+  throw new Error('The compressed video is still larger than 30MB. Please choose a shorter or lower-resolution video.');
 };
 
 const loadImage = (file: File) =>
@@ -692,6 +695,10 @@ export const prepareFileForUpload = async (file: File) => {
 
 export const prepareListingMediaForUpload = async (file: File, kind: ListingMediaKind) => {
   await validateListingMediaFile(file, kind);
+
+  if (kind === 'video' && !shouldCompressListingVideo(file.size)) {
+    return file;
+  }
 
   if (getListingMediaPreparationPlan(kind).operation === 'compress-image') {
     return compressImageForUpload(file, {

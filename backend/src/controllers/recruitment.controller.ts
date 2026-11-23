@@ -35,11 +35,123 @@ import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import { normalizeOfferLetterData, validateOfferLetterData, type OfferLetterData } from '../utils/offerLetter';
 import { validateField } from '../utils/fieldValidation';
+import { sanitizeLegalHtml } from '../utils/htmlSanitizer';
+import { enqueueOfferEmail } from '../services/recruitmentEmail.service';
+import { verifyOfferResponseToken } from '../utils/offerResponseToken';
 
 const getParamString = (param: unknown): string => {
   if (typeof param === 'string') return param;
   if (Array.isArray(param) && typeof param[0] === 'string') return param[0];
   return '';
+};
+
+const getOfferResponse = async (token: string) => {
+  const payload = verifyOfferResponseToken(token);
+  if (!payload) return null;
+  const offer = await prisma.offer.findUnique({
+    where: { id: payload.offerId },
+    include: { candidate: true, job: true, application: true },
+  });
+  if (!offer || offer.responseTokenVersion !== payload.version) return null;
+  return { offer, payload };
+};
+
+export const getPublicOfferResponse = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = getParamString(req.params.token);
+    const response = await getOfferResponse(token);
+    if (!response) return res.status(404).json({ success: false, error: 'This offer link is invalid or has expired.' });
+
+    const { offer, payload } = response;
+    const isExpired = Boolean(offer.offerValidUntil && offer.offerValidUntil.getTime() <= Date.now()) || payload.expiresAt * 1000 <= Date.now();
+    res.status(200).json({
+      success: true,
+      offer: {
+        id: offer.id,
+        candidateName: offer.candidate.fullName,
+        jobTitle: offer.job.title,
+        designation: offer.designation,
+        joiningLocation: offer.joiningLocation,
+        joiningDate: offer.joiningDate,
+        offerValidUntil: offer.offerValidUntil,
+        status: isExpired && offer.status === 'SENT' ? 'EXPIRED' : offer.status,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const respondToPublicOffer = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = getParamString(req.params.token);
+    const action = typeof req.body?.action === 'string' ? req.body.action.trim().toUpperCase() : '';
+    if (action !== 'ACCEPT' && action !== 'DECLINE') {
+      return res.status(400).json({ success: false, error: 'Choose accept or decline for this offer.' });
+    }
+
+    const response = await getOfferResponse(token);
+    if (!response) return res.status(404).json({ success: false, error: 'This offer link is invalid or has expired.' });
+    const { offer, payload } = response;
+    if ((offer.offerValidUntil && offer.offerValidUntil.getTime() <= Date.now()) || payload.expiresAt * 1000 <= Date.now()) {
+      return res.status(410).json({ success: false, error: 'This offer has expired.' });
+    }
+    if (offer.status !== 'SENT') {
+      return res.status(409).json({ success: false, error: `This offer is already ${offer.status.toLowerCase()}.`, status: offer.status });
+    }
+
+    const status = action === 'ACCEPT' ? 'ACCEPTED' : 'DECLINED';
+    const updated = await prisma.$transaction(async (transaction) => {
+      const result = await transaction.offer.updateMany({
+        where: { id: offer.id, status: 'SENT', responseTokenVersion: payload.version },
+        data: { status, respondedAt: new Date() },
+      });
+      if (result.count !== 1) return null;
+      if (status === 'ACCEPTED') {
+        await transaction.jobApplication.update({ where: { id: offer.applicationId }, data: { currentStage: 'OFFER_ACCEPTED' } });
+      }
+      return transaction.offer.findUnique({ where: { id: offer.id } });
+    });
+    if (!updated) return res.status(409).json({ success: false, error: 'This offer has already received a response.' });
+
+    await logRecruitmentActivity({
+      candidateId: offer.candidateId,
+      applicationId: offer.applicationId,
+      actorId: null,
+      action: `OFFER_${status}`,
+      title: `Candidate ${status === 'ACCEPTED' ? 'Accepted' : 'Declined'} Offer`,
+      details: `Candidate response received through the secure offer link.`,
+    });
+
+    const recipients = await prisma.user.findMany({
+      where: { status: 'ACTIVE', OR: [{ role: 'SUPER_ADMIN' }, ...(offer.createdById ? [{ id: offer.createdById }] : [])] },
+      select: { id: true },
+    });
+    await Promise.all(recipients.map((recipient) => prisma.notification.upsert({
+      where: { dedupeKey: `${offer.id}:response:${status}:${recipient.id}` },
+      create: {
+        userId: recipient.id,
+        title: `Offer ${status === 'ACCEPTED' ? 'Accepted' : 'Declined'}`,
+        message: `${offer.candidate.fullName} has ${status === 'ACCEPTED' ? 'accepted' : 'declined'} the offer for ${offer.job.title}.`,
+        type: status === 'ACCEPTED' ? 'SUCCESS' : 'WARNING',
+        link: '/admin/recruitment/offers',
+        dedupeKey: `${offer.id}:response:${status}:${recipient.id}`,
+      },
+      update: {},
+    })));
+
+    dispatchRecruitmentCandidateWhatsApp({
+      eventCode: 'RECRUITMENT_OFFER_STATUS_UPDATED',
+      relatedEntityType: 'OFFER_STATUS',
+      relatedEntityId: `${offer.id}:${status}`,
+      candidate: offer.candidate,
+      payloadSnapshot: { applicationId: offer.applicationId, applicationRef: offer.application.applicationRef, jobTitle: offer.job.title, offerStatus: status },
+    });
+
+    res.status(200).json({ success: true, status, message: `Offer ${status === 'ACCEPTED' ? 'accepted' : 'declined'} successfully.` });
+  } catch (error) {
+    next(error);
+  }
 };
 
 const parseCustomAnswersPayload = (payload: unknown): Record<string, unknown> => {
@@ -3020,6 +3132,10 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
       },
     });
 
+    void enqueueOfferEmail(offer.id).catch((error: unknown) => {
+      console.error('[email] offer email could not be queued:', error instanceof Error ? error.message : error);
+    });
+
     res.status(201).json({
       success: true,
       offer,
@@ -3056,7 +3172,8 @@ export const updateOfferStatus = async (req: Request, res: Response, next: NextF
         status: status as OfferStatus,
         offerLetterUrl: offerLetterUrl !== undefined ? offerLetterUrl : offer.offerLetterUrl,
         sentAt: status === 'SENT' ? new Date() : offer.sentAt,
-        respondedAt: status === 'ACCEPTED' || status === 'DECLINED' ? new Date() : offer.respondedAt,
+        respondedAt: status === 'ACCEPTED' || status === 'DECLINED' ? new Date() : status === 'SENT' ? null : offer.respondedAt,
+        ...(status === 'SENT' ? { responseTokenVersion: { increment: 1 } } : {}),
       },
     });
 
@@ -3087,6 +3204,12 @@ export const updateOfferStatus = async (req: Request, res: Response, next: NextF
       candidate: offer.candidate,
       payloadSnapshot: { applicationId: offer.applicationId, applicationRef: offer.application.applicationRef, jobTitle: offer.job.title, offerStatus: status },
     });
+
+    if (status === 'SENT') {
+      void enqueueOfferEmail(updatedOffer.id).catch((error: unknown) => {
+        console.error('[email] manually resent offer email could not be queued:', error instanceof Error ? error.message : error);
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -3201,6 +3324,10 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
         offerLetterUrl,
         offerLetterFileName,
         offerLetterData: offerData as Prisma.InputJsonValue,
+        status: 'SENT',
+        sentAt: new Date(),
+        respondedAt: null,
+        responseTokenVersion: { increment: 1 },
         },
       });
 
@@ -3230,6 +3357,9 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
       }
 
       return updatedOffer;
+    });
+    void enqueueOfferEmail(offer.id).catch((error: unknown) => {
+      console.error('[email] updated offer email could not be queued:', error instanceof Error ? error.message : error);
     });
     res.status(200).json({ success: true, offer, message: 'Offer updated successfully.' });
   } catch (error) {
@@ -3308,7 +3438,7 @@ export const getRecruitmentSettings = async (req: Request, res: Response, next: 
     };
     const fetchTemplates = () => prisma.recruitmentEmailTemplate.findMany({
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, code: true, subject: true, bodyHtml: true, variables: true, isSystem: true },
+        select: { id: true, name: true, code: true, subject: true, bodyHtml: true, variables: true, enabled: true, attachmentMode: true, isSystem: true },
     });
 
     const [departments, stages, templates] = await Promise.all([
@@ -3323,6 +3453,9 @@ export const getRecruitmentSettings = async (req: Request, res: Response, next: 
       type: template.code,
       subject: template.subject,
       body: template.bodyHtml,
+      variables: template.variables,
+      enabled: template.enabled,
+      attachmentMode: template.attachmentMode,
       isDefault: template.isSystem,
     }));
 
@@ -3705,13 +3838,26 @@ export const updateDepartment = async (req: Request, res: Response, next: NextFu
 export const updateEmailTemplate = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = getParamString(req.params.id);
-    const { subject, bodyHtml } = req.body;
+    const { subject, bodyHtml, enabled, attachmentMode } = req.body;
+    if (typeof subject !== 'string' || !subject.trim() || subject.length > 998) {
+      return res.status(400).json({ success: false, error: 'A valid email subject is required.' });
+    }
+    if (typeof bodyHtml !== 'string' || !bodyHtml.trim() || bodyHtml.length > 100_000) {
+      return res.status(400).json({ success: false, error: 'Email body is required and must be under 100,000 characters.' });
+    }
+    const existingTemplate = await prisma.recruitmentEmailTemplate.findUnique({ where: { id }, select: { attachmentMode: true, enabled: true } });
+    if (!existingTemplate) return res.status(404).json({ success: false, error: 'Email template not found.' });
+    const normalizedAttachmentMode = attachmentMode === undefined
+      ? existingTemplate.attachmentMode
+      : attachmentMode === 'DYNAMIC_OFFER_PDF' ? 'DYNAMIC_OFFER_PDF' : 'NONE';
 
     const tpl = await prisma.recruitmentEmailTemplate.update({
       where: { id },
       data: {
-        subject: subject?.trim(),
-        bodyHtml: bodyHtml?.trim(),
+        subject: subject.trim().replace(/[\r\n]+/g, ' '),
+        bodyHtml: sanitizeLegalHtml(bodyHtml),
+        enabled: enabled === undefined ? existingTemplate.enabled : enabled === true,
+        attachmentMode: normalizedAttachmentMode,
       },
     });
 

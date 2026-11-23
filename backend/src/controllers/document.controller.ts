@@ -93,7 +93,7 @@ const enforceStoredFileSizePolicy = async (
   if (purpose === 'listing-media') {
     if (isVideoMimeType(file.mimetype) && file.size > MAX_LISTING_VIDEO_UPLOAD_SIZE) {
       await cleanupFile(file.path);
-      throw new Error('Video files must be 15MB or smaller.');
+      throw new Error('Video files must be 30MB or smaller.');
     }
 
     if (!isVideoMimeType(file.mimetype) && file.size > MAX_DOCUMENT_UPLOAD_SIZE) {

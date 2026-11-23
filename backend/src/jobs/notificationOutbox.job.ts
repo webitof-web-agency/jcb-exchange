@@ -1,5 +1,6 @@
 import { processSmsOutbox } from '../services/smsIntegration.service';
 import { processWhatsAppOutbox } from '../services/whatsappIntegration.service';
+import { processTransactionalEmailOutbox } from '../services/recruitmentEmail.service';
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
@@ -8,11 +9,12 @@ export const notificationOutboxTick = async () => {
   if (running) return { skipped: 'already running' as const };
   running = true;
   try {
-    const [whatsapp, sms] = await Promise.all([
+    const [whatsapp, sms, email] = await Promise.all([
       processWhatsAppOutbox(),
       processSmsOutbox(),
+      processTransactionalEmailOutbox(),
     ]);
-    return { whatsapp, sms };
+    return { whatsapp, sms, email };
   } catch (error) {
     console.error('[notifications] outbox worker tick failed:', error instanceof Error ? error.message : error);
     return { skipped: 'error' as const };

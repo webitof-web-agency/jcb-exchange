@@ -34,7 +34,15 @@ export type ListingCopilotResult = {
   } | null;
 };
 
-const clean = (value: string) => value.trim().replace(/\s+/gu, ' ');
+const INTERNAL_UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/giu;
+const INTERNAL_OBJECT_ID_PATTERN = /\b[0-9a-f]{24}\b/giu;
+
+const clean = (value: string) => value
+  .trim()
+  .replace(INTERNAL_UUID_PATTERN, '')
+  .replace(INTERNAL_OBJECT_ID_PATTERN, '')
+  .replace(/\s+/gu, ' ')
+  .trim();
 const money = (value: number) => Math.round(value / 100) * 100;
 
 const warning = (code: string, severity: ListingCopilotWarning['severity'], message: string): ListingCopilotWarning => ({ code, severity, message });

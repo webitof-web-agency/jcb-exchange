@@ -13,10 +13,50 @@ export type ListingVerificationStatus =
 
 export type ListingVerificationSnapshot = Record<string, string>;
 
+type VerificationRecord = {
+  id?: string;
+  status?: unknown;
+  requestedById?: unknown;
+  requestFingerprint?: unknown;
+};
+
 export const buildRcFullVerificationFingerprint = (registrationNumber: unknown) =>
   createVerificationFingerprint('RC_FULL', {
     id_number: normalizeRcNumber(registrationNumber),
   });
+
+export const resolveListingRegistrationNumber = (...values: unknown[]) => {
+  for (const value of values) {
+    const normalized = normalizeRcNumber(value).replace(/[/-]+/g, '');
+    if (normalized) return normalized;
+  }
+  return '';
+};
+
+export const chooseVerificationRecordForIdentity = ({
+  source,
+  identity,
+  preferredRecord,
+  fallbackRecord,
+}: {
+  source: ListingVerificationSource;
+  identity: unknown;
+  preferredRecord: VerificationRecord | null | undefined;
+  fallbackRecord: VerificationRecord | null | undefined;
+}) => {
+  const expectedFingerprint = source === 'RC_FULL'
+    ? buildRcFullVerificationFingerprint(identity)
+    : buildChassisVerificationFingerprint(identity);
+  const matchesCurrentIdentity = (record: VerificationRecord | null | undefined) => Boolean(
+    record
+    && record.status === 'SUCCESS'
+    && record.requestFingerprint === expectedFingerprint,
+  );
+
+  if (matchesCurrentIdentity(preferredRecord)) return preferredRecord;
+  if (matchesCurrentIdentity(fallbackRecord)) return fallbackRecord;
+  return null;
+};
 
 export const getVehicleVerificationIdentityMismatch = (
   source: ListingVerificationSource,

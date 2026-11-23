@@ -56,3 +56,16 @@ test('listing copilot flags incomplete and risky draft fields without exposing i
   assert.equal('id' in result, false);
   assert.equal(result.priceGuidance, null);
 });
+
+test('listing copilot removes internal UUIDs from generated marketplace copy', () => {
+  const internalId = 'b0dd356d-8287-40e6-ba2c-68362a52265e';
+  const result = analyzeListingDraft({
+    ...completeDraft,
+    model: `3DX ${internalId}`,
+    description: `Machine ${internalId} is available in good condition.`,
+  }, []);
+
+  assert.doesNotMatch(result.suggestedTitle, new RegExp(internalId, 'iu'));
+  assert.doesNotMatch(result.suggestedDescription, new RegExp(internalId, 'iu'));
+  assert.match(result.suggestedTitle, /2021 JCB 3DX Backhoe Loader/iu);
+});

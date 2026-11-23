@@ -70,7 +70,7 @@ const conditions = ['Excellent', 'Good', 'Fair', 'Needs Repair'];
 const fuelTypes = ['Diesel', 'Electric', 'Petrol', 'Hybrid', 'Other'];
 const transmissionTypes = ['Manual', 'Automatic', 'Semi-Automatic', 'Other'];
 const mediaImageHelper = `Auto-compressed before upload. Max ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB input`;
-const mediaVideoHelper = `Auto-compressed video (muted). Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB and ${MAX_LISTING_VIDEO_DURATION_SECONDS} seconds`;
+const mediaVideoHelper = `Fast direct upload. Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB and ${MAX_LISTING_VIDEO_DURATION_SECONDS} seconds`;
 const apiUrl = (token: string, suffix = '') => `${API_BASE_URL}/listing-completion/${encodeURIComponent(token)}${suffix}`;
 const inputClass = 'mt-1 w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-2.5 py-1.5 text-xs text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#FFC107] focus:bg-white focus:ring-1 focus:ring-[#FFC107] h-[34px]';
 const readOnlyClass = `${inputClass} bg-gray-100 text-gray-600`;

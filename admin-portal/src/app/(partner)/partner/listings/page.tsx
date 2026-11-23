@@ -10,6 +10,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import SearchableSelect, { type Option } from '@/components/ui/SearchableSelect';
 import SafeRemoteImage from '@/components/ui/SafeRemoteImage';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuthStore } from '@/store/authStore';
 import {
   MAX_IMAGE_INPUT_SIZE,
   MAX_LISTING_VIDEO_DURATION_SECONDS,
@@ -30,9 +31,10 @@ import {
   SELL_VEHICLE_AVAILABILITY_OPTIONS,
 } from '@/lib/listingFormSanitizers';
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
+import ListingAiImproveBar from '@/components/listings/ListingAiImproveBar';
 import { ApiFillBox, ApiFillLegend } from '@/components/ui/ApiFillBadge';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, shouldSyncListingRto, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
-import { findMasterOption, getProviderVehicleIdentityMismatch, getVehicleVerificationButtonState, getVehicleVerificationSubmitValidationError, mapProviderVehicleToListing, normalizeMasterName, type VehicleVerificationSource } from '@/lib/listingVehicleVerification';
+import { findMasterOption, getProviderVehicleIdentityMismatch, getVehicleVerificationButtonState, getVehicleVerificationSubmitValidationError, mapProviderVehicleToListing, normalizeMasterName, normalizeRegistrationNumber, type VehicleVerificationSource } from '@/lib/listingVehicleVerification';
 import { getListingSaveResponse } from '@/lib/listingSaveResponse';
 import { getSellVehicleSampleMedia } from '@/lib/sellVehicleSampleMedia.mjs';
 import { getListingFormValidationError } from '@/lib/listingRequirements.mjs';
@@ -45,6 +47,7 @@ import { getVehicleIdentityBlockMessage, useVehicleIdentityCheck } from '@/hooks
 import { getListingFormTabs, type ListingFormTabKey } from '@/lib/listingFormTabs';
 import { getListingVideoMedia } from '@/lib/listingMedia';
 import { getMediaAssetDisplayName, getMediaPreviewSource } from '@/lib/listingMediaSlotPresentation';
+import { buildListingAiAssistDraft } from '@/lib/listingAiAssist';
 
 type ListingFormState = {
   category: string;
@@ -468,7 +471,7 @@ const fieldClassName =
   'w-full rounded-lg border border-gray-200 bg-[#F8FAFC] px-2.5 py-1.5 text-xs text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#FFC107] focus:bg-white focus:ring-1 focus:ring-[#FFC107] h-[34px]';
 
 const imageUploadHelper = `Auto-compressed before upload. Max ${Math.round(MAX_IMAGE_INPUT_SIZE / (1024 * 1024))}MB input`;
-const videoUploadHelper = `Auto-compressed video (muted). Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB and ${MAX_LISTING_VIDEO_DURATION_SECONDS} seconds`;
+const videoUploadHelper = `Fast direct upload. Max ${Math.round(MAX_LISTING_VIDEO_INPUT_SIZE / (1024 * 1024))}MB and ${MAX_LISTING_VIDEO_DURATION_SECONDS} seconds`;
 
 const formatCurrency = (value: string | number) => {
   const numericValue = typeof value === 'number' ? value : Number(value || 0);
@@ -925,6 +928,7 @@ function TableAvailabilityDropdown({
 
 export default function PartnerListingsPage() {
   const router = useRouter();
+  const currentUserId = useAuthStore((state) => state.user?.id || '');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalTab, setModalTab] = useState<ModalTabKey>('equipment');
   const [form, setForm] = useState<ListingFormState>(initialForm);
@@ -1288,11 +1292,25 @@ export default function PartnerListingsPage() {
     setCompletionReviewListingId(listing.completionReviewRequired ? listing.id : null);
     setModalTab('equipment');
     const parsedDetails = parseListingDescription(listing.description);
-    originalChassisNumberRef.current = parsedDetails.chassisOrSerialNo;
     const linkedRto = listing.rtoRecords?.[0];
+    const savedVerification = listing.vehicleVerification;
+    const hasReusableVerification = Boolean(
+      savedVerification?.verificationRecordId
+      && ['API_VERIFIED', 'MANUALLY_MODIFIED'].includes(savedVerification.status || '')
+      && savedVerification.status !== 'REVERIFICATION_REQUIRED',
+    );
+    const savedVerifiedRegistrationNumber = hasReusableVerification
+      ? (savedVerification?.verifiedRegistrationNumber || '').trim()
+      : '';
+    const savedVerifiedChassisNumber = hasReusableVerification
+      ? (savedVerification?.verifiedChassisNumber || '').trim()
+      : '';
+    const currentRegistrationNumber = savedVerifiedRegistrationNumber || linkedRto?.vehicleNumber || parsedDetails.registrationNo;
+    const currentChassisNumber = savedVerifiedChassisNumber || parsedDetails.chassisOrSerialNo;
+    originalChassisNumberRef.current = currentChassisNumber;
     setSavedVehicleNumbers({
-      registration: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
-      chassis: parsedDetails.chassisOrSerialNo,
+      registration: currentRegistrationNumber,
+      chassis: currentChassisNumber,
     });
     const buyerStateName = listing.saleRecord?.buyerState || '';
     const matchedBuyerState = availableStates.find((s) => s.name.toLowerCase() === buyerStateName.toLowerCase());
@@ -1305,9 +1323,9 @@ export default function PartnerListingsPage() {
       manufacturingYear: String(listing.manufacturingYear || ''),
       registrationDate: parsedDetails.registrationDate,
       registrationUpto: parsedDetails.registrationUpto,
-      registrationNo: linkedRto?.vehicleNumber || parsedDetails.registrationNo,
+      registrationNo: currentRegistrationNumber,
       ownerName: listing.ownerName || parsedDetails.ownerName,
-      chassisOrSerialNo: parsedDetails.chassisOrSerialNo,
+      chassisOrSerialNo: currentChassisNumber,
       engineNumber: listing.engineNumber || listing.vehicleVerification?.verifiedEngineNumber || parsedDetails.engineNumber,
       previousOwners: parsedDetails.previousOwners,
       condition: listing.condition || '',
@@ -1361,18 +1379,12 @@ export default function PartnerListingsPage() {
       },
     });
 
-    const savedVerification = listing.vehicleVerification;
-    const hasReusableVerification = Boolean(
-      savedVerification?.verificationRecordId
-      && ['API_VERIFIED', 'MANUALLY_MODIFIED'].includes(savedVerification.status || '')
-      && savedVerification.status !== 'REVERIFICATION_REQUIRED',
-    );
     setChassisVerificationStatus(hasReusableVerification ? 'VERIFIED' : 'UNVERIFIED');
-    setVerifiedChassisNumber(hasReusableVerification ? savedVerification?.verifiedChassisNumber || parsedDetails.chassisOrSerialNo : '');
-    setVerifiedRegistrationNumber(hasReusableVerification ? savedVerification?.verifiedRegistrationNumber || linkedRto?.vehicleNumber || parsedDetails.registrationNo : '');
+    setVerifiedChassisNumber(hasReusableVerification ? savedVerifiedChassisNumber : '');
+    setVerifiedRegistrationNumber(hasReusableVerification ? savedVerifiedRegistrationNumber : '');
     setVehicleVerificationSource(hasReusableVerification ? savedVerification?.verificationSource || 'CHASSIS' : '');
     setChassisVerificationId(hasReusableVerification ? savedVerification?.verificationRecordId || '' : '');
-    originalRegistrationNumberRef.current = linkedRto?.vehicleNumber || parsedDetails.registrationNo;
+    originalRegistrationNumberRef.current = currentRegistrationNumber;
 
     const { nextMediaState, nextPreviewState } = buildMediaPreviewState(listing.media || []);
 
@@ -1471,7 +1483,7 @@ export default function PartnerListingsPage() {
     setMessage('');
 
     try {
-      const cacheKey = buildVerificationCacheKey('chassis-to-rc', chassisNumber);
+      const cacheKey = buildVerificationCacheKey('chassis-to-rc', chassisNumber, currentUserId);
       const cachedResponse = getVerificationCache<ChassisVerificationResponse>(cacheKey);
       const response = cachedResponse
         ? { data: { ...cachedResponse, cacheHit: true } }
@@ -1573,7 +1585,7 @@ export default function PartnerListingsPage() {
     setMessage('');
 
     try {
-      const cacheKey = buildVerificationCacheKey('rc-full', registrationNumber);
+      const cacheKey = buildVerificationCacheKey('rc-full', registrationNumber, currentUserId);
       const cachedResponse = getVerificationCache<VehicleVerificationResponse>(cacheKey);
       const response = cachedResponse
         ? { data: { ...cachedResponse, cacheHit: true } }
@@ -1700,6 +1712,10 @@ export default function PartnerListingsPage() {
       saveAsDraft,
       editingListingId,
       hasInput: hasListingRtoInput(sanitizedRto),
+      registrationChanged: Boolean(
+        editingListingId
+        && normalizeRegistrationNumber(sanitizedForm.registrationNo) !== normalizeRegistrationNumber(originalRegistrationNumberRef.current),
+      ),
     });
 
     if (!saveAsDraft) {
@@ -1876,6 +1892,7 @@ export default function PartnerListingsPage() {
           : {}),
         brandName: sanitizedForm.brand,
         modelName: sanitizedForm.model,
+        registrationNo: sanitizedForm.registrationNo,
         ownerName: sanitizedForm.ownerName,
         chassisOrSerialNo: sanitizedForm.chassisOrSerialNo,
         title: sanitizedForm.title || `${sanitizedForm.brand} ${sanitizedForm.model}`.trim() || 'Vehicle draft',
@@ -2621,6 +2638,26 @@ export default function PartnerListingsPage() {
                       </div>
                     </Field>
                   </div>
+                  <ListingAiImproveBar
+                    draft={buildListingAiAssistDraft({
+                      category: form.category,
+                      brand: form.brand,
+                      model: form.model,
+                      manufacturingYear: form.manufacturingYear,
+                      operatingHours: form.operatingHours,
+                      condition: form.condition,
+                      locationCity: form.city,
+                      locationState: form.state,
+                      price: form.price,
+                      mediaCount: uploadedMediaCount,
+                      description: form.description,
+                      registrationVerified: chassisVerificationStatus === 'VERIFIED',
+                    })}
+                    onApply={(patch) => {
+                      if (patch.title !== undefined) updateField('title', patch.title);
+                      if (patch.description !== undefined) updateField('description', patch.description);
+                    }}
+                  />
                   <div className="mb-4 grid gap-4 md:grid-cols-2">
                     <Field label="Vehicle Name" apiFill={vehicleApiFill}>
                       <input
@@ -2873,7 +2910,7 @@ export default function PartnerListingsPage() {
                     </span>
                   </div>
                   <p className="text-xs font-medium text-gray-500">
-                    At least one vehicle image and one video are required. Each selected video is compressed before upload.
+                    At least one vehicle image and one video are required. Videos upload directly after validation.
                   </p>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7">
                     {mediaSlots.map((slot) => (

@@ -12,6 +12,54 @@ import { encryptPanData } from './panVerification.dataCrypto';
 
 const dataSecret = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
+test('does not reuse an RC_FULL verification record created by another user', async () => {
+  let providerCalls = 0;
+  let createCalls = 0;
+  const existing = {
+    id: 'super-admin-record',
+    serviceKey: 'RC_FULL',
+    status: 'SUCCESS',
+    maskedRcNumber: 'CG12********3734',
+    requestedById: 'super-admin-user',
+    requestFingerprint: 'fingerprint',
+    encryptedResult: encryptPanData(JSON.stringify({ rcNumber: 'CG12BM3734' }), dataSecret),
+    completedAt: new Date(),
+    createdAt: new Date(),
+    template: null,
+  };
+  const service = new RcFullService({
+    record: {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => {
+        if (where.status === 'PENDING') return null;
+        if (where.requestedById === 'partner-user') return null;
+        return existing;
+      },
+      findUnique: async () => null,
+      findMany: async () => [],
+      count: async () => 0,
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        createCalls += 1;
+        return { id: 'partner-record', ...data, createdAt: new Date(), completedAt: null, template: null };
+      },
+      update: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'partner-record', ...data, createdAt: new Date(), template: null }),
+    } as any,
+    provider: {
+      verifyRcFull: async () => {
+        providerCalls += 1;
+        return { success: true, status_code: 200, data: { rc_number: 'CG12BM3734' } };
+      },
+    } as any,
+    dataSecret,
+  });
+
+  const result = await service.verifyRc({ id_number: 'CG12BM3734' }, 'partner-user');
+
+  assert.equal(providerCalls, 1);
+  assert.equal(createCalls, 1);
+  assert.equal(result.cacheHit, false);
+  assert.equal(result.record.id, 'partner-record');
+});
+
 test('does not reuse an unsaved RC owner-history result from the verification cache', async () => {
   let providerCalls = 0;
   let createCalls = 0;

@@ -4,6 +4,7 @@ import {
   MAX_PASSPORT_PHOTO_INPUT_SIZE,
   getPassportPhotoUploadValidationError,
   getListingMediaPreparationPlan,
+  shouldCompressListingVideo,
   prepareFileForUpload,
 } from './fileUpload';
 
@@ -29,9 +30,14 @@ test('passes valid PDF KYC documents through without video compression', async (
   assert.equal(preparedFile, selectedFile);
 });
 
-test('prepares listing videos for compression before the 15MB server upload limit', () => {
+test('uses direct listing video upload up to the 30MB server limit', () => {
   assert.deepEqual(getListingMediaPreparationPlan('video'), {
-    operation: 'compress-video',
-    maxOutputBytes: 15 * 1024 * 1024,
+    operation: 'direct-upload-video',
+    maxOutputBytes: 30 * 1024 * 1024,
   });
+});
+
+test('does not recompress a validated listing video that already fits the server limit', () => {
+  assert.equal(shouldCompressListingVideo(30 * 1024 * 1024), false);
+  assert.equal(shouldCompressListingVideo(30 * 1024 * 1024 + 1), true);
 });

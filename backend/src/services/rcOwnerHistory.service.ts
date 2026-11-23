@@ -559,12 +559,13 @@ export class RcOwnerHistoryService {
     if (existing) throw operationError('This vehicle verification is already in progress. Please wait a moment.', 409, 'verification_in_progress');
   }
 
-  private async findFreshCachedResult(requestFingerprint: string, dataSecret: string) {
+  private async findFreshCachedResult(requestFingerprint: string, dataSecret: string, requestedById: string) {
     if (this.serviceKey === 'RC_OWNER_HISTORY') return null;
     const cached = await this.record.findFirst({
       where: {
         serviceKey: this.serviceKey,
         requestFingerprint,
+        requestedById,
         status: RC_STATUS.SUCCESS,
         completedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
         encryptedResult: { not: null },
@@ -611,7 +612,7 @@ export class RcOwnerHistoryService {
   private async run(rcNumber: string, requestedById: string, requestFingerprint: string) {
     const runtime = await this.getRuntime();
     const maskedRcNumber = maskRcNumber(rcNumber);
-    const cached = await this.findFreshCachedResult(requestFingerprint, runtime.dataSecret);
+    const cached = await this.findFreshCachedResult(requestFingerprint, runtime.dataSecret, requestedById);
     if (cached) return cached;
     await this.ensureNoRecentDuplicate(requestFingerprint);
     const existing = await this.record.findFirst({
@@ -619,7 +620,11 @@ export class RcOwnerHistoryService {
       orderBy: { completedAt: 'desc' },
       include: { template: true },
     });
-    const reusableExisting = existing && this.serviceKey === 'RC_FULL' ? existing : null;
+    const reusableExisting = existing
+      && this.serviceKey === 'RC_FULL'
+      && existing.requestedById === requestedById
+      ? existing
+      : null;
     const pending = reusableExisting
       ? await this.record.update({
           where: { id: reusableExisting.id },
