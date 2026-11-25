@@ -131,6 +131,7 @@ type MessageInput = {
   event: CrmEvent;
   recipientType: 'CUSTOMER' | 'EMPLOYEE' | 'PARTNER';
   phone: string | null | undefined;
+  email?: string | null | undefined;
   entityId: string;
   values: Array<string | null | undefined>;
   variables: Record<string, unknown>;
@@ -140,7 +141,7 @@ type MessageInput = {
 
 /** WhatsApp (+ SMS via the same automation rule set). Isolated from CRM transactions. */
 export const sendCrmMessage = async (input: MessageInput) => {
-  if (!input.phone) return { queued: false, reason: 'RECIPIENT_PHONE_REQUIRED' };
+  if (!input.phone && !input.email) return { queued: false, reason: 'RECIPIENT_CONTACT_REQUIRED' };
   try {
     return await dispatchMarketplaceWhatsApp({
       eventCode: input.event,
@@ -148,6 +149,7 @@ export const sendCrmMessage = async (input: MessageInput) => {
       relatedEntityId: input.entityId,
       recipientType: input.recipientType,
       recipientPhone: input.phone,
+      recipientEmail: input.email,
       templateComponents: body(input.values),
       payloadSnapshot: input.variables,
       ...(input.dedupeSuffix ? { dedupeSuffix: input.dedupeSuffix } : {}),

@@ -781,7 +781,7 @@ export class PanVerificationService {
       if (record.encryptedResult) {
         await this.record.update({
           where: { id: record.id },
-          data: { encryptedResult: null, rawDataExpiresAt: null },
+          data: { encryptedResult: null, rawDataExpiresAt: null, requestFingerprint: null },
         });
         record.encryptedResult = null;
         record.rawDataExpiresAt = null;
@@ -814,9 +814,12 @@ export class PanVerificationService {
         },
       });
       templateId = template.id;
+      // The stored template is what we keep. Drop the raw result and the
+      // unsalted request fingerprint so the full PAN cannot be recovered from
+      // the masked value plus the hash.
       await this.record.update({
         where: { id: record.id },
-        data: { encryptedResult: null, rawDataExpiresAt: null },
+        data: { encryptedResult: null, rawDataExpiresAt: null, requestFingerprint: null },
       });
       return { record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null }), result: null, template: panTemplateSummary(template) };
     } catch (error) {

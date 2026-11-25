@@ -104,7 +104,7 @@ export type SellAccountSaleType = 'SELL' | 'EXCHANGE';
 export type SellAccountExpenseBreakdown = { transport: number; paperwork: number; rtoWork: number; other: number; otherLabel: string };
 export type SellAccountInvoiceDelivery = {
   attemptedAt?: string;
-  channels?: Array<{ channel: 'WHATSAPP' | 'SMS'; sent: boolean; status: string; detail?: string | null }>;
+  channels?: Array<{ channel: 'WHATSAPP' | 'SMS' | 'EMAIL'; sent: boolean; status: string; detail?: string | null }>;
 };
 
 export type SellAccountMarginBasis = 'SALE_MINUS_PURCHASE' | 'AFTER_EXPENSES';
@@ -169,6 +169,8 @@ export interface SellAccountRecord {
   completedAt?: string | null;
   invoiceNumber?: string | null;
   invoiceGeneratedAt?: string | null;
+  profitInvoiceNumber?: string | null;
+  profitInvoiceGeneratedAt?: string | null;
   invoiceSentAt?: string | null;
   invoiceDelivery?: SellAccountInvoiceDelivery | null;
   hasPublicInvoiceLink?: boolean;
@@ -359,6 +361,8 @@ export const normalizeServerSellAccount = (record: SellAccountApiRecord): SellAc
   completedAt: optionalString(record.completedAt),
   invoiceNumber: optionalString(record.invoiceNumber),
   invoiceGeneratedAt: optionalString(record.invoiceGeneratedAt),
+  profitInvoiceNumber: optionalString(record.profitInvoiceNumber),
+  profitInvoiceGeneratedAt: optionalString(record.profitInvoiceGeneratedAt),
   invoiceSentAt: optionalString(record.invoiceSentAt),
   invoiceDelivery: record.invoiceDelivery && typeof record.invoiceDelivery === 'object' ? record.invoiceDelivery as SellAccountInvoiceDelivery : null,
   hasPublicInvoiceLink: record.hasPublicInvoiceLink === true,

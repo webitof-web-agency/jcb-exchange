@@ -1,0 +1,282 @@
+name: Docker Build & Dokploy Deploy
+
+# Smart CI/CD pipeline:
+# 1. Runs CI checks (typecheck, unit tests, secret scan) once per push/deploy.
+# 2. Detects which services changed (backend/, frontend/, admin-portal/).
+# 3. Builds & pushes ONLY the changed Docker image(s) in parallel to GHCR with GHA layer caching.
+# 4. Triggers ONLY the matching Dokploy App webhook(s) so unchanged apps never restart.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'JCB-Exchange/**'
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: production
+        type: choice
+        options: [production, staging]
+      services:
+        description: 'Which service(s) to build and deploy'
+        required: true
+        default: all
+        type: choice
+        options: [all, backend, frontend, admin-portal]
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  changes:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.resolve.outputs.backend }}
+      frontend: ${{ steps.resolve.outputs.frontend }}
+      admin_portal: ${{ steps.resolve.outputs.admin_portal }}
+      target_env: ${{ steps.resolve.outputs.target_env }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'push'
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+            admin_portal:
+              - 'admin-portal/**'
+
+      - id: resolve
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            target_env="${{ inputs.environment }}"
+            svc="${{ inputs.services }}"
+            if [ "$svc" = "all" ] || [ "$svc" = "backend" ]; then echo "backend=true" >> "$GITHUB_OUTPUT"; else echo "backend=false" >> "$GITHUB_OUTPUT"; fi
+            if [ "$svc" = "all" ] || [ "$svc" = "frontend" ]; then echo "frontend=true" >> "$GITHUB_OUTPUT"; else echo "frontend=false" >> "$GITHUB_OUTPUT"; fi
+            if [ "$svc" = "all" ] || [ "$svc" = "admin-portal" ]; then echo "admin_portal=true" >> "$GITHUB_OUTPUT"; else echo "admin_portal=false" >> "$GITHUB_OUTPUT"; fi
+          else
+            target_env="production"
+            echo "backend=${{ steps.filter.outputs.backend || 'false' }}" >> "$GITHUB_OUTPUT"
+            echo "frontend=${{ steps.filter.outputs.frontend || 'false' }}" >> "$GITHUB_OUTPUT"
+            echo "admin_portal=${{ steps.filter.outputs.admin_portal || 'false' }}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "target_env=${target_env}" >> "$GITHUB_OUTPUT"
+
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy-backend:
+    name: Build & Deploy Backend
+    needs: [changes, ci]
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    environment: ${{ needs.changes.outputs.target_env }}
+    concurrency:
+      group: deploy-${{ needs.changes.outputs.target_env }}-backend
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/jcbexchange-backend
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=latest,enable=${{ needs.changes.outputs.target_env == 'production' }}
+            type=raw,value=staging,enable=${{ needs.changes.outputs.target_env == 'staging' }}
+            type=sha,prefix=${{ needs.changes.outputs.target_env == 'production' && 'prod-' || 'staging-' }},format=short
+
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=backend-${{ needs.changes.outputs.target_env }}
+          cache-to: type=gha,mode=max,scope=backend-${{ needs.changes.outputs.target_env }}
+
+      - name: Trigger Dokploy Backend Webhook
+        env:
+          WEBHOOK_URL: ${{ secrets.DOKPLOY_BACKEND_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "::error::Secret DOKPLOY_BACKEND_WEBHOOK_URL is not set for environment '${{ needs.changes.outputs.target_env }}'."
+            exit 1
+          fi
+          curl -fsS --retry 3 --retry-delay 5 -X POST "$WEBHOOK_URL" >/dev/null
+          echo "Dokploy backend deployment triggered successfully."
+
+  deploy-frontend:
+    name: Build & Deploy Frontend
+    needs: [changes, ci]
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    environment: ${{ needs.changes.outputs.target_env }}
+    concurrency:
+      group: deploy-${{ needs.changes.outputs.target_env }}-frontend
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Frontend public build variables
+        env:
+          API_URL: ${{ vars.NEXT_PUBLIC_API_URL || secrets.NEXT_PUBLIC_API_URL }}
+          SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL || secrets.NEXT_PUBLIC_SITE_URL }}
+          PARTNER_URL: ${{ vars.NEXT_PUBLIC_PARTNER_PORTAL_URL || secrets.NEXT_PUBLIC_PARTNER_PORTAL_URL }}
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "::error::NEXT_PUBLIC_API_URL is not set in environment '${{ needs.changes.outputs.target_env }}'."
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/jcbexchange-frontend
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=latest,enable=${{ needs.changes.outputs.target_env == 'production' }}
+            type=raw,value=staging,enable=${{ needs.changes.outputs.target_env == 'staging' }}
+            type=sha,prefix=${{ needs.changes.outputs.target_env == 'production' && 'prod-' || 'staging-' }},format=short
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SITE_URL=${{ vars.NEXT_PUBLIC_SITE_URL || secrets.NEXT_PUBLIC_SITE_URL || 'https://jcbexchange.com' }}
+            NEXT_PUBLIC_PARTNER_PORTAL_URL=${{ vars.NEXT_PUBLIC_PARTNER_PORTAL_URL || secrets.NEXT_PUBLIC_PARTNER_PORTAL_URL || 'https://admin.jcbexchange.com' }}
+          cache-from: type=gha,scope=frontend-${{ needs.changes.outputs.target_env }}
+          cache-to: type=gha,mode=max,scope=frontend-${{ needs.changes.outputs.target_env }}
+
+      - name: Trigger Dokploy Frontend Webhook
+        env:
+          WEBHOOK_URL: ${{ secrets.DOKPLOY_FRONTEND_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "::error::Secret DOKPLOY_FRONTEND_WEBHOOK_URL is not set for environment '${{ needs.changes.outputs.target_env }}'."
+            exit 1
+          fi
+          curl -fsS --retry 3 --retry-delay 5 -X POST "$WEBHOOK_URL" >/dev/null
+          echo "Dokploy frontend deployment triggered successfully."
+
+  deploy-admin-portal:
+    name: Build & Deploy Admin Portal
+    needs: [changes, ci]
+    if: ${{ needs.changes.outputs.admin_portal == 'true' }}
+    runs-on: ubuntu-latest
+    environment: ${{ needs.changes.outputs.target_env }}
+    concurrency:
+      group: deploy-${{ needs.changes.outputs.target_env }}-admin-portal
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Admin Portal public build variables
+        env:
+          API_URL: ${{ vars.NEXT_PUBLIC_API_URL || secrets.NEXT_PUBLIC_API_URL }}
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "::error::NEXT_PUBLIC_API_URL is not set in environment '${{ needs.changes.outputs.target_env }}'."
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/jcbexchange-admin-portal
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=latest,enable=${{ needs.changes.outputs.target_env == 'production' }}
+            type=raw,value=staging,enable=${{ needs.changes.outputs.target_env == 'staging' }}
+            type=sha,prefix=${{ needs.changes.outputs.target_env == 'production' && 'prod-' || 'staging-' }},format=short
+
+      - name: Build and push Admin Portal image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./admin-portal
+          file: ./admin-portal/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_PUBLIC_SITE_URL=${{ vars.NEXT_PUBLIC_PUBLIC_SITE_URL || secrets.NEXT_PUBLIC_PUBLIC_SITE_URL || vars.NEXT_PUBLIC_SITE_URL || 'https://jcbexchange.com' }}
+            NEXT_PUBLIC_FRONTEND_URL=${{ vars.NEXT_PUBLIC_FRONTEND_URL || secrets.NEXT_PUBLIC_FRONTEND_URL || vars.NEXT_PUBLIC_SITE_URL || 'https://jcbexchange.com' }}
+            NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES=${{ vars.NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES || '15' }}
+          cache-from: type=gha,scope=admin-portal-${{ needs.changes.outputs.target_env }}
+          cache-to: type=gha,mode=max,scope=admin-portal-${{ needs.changes.outputs.target_env }}
+
+      - name: Trigger Dokploy Admin Portal Webhook
+        env:
+          WEBHOOK_URL: ${{ secrets.DOKPLOY_ADMIN_PORTAL_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "::error::Secret DOKPLOY_ADMIN_PORTAL_WEBHOOK_URL is not set for environment '${{ needs.changes.outputs.target_env }}'."
+            exit 1
+          fi
+          curl -fsS --retry 3 --retry-delay 5 -X POST "$WEBHOOK_URL" >/dev/null
+          echo "Dokploy admin-portal deployment triggered successfully."

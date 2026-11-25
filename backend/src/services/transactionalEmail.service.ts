@@ -1,6 +1,7 @@
 import nodemailer, { type SendMailOptions, type Transporter } from 'nodemailer';
 import prisma from '../lib/prisma';
 import { normalizeEmailOtpAddress } from '../utils/emailOtp';
+import { maskOfferLinks } from '../utils/offerShortCode';
 import {
   decryptTransactionalEmailCredential,
   encryptTransactionalEmailCredential,
@@ -342,7 +343,18 @@ export const getTransactionalEmailLogs = async ({ limit = 50, status }: { limit?
       sentAt: true,
       createdAt: true,
       payloadSnapshot: true,
+      outbox: {
+        select: {
+          attempts: true,
+          status: true,
+          nextAttemptAt: true,
+          processedAt: true,
+          lastError: true,
+        },
+      },
     },
   });
-  return { logs };
+  // New rows hold no offer link, but rows written before late binding (and any subject or error text that quoted
+  // one) could: the delivery log is shown to every email reader, and a link there opens the candidate's offer.
+  return { logs: logs.map((log) => maskOfferLinks(log)) };
 };

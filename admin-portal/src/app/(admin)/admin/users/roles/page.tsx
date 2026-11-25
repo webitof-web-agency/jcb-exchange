@@ -8,7 +8,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import { useAuthStore } from '@/store/authStore';
 import { useHeaderStore } from '@/store/headerStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { AI_PERMISSION_DEFINITIONS, CRM_PERMISSION_GROUPS, FINANCE_WORKSPACE_PERMISSION_GROUPS, KYC_PERMISSION_DEFINITIONS, LISTING_PERMISSION_DEFINITIONS } from '@/lib/adminPermissionCatalog';
+import { canGrantPermission, holdsAllPermissions, ROLE_EDITOR_PERMISSION_DATA as PERMISSION_DATA, serverErrorMessage, toggleGrantableGroup } from '@/lib/roleEditorCatalog';
 import { confirmDelete } from '@/store/confirmDeleteStore';
 
 interface EmployeeRole {
@@ -19,336 +19,6 @@ interface EmployeeRole {
   usersCount?: number;
 }
 
-const PERMISSION_DATA: Record<string, Array<{ groupName: string; permissions: Array<{ id: string; label: string }> }>> = {
-  'Users & Roles': [
-    {
-      groupName: 'Users',
-      permissions: [
-        { id: 'users.create', label: 'Create Users' },
-        { id: 'users.read', label: 'View Users' },
-        { id: 'users.update', label: 'Edit Users' },
-        { id: 'users.delete', label: 'Delete Users' },
-      ],
-    },
-    {
-      groupName: 'Roles',
-      permissions: [
-        { id: 'roles.create', label: 'Create Roles' },
-        { id: 'roles.read', label: 'View Roles' },
-        { id: 'roles.update', label: 'Edit Roles' },
-        { id: 'roles.delete', label: 'Delete Roles' },
-      ],
-    },
-  ],
-  'CRM & Enquiries': [
-    {
-      groupName: 'Enquiries (legacy)',
-      permissions: [
-        { id: 'enquiries.manage', label: 'Manage all enquiries (= CRM, every lead)' },
-      ],
-    },
-    ...CRM_PERMISSION_GROUPS.map((group) => ({ groupName: `CRM: ${group.groupName}`, permissions: group.permissions })),
-  ],
-  'WhatsApp': [
-    {
-      groupName: 'WhatsApp Cloud API',
-      permissions: [
-        { id: 'whatsapp.read', label: 'View WhatsApp' },
-        { id: 'whatsapp.manage', label: 'Manage WhatsApp Settings & Automations' },
-      ],
-    },
-  ],
-  'SMS Notifications': [
-    {
-      groupName: 'SMS Notifications',
-      permissions: [
-        { id: 'sms.read', label: 'View SMS Notifications' },
-        { id: 'sms.manage', label: 'Manage SMS Settings & Automations' },
-      ],
-    },
-  ],
-  'Email Communications': [
-    {
-      groupName: 'Transactional Email',
-      permissions: [
-        { id: 'email.read', label: 'View Email Communications' },
-        { id: 'email.manage', label: 'Manage SMTP Settings & Email Delivery' },
-      ],
-    },
-  ],
-  'Artificial Intelligence': [
-    {
-      groupName: 'JCB Intelligence Hub & Provider',
-      permissions: AI_PERMISSION_DEFINITIONS,
-    },
-  ],
-  'Listings': [
-    {
-      groupName: 'Listings',
-      permissions: LISTING_PERMISSION_DEFINITIONS,
-    },
-  ],
-  'Accounts': [
-    {
-      groupName: 'RTO Work',
-      permissions: [
-        { id: 'accounts.rto.read', label: 'View RTO Work' },
-        { id: 'accounts.rto.create', label: 'Add RTO Work' },
-        { id: 'accounts.rto.update', label: 'Edit RTO Work' },
-        { id: 'accounts.rto.delete', label: 'Delete RTO Work' },
-        { id: 'accounts.rto.export', label: 'Export RTO Work' },
-      ],
-    },
-    {
-      groupName: 'Sold Vehicles',
-      permissions: [
-        { id: 'accounts.sell.read', label: 'View Sold Vehicles' },
-        { id: 'accounts.sell.create', label: 'Add Sold Vehicles' },
-        { id: 'accounts.sell.update', label: 'Edit Sold Vehicles' },
-        { id: 'accounts.sell.delete', label: 'Delete Sold Vehicles' },
-        { id: 'accounts.sell.export', label: 'Export Sold Vehicles' },
-        { id: 'accounts.sell.refund.approve', label: 'Approve & Pay Sold Vehicle Refunds' },
-      ],
-    },
-    {
-      groupName: 'Tasks',
-      permissions: [
-        { id: 'tasks.read', label: 'View Tasks' },
-      ],
-    },
-  ],
-  'Finance': [
-    {
-      groupName: 'Expenses & Transactions',
-      permissions: [
-        { id: 'finance.read', label: 'View Expenses & Transactions' },
-        { id: 'finance.manage', label: 'Manage Expenses & Transactions' },
-      ],
-    },
-    ...FINANCE_WORKSPACE_PERMISSION_GROUPS.map((group) => ({
-      groupName: `Finance Workspace: ${group.groupName}`,
-      permissions: group.permissions,
-    })),
-  ],
-  'Recruitment': [
-    {
-      groupName: 'Recruitment Dashboard',
-      permissions: [
-        { id: 'recruitment.dashboard.read', label: 'View Recruitment Dashboard' },
-      ],
-    },
-    {
-      groupName: 'Departments',
-      permissions: [
-        { id: 'recruitment.departments.read', label: 'View Departments' },
-        { id: 'recruitment.departments.create', label: 'Create Departments' },
-        { id: 'recruitment.departments.update', label: 'Edit Departments' },
-        { id: 'recruitment.departments.delete', label: 'Delete Departments' },
-      ],
-    },
-    {
-      groupName: 'Jobs',
-      permissions: [
-        { id: 'recruitment.jobs.read', label: 'View Jobs' },
-        { id: 'recruitment.jobs.create', label: 'Create Jobs' },
-        { id: 'recruitment.jobs.update', label: 'Edit Jobs' },
-        { id: 'recruitment.jobs.delete', label: 'Delete Jobs' },
-        { id: 'recruitment.jobs.duplicate', label: 'Duplicate Jobs' },
-        { id: 'recruitment.jobs.change_status', label: 'Change Job Status' },
-      ],
-    },
-    {
-      groupName: 'Applications',
-      permissions: [
-        { id: 'recruitment.applications.read', label: 'View Applications' },
-        { id: 'recruitment.applications.update_stage', label: 'Change Application Stage' },
-        { id: 'recruitment.applications.assign', label: 'Assign Applications' },
-        { id: 'recruitment.applications.delete', label: 'Delete Applications' },
-        { id: 'recruitment.applications.notes.create', label: 'Add Application Notes' },
-        { id: 'recruitment.applications.notes.update', label: 'Edit Application Notes' },
-        { id: 'recruitment.applications.notes.delete', label: 'Delete Application Notes' },
-        { id: 'recruitment.applications.ratings.create', label: 'Add Candidate Ratings' },
-        { id: 'recruitment.applications.ratings.update', label: 'Edit Candidate Ratings' },
-        { id: 'recruitment.applications.ratings.delete', label: 'Delete Candidate Ratings' },
-      ],
-    },
-
-    {
-      groupName: 'Interviews',
-      permissions: [
-        { id: 'recruitment.interviews.read', label: 'View Interviews' },
-        { id: 'recruitment.interviews.create', label: 'Schedule Interviews' },
-        { id: 'recruitment.interviews.update', label: 'Edit Interview Details' },
-        { id: 'recruitment.interviews.delete', label: 'Delete Interviews' },
-        { id: 'recruitment.interviews.scorecard', label: 'Manage Interview Scorecards' },
-      ],
-    },
-    {
-      groupName: 'Offers',
-      permissions: [
-        { id: 'recruitment.offers.read', label: 'View Offers' },
-        { id: 'recruitment.offers.create', label: 'Create Offers' },
-        { id: 'recruitment.offers.update', label: 'Edit Offers' },
-        { id: 'recruitment.offers.delete', label: 'Delete Offers' },
-        { id: 'recruitment.offers.change_status', label: 'Change Offer Status' },
-      ],
-    },
-    {
-      groupName: 'Pipeline Stages',
-      permissions: [
-        { id: 'recruitment.pipeline.read', label: 'View Pipeline Stages' },
-        { id: 'recruitment.pipeline.create', label: 'Create Pipeline Stages' },
-        { id: 'recruitment.pipeline.update', label: 'Edit Pipeline Stages' },
-        { id: 'recruitment.pipeline.delete', label: 'Delete Pipeline Stages' },
-      ],
-    },
-
-  ],
-  'Partners': [
-    {
-      groupName: 'Partners',
-      permissions: [
-        { id: 'partners.read', label: 'View Partners' },
-        { id: 'partners.create', label: 'Add Partner' },
-        { id: 'partners.update', label: 'Edit Partner' },
-        { id: 'partners.reset_password', label: 'Reset Password' },
-        { id: 'partners.change_status', label: 'Change Status' },
-        { id: 'partners.delete', label: 'Delete Partner' },
-      ],
-    },
-  ],
-  'Visitors': [
-    {
-      groupName: 'Visitors',
-      permissions: [
-        { id: 'visitors.read', label: 'View Visitors' },
-        { id: 'visitors.update', label: 'Edit Visitor' },
-        { id: 'visitors.change_status', label: 'Change Status' },
-        { id: 'visitors.delete', label: 'Delete Visitor' },
-      ],
-    },
-  ],
-  'Categories': [
-    {
-      groupName: 'Categories',
-      permissions: [
-        { id: 'categories.read', label: 'View Categories' },
-        { id: 'categories.create', label: 'Create Category' },
-        { id: 'categories.update', label: 'Edit Category' },
-        { id: 'categories.delete', label: 'Delete Category' },
-      ],
-    },
-  ],
-  'Brands': [
-    {
-      groupName: 'Brands',
-      permissions: [
-        { id: 'brands.read', label: 'View Brands' },
-        { id: 'brands.create', label: 'Create Brand' },
-        { id: 'brands.update', label: 'Edit Brand' },
-        { id: 'brands.delete', label: 'Delete Brand' },
-      ],
-    },
-  ],
-  'Verifications': [
-    {
-      groupName: 'Verifications',
-      permissions: KYC_PERMISSION_DEFINITIONS,
-    },
-  ],
-  'Identity Hub': [
-    {
-      groupName: 'Identity Hub',
-      permissions: [
-        { id: 'pan.verification.read', label: 'View PAN Verification' },
-        { id: 'gst.verification.read', label: 'View GST Verification' },
-        { id: 'aadhaar.digilocker.read', label: 'View Aadhaar DigiLocker Verification' },
-      ],
-    },
-  ],
-  'Vehicle & Transport': [
-    {
-      groupName: 'Vehicle & Transport',
-      permissions: [
-        { id: 'driving-license.verification.read', label: 'View Driving License Verification' },
-        { id: 'rc.owner-history.read', label: 'View RC Owner History' },
-        { id: 'rc.challan.verification.read', label: 'View RC Challan' },
-        { id: 'rc.chassis-to-rc.read', label: 'View Chassis to RC Verification' },
-        { id: 'rc.to-mobile.read', label: 'View RC to Mobile' },
-      ],
-    },
-  ],
-  'Recurrence': [
-    {
-      groupName: 'Recurrence',
-      permissions: [
-        { id: 'recurrence.manage', label: 'Manage Recurrence' },
-      ],
-    },
-  ],
-  'Settings': [
-    {
-      groupName: 'Settings',
-      permissions: [
-        { id: 'settings.manage', label: 'Manage Settings' },
-      ],
-    },
-  ],
-  'Translations': [
-    {
-      groupName: 'Translations',
-      permissions: [
-        { id: 'translations.manage', label: 'Manage Translations' },
-      ],
-    },
-  ],
-  'Footer': [
-    {
-      groupName: 'Footer',
-      permissions: [
-        { id: 'footer.manage', label: 'Manage Footer' },
-      ],
-    },
-  ],
-  'Partner Agreements': [
-    {
-      groupName: 'Partner Agreements',
-      permissions: [
-        { id: 'partner.agreements.read', label: 'View Partner Agreements' },
-        { id: 'partner.agreements.manage', label: 'Manage Partner Agreements' },
-      ],
-    },
-  ],
-  'Dashboard': [
-    {
-      groupName: 'Dashboard',
-      permissions: [
-        { id: 'dashboard.view', label: 'View Dashboard Metrics' },
-      ],
-    }
-  ],
-  'Analytics': [
-    {
-      groupName: 'Analytics',
-      permissions: [
-        { id: 'analytics.read', label: 'View Advanced Analytics' },
-      ],
-    },
-  ],
-  'Blog': [
-    {
-      groupName: 'Blog',
-      permissions: [
-        { id: 'blog.read', label: 'View Blog Posts' },
-        { id: 'blog.create', label: 'Create Blog Posts' },
-        { id: 'blog.update', label: 'Edit Blog Posts' },
-        { id: 'blog.delete', label: 'Delete Blog Posts' },
-      ],
-    },
-  ],
-};
-
-
 export default function RolesPage() {
   const { t } = useTranslation();
   const currentUser = useAuthStore((state) => state.user);
@@ -357,6 +27,9 @@ export default function RolesPage() {
   const canCreateRoles = isCurrentSuperAdmin || currentUserPermissions.includes('ALL_ACCESS') || currentUserPermissions.includes('roles.create');
   const canUpdateRoles = isCurrentSuperAdmin || currentUserPermissions.includes('ALL_ACCESS') || currentUserPermissions.includes('roles.update');
   const canDeleteRoles = isCurrentSuperAdmin || currentUserPermissions.includes('ALL_ACCESS') || currentUserPermissions.includes('roles.delete');
+  // The server refuses a role that gives a permission its editor does not hold (Super Admin / ALL_ACCESS excepted).
+  const holdsEverything = holdsAllPermissions(currentUser);
+  const mayGrant = (permission: string) => canGrantPermission(currentUser, permission);
 
   const [view, setView] = useState<'list' | 'create'>('list');
   const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set());
@@ -464,11 +137,8 @@ export default function RolesPage() {
       setView('list');
       fetchRoles();
     } catch (error: unknown) {
-      if (axios.isAxiosError(error)) {
-        alert(error.response?.data?.error || t('roleManagement.saveFailed'));
-      } else {
-        alert(t('roleManagement.saveFailed'));
-      }
+      // A 403 carries the server's reason (e.g. a permission you do not hold yourself).
+      alert(axios.isAxiosError(error) ? serverErrorMessage(error, t('roleManagement.saveFailed')) : t('roleManagement.saveFailed'));
     } finally {
       setIsSaving(false);
     }
@@ -515,33 +185,22 @@ export default function RolesPage() {
       await api.delete(`/superadmin/roles/${id}`);
       fetchRoles();
     } catch (error: unknown) {
-      if (axios.isAxiosError(error)) {
-        alert(error.response?.data?.error || t('roleManagement.deleteFailed'));
-      } else {
-        alert(t('roleManagement.deleteFailed'));
-      }
+      alert(axios.isAxiosError(error) ? serverErrorMessage(error, t('roleManagement.deleteFailed')) : t('roleManagement.deleteFailed'));
     }
   };
 
-  // Handle individual checkbox
+  // Handle individual checkbox (only permissions the editor holds can be ticked or unticked)
   const togglePermission = (id: string) => {
+    if (!mayGrant(id)) return;
     const newSet = new Set(selectedPerms);
     if (newSet.has(id)) newSet.delete(id);
     else newSet.add(id);
     setSelectedPerms(newSet);
   };
 
-  // Handle group select all
+  // Handle group select all: only the keys the editor may give change
   const toggleGroup = (groupPerms: { id: string }[]) => {
-    const allSelected = groupPerms.every(p => selectedPerms.has(p.id));
-    const newSet = new Set(selectedPerms);
-    
-    if (allSelected) {
-      groupPerms.forEach(p => newSet.delete(p.id));
-    } else {
-      groupPerms.forEach(p => newSet.add(p.id));
-    }
-    setSelectedPerms(newSet);
+    setSelectedPerms(toggleGrantableGroup(selectedPerms, groupPerms.map((p) => p.id), currentUser));
   };
 
   if (view === 'create') {
@@ -570,6 +229,11 @@ export default function RolesPage() {
           <div className="border-b border-gray-100 p-4 sm:p-6">
             <h3 className="text-lg font-bold text-gray-900">{t('roleManagement.permissions')}</h3>
             <p className="text-sm text-gray-500 mt-1">{t('roleManagement.permissionsDescription')}</p>
+            {!holdsEverything ? (
+              <p className="mt-2 text-xs font-medium text-amber-700">
+                You can only give or remove permissions you hold yourself. The others are shown greyed out; ask a Super Admin to change them.
+              </p>
+            ) : null}
           </div>
           
           {/* No tabs, all modules rendered below */}
@@ -608,6 +272,8 @@ export default function RolesPage() {
                     const total = group.permissions.length;
                     const selected = group.permissions.filter(p => selectedPerms.has(p.id)).length;
                     const allSelected = selected === total && total > 0;
+                    const grantableInGroup = group.permissions.filter((p) => mayGrant(p.id));
+                    const allGrantableSelected = grantableInGroup.length > 0 && grantableInGroup.every((p) => selectedPerms.has(p.id));
 
                     return (
                       <div key={group.groupName} className="rounded-xl border border-gray-200 bg-white">
@@ -620,51 +286,69 @@ export default function RolesPage() {
                               {selected} / {total}
                             </span>
                           </div>
-                          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
-                            <input 
-                              type="checkbox" 
-                              checked={allSelected}
+                          <label
+                            className={`flex shrink-0 items-center gap-2 text-sm font-medium ${grantableInGroup.length ? 'cursor-pointer text-gray-700' : 'cursor-not-allowed text-gray-400'}`}
+                            title={grantableInGroup.length ? undefined : 'You do not hold these permissions'}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={holdsEverything ? allSelected : allGrantableSelected}
+                              disabled={!grantableInGroup.length}
                               onChange={() => toggleGroup(group.permissions)}
-                              className="h-4 w-4 rounded border-gray-300 text-[#FFC107] focus:ring-[#FFC107]"
+                              className="h-4 w-4 rounded border-gray-300 text-[#FFC107] focus:ring-[#FFC107] disabled:cursor-not-allowed"
                             />
                             {t('roleManagement.markAll')}
                           </label>
                         </div>
-                        
+                        {group.note ? (
+                          <p className="border-b border-gray-100 bg-amber-50/60 px-4 py-2 text-xs text-amber-800">{group.note}</p>
+                        ) : null}
+
                         <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                          {group.permissions.map((perm) => (
-                            <label 
-                              key={perm.id} 
-                              className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
-                                selectedPerms.has(perm.id) 
-                                  ? 'border-[#FFC107] bg-[#FFC107]/5' 
-                                  : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
+                          {group.permissions.map((perm) => {
+                            const grantable = mayGrant(perm.id);
+                            const checked = selectedPerms.has(perm.id);
+                            return (
+                            <label
+                              key={perm.id}
+                              title={grantable ? undefined : 'You do not hold this permission, so you cannot give or remove it. Ask a Super Admin.'}
+                              className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                                grantable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                              } ${
+                                checked
+                                  ? 'border-[#FFC107] bg-[#FFC107]/5'
+                                  : grantable ? 'border-gray-100 hover:border-gray-200 hover:bg-gray-50' : 'border-gray-100 bg-gray-50'
                               }`}
                             >
                               <div className="mt-0.5 shrink-0">
-                                <input 
-                                  type="checkbox" 
-                                  checked={selectedPerms.has(perm.id)}
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={!grantable}
                                   onChange={() => togglePermission(perm.id)}
-                                  className="h-4 w-4 rounded border-gray-300 text-[#FFC107] focus:ring-[#FFC107]"
+                                  className="h-4 w-4 rounded border-gray-300 text-[#FFC107] focus:ring-[#FFC107] disabled:cursor-not-allowed"
                                 />
                               </div>
                               <div className="min-w-0 flex-1">
-                                <div 
-                                  className={`truncate text-sm font-medium ${selectedPerms.has(perm.id) ? 'text-gray-900' : 'text-gray-700'}`}
+                                <div
+                                  className={`line-clamp-3 break-words text-sm font-medium ${checked ? 'text-gray-900' : 'text-gray-700'}`}
                                   title={perm.label}
                                 >
                                   {perm.label}
                                 </div>
-                                <div 
+                                <div
                                   className="mt-1 truncate text-xs text-gray-400 font-mono"
                                   title={perm.id}
                                 >
                                   {perm.id}
                                 </div>
+                                {!grantable ? (
+                                  <div className="mt-1 text-[11px] font-medium text-gray-500">You do not hold this permission</div>
+                                ) : null}
                               </div>
                             </label>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     );

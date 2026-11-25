@@ -1001,9 +1001,10 @@ export const getFooterSettings = async (req: Request, res: Response, next: NextF
         // Public pages render these as HTML: clean again on the way out.
         legalPages: {
           ...settings.footer.legalPages,
-          privacyPolicy: settings.footer.legalPages.privacyPolicy ? sanitizeLegalHtml(settings.footer.legalPages.privacyPolicy) : null,
-          termsConditions: settings.footer.legalPages.termsConditions ? sanitizeLegalHtml(settings.footer.legalPages.termsConditions) : null,
-          disclaimer: settings.footer.legalPages.disclaimer ? sanitizeLegalHtml(settings.footer.legalPages.disclaimer) : null,
+          privacyPolicy: settings.footer.legalPages.privacyPolicy === null ? null : sanitizeLegalHtml(settings.footer.legalPages.privacyPolicy),
+          termsConditions: settings.footer.legalPages.termsConditions === null ? null : sanitizeLegalHtml(settings.footer.legalPages.termsConditions),
+          disclaimer: settings.footer.legalPages.disclaimer === null ? null : sanitizeLegalHtml(settings.footer.legalPages.disclaimer),
+          refundReturnPolicy: settings.footer.legalPages.refundReturnPolicy === null ? null : sanitizeLegalHtml(settings.footer.legalPages.refundReturnPolicy),
         },
       },
     });

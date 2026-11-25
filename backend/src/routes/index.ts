@@ -1,3 +1,4 @@
+import vehicleTransportRoutes from './vehicleTransport.routes';
 import { Router } from 'express';
 import masterRoutes from './master.routes';
 import authRoutes from './auth.routes';
@@ -33,6 +34,7 @@ import { crmRoutes } from '../modules/crm';
 import { saveFcmToken } from '../controllers/notification.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 import listingCompletionRoutes from './listingCompletion.routes';
+import { hrmRoutes } from '../modules/hrm';
 
 const router = Router();
 
@@ -47,6 +49,7 @@ router.use('/analytics', analyticsRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/locations', locationRoutes);
 router.use('/recruitment', recruitmentRoutes);
+router.use('/hrm', hrmRoutes);
 router.use('/whatsapp', whatsappRoutes);
 router.use('/sms', smsRoutes);
 router.use('/email', emailRoutes);
@@ -54,6 +57,7 @@ router.use('/blogs', blogRoutes);
 router.use('/finance', financeRoutes);
 router.use('/finance-hub', financeHubRoutes);
 router.use('/vehicle-docs', vehicleDocsRoutes);
+router.use('/vehicle-transports', vehicleTransportRoutes);
 router.use('/verification-history', verificationHistoryRoutes);
 router.use('/ai', aiRoutes);
 router.use('/public/ai', publicAiRoutes);

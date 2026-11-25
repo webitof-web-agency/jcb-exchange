@@ -10,7 +10,8 @@ import { NextFunction, Request, Response } from 'express';
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const RAW_KEY = /(password|passcode|passphrase|secret|token|signature|otp|apikey|api_key|privatekey|private_key|credential)$/i;
-const HTML_KEYS = new Set(['contentHtml', 'svgData', 'privacyPolicy', 'termsConditions', 'disclaimer', 'refundReturnPolicy']);
+// HTML fields are sanitised by their own allow-list where they are stored (email bodies: sanitizeEmailHtml).
+const HTML_KEYS = new Set(['contentHtml', 'svgData', 'privacyPolicy', 'termsConditions', 'disclaimer', 'refundReturnPolicy', 'bodyHtml']);
 
 // Control characters except tab / newline / carriage return, plus Unicode bidi overrides used for spoofing.
 // Zero-width joiners stay: Devanagari and other Indic scripts need them.

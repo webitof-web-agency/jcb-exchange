@@ -37,6 +37,10 @@ export const recruitmentPermissions = {
   pipelineCreate: 'recruitment.pipeline.create',
   pipelineUpdate: 'recruitment.pipeline.update',
   pipelineDelete: 'recruitment.pipeline.delete',
+  candidatesRead: 'recruitment.candidates.read',
+  candidatesUpdate: 'recruitment.candidates.update',
+  settingsRead: 'recruitment.settings.read',
+  settingsUpdate: 'recruitment.settings.update',
 } as const;
 
 export type RecruitmentPermission = (typeof recruitmentPermissions)[keyof typeof recruitmentPermissions];
@@ -52,15 +56,22 @@ export const recruitmentAnyPermissions: RecruitmentPermission[] = [
   recruitmentPermissions.pipelineRead,
 ];
 
+/** Each recruitment page and the permission its main request needs, in sidebar order. */
 export const recruitmentRoutePermissions: Array<{ path: string; permissions: RecruitmentPermission[] }> = [
   { path: '/recruitment/dashboard', permissions: [recruitmentPermissions.dashboardRead] },
-  { path: '/recruitment/departments', permissions: [recruitmentPermissions.departmentsRead] },
   { path: '/recruitment/jobs', permissions: [recruitmentPermissions.jobsRead] },
   { path: '/recruitment/applications', permissions: [recruitmentPermissions.applicationsRead] },
   { path: '/recruitment/interviews', permissions: [recruitmentPermissions.interviewsRead] },
   { path: '/recruitment/offers', permissions: [recruitmentPermissions.offersRead] },
+  { path: '/recruitment/departments', permissions: [recruitmentPermissions.departmentsRead] },
   { path: '/recruitment/pipeline', permissions: [recruitmentPermissions.pipelineRead] },
+  { path: '/recruitment/settings', permissions: [recruitmentPermissions.settingsRead, recruitmentPermissions.settingsUpdate] },
+  { path: '/recruitment/candidates', permissions: [recruitmentPermissions.candidatesRead] },
 ];
+
+const RECRUITMENT_PATH = /^\/(?:admin|employee)\/recruitment(?:\/|$)/;
+
+export const isRecruitmentPath = (pathname: string) => RECRUITMENT_PATH.test(pathname);
 
 export const canUseRecruitmentPermission = (
   user: { role?: string | null; permissions?: string[] } | null | undefined,
@@ -72,11 +83,23 @@ export const canUseAnyRecruitmentPermission = (
   permissions: RecruitmentPermission[],
 ) => user?.role === 'SUPER_ADMIN' || hasAnyPermission(user?.permissions, permissions);
 
+/**
+ * The permissions a recruitment page needs (any of), for /admin/recruitment/** and /employee/recruitment/**.
+ * A recruitment path that is not one of the listed pages needs any recruitment read permission; a path outside
+ * recruitment gives null.
+ */
 export const getRecruitmentRoutePermissions = (pathname: string): RecruitmentPermission[] | null => {
-  const normalizedPath = pathname.replace(/^\/(?:superadmin|employee)/, '');
-  const matchedRoute = recruitmentRoutePermissions
+  if (!isRecruitmentPath(pathname)) return null;
+  const normalizedPath = pathname.replace(/^\/(?:admin|employee)/, '');
+  const matchedRoute = [...recruitmentRoutePermissions]
     .sort((a, b) => b.path.length - a.path.length)
     .find((route) => normalizedPath === route.path || normalizedPath.startsWith(`${route.path}/`));
 
-  return matchedRoute?.permissions || null;
+  return matchedRoute?.permissions || recruitmentAnyPermissions;
+};
+
+/** The first recruitment page these permissions open (there is no /recruitment index page), or null. */
+export const getRecruitmentLandingPath = (permissions: string[] | undefined, portal: 'admin' | 'employee' = 'employee') => {
+  const first = recruitmentRoutePermissions.find((route) => hasAnyPermission(permissions, route.permissions));
+  return first ? `/${portal}${first.path}` : null;
 };

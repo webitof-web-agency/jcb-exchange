@@ -1,14 +1,8 @@
 name: CI
 
-# Type-check and unit-test the API, admin portal and website on every push and pull request.
-# Unit tests never touch a database: backend tests run with DATABASE_URL pointed at a closed port.
+# Type-check and unit-test the API, admin portal and website on pull requests, manual runs, and deploy workflows.
+# (Pushes to main run CI automatically as the gating step inside docker-deploy.yml so CI never runs twice.)
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'JCB-Exchange/**'
-      - 'docs/**'
-      - '**/*.md'
   pull_request:
     paths-ignore:
       - 'JCB-Exchange/**'

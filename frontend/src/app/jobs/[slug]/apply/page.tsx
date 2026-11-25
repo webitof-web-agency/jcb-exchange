@@ -381,7 +381,13 @@ export default function JobApplyPage({ params }: { params: Promise<{ slug: strin
       return;
     }
 
-    // 6. Consent Check
+    // 6. Cover letter, when the job asks for one (the server applies the same 20-character minimum)
+    if (job?.coverLetterRequired && coverLetter.trim().length < 20) {
+      setFormError('Please write a cover letter (at least 20 characters) for this job.');
+      return;
+    }
+
+    // 7. Consent Check
     if (!consentPrivacy || !confirmAccurate) {
       setFormError('Please check and consent to the privacy policy and accuracy declaration.');
       return;
@@ -845,6 +851,7 @@ export default function JobApplyPage({ params }: { params: Promise<{ slug: strin
               <div>
                 <label className="block text-xs sm:text-sm font-bold text-gray-800 mb-1.5">
                   {t('careers.coverLetter', 'Cover Letter / Brief Pitch')}
+                  {job?.coverLetterRequired && <span className="text-red-500 ml-0.5">*</span>}
                 </label>
                 <textarea
                   rows={3}

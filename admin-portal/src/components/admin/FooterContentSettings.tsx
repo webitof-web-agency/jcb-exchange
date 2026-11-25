@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AxiosError } from 'axios';
-import { Link as LinkIcon, Mail, MapPin, Phone, Plus, Save, ShieldCheck, Trash2 } from 'lucide-react';
+import { Link as LinkIcon, List, Mail, MapPin, Phone, Plus, Save, ShieldCheck, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -142,7 +142,16 @@ const LEGAL_ALLOWED_STYLE_PROPERTIES = new Set([
 ]);
 
 const LEGAL_CONTENT_CLASS_NAME =
-  'prose max-w-none text-sm text-gray-700 leading-relaxed prose-headings:text-gray-900 prose-headings:font-semibold prose-p:text-gray-700 prose-p:leading-7 prose-li:text-gray-700 prose-li:leading-7 prose-ul:my-4 prose-ol:my-4 [&_.legal-callout]:my-4 [&_.legal-callout]:rounded-2xl [&_.legal-callout]:border-l-4 [&_.legal-callout]:border-amber-400 [&_.legal-callout]:bg-amber-50 [&_.legal-callout]:px-4 [&_.legal-callout]:py-3 [&_.legal-callout]:text-amber-950';
+  'max-w-none text-sm text-gray-800 leading-relaxed ' +
+  '[&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-gray-900 [&_h2]:mt-6 [&_h2]:mb-3 ' +
+  '[&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-gray-900 [&_h3]:mt-4 [&_h3]:mb-2 ' +
+  '[&_p]:text-gray-700 [&_p]:leading-7 [&_p]:my-2.5 ' +
+  '[&_ul]:my-3.5 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-1.5 ' +
+  '[&_ol]:my-3.5 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:space-y-1.5 ' +
+  '[&_li]:text-gray-700 [&_li]:leading-7 [&_li]:pl-1 ' +
+  '[&_strong]:font-bold [&_strong]:text-gray-900 ' +
+  '[&_b]:font-bold [&_b]:text-gray-900 ' +
+  '[&_.legal-callout]:my-4 [&_.legal-callout]:rounded-2xl [&_.legal-callout]:border-l-4 [&_.legal-callout]:border-amber-400 [&_.legal-callout]:bg-amber-50 [&_.legal-callout]:px-4 [&_.legal-callout]:py-3 [&_.legal-callout]:text-amber-950';
 
 const getApiErrorMessage = (error: unknown, fallbackMessage: string) => {
   const axiosError = error as AxiosError<{ error?: string }>;
@@ -194,6 +203,16 @@ const normalizeLegalHtml = (html: string) =>
     .replace(/\s+<\/(p|div|h2|h3|li)>/g, '</$1>')
     .replace(/<(p|div)><br><\/(p|div)>/g, '')
     .trim();
+
+const resolveLegalContent = (value: unknown, fallback: string): string => {
+  if (value === null || value === undefined || typeof value !== 'string') {
+    return fallback;
+  }
+
+  // An empty string is an intentional saved value. Only null/undefined means
+  // that the page has never been customized and should use the initial copy.
+  return sanitizeLegalHtml(value);
+};
 
 const sanitizeLegalHtml = (html: string) => {
   if (typeof window === 'undefined') {
@@ -325,7 +344,10 @@ export default function FooterContentSettings() {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const savedSelectionRef = useRef<Range | null>(null);
   const activeLegalField = getLegalPageField(activeUsefulSubTab);
-  const activeLegalContent = legalPages[activeLegalField] || '';
+  const rawLegalContent = legalPages[activeLegalField];
+  const activeLegalContent = rawLegalContent === null || rawLegalContent === undefined
+    ? getDefaultLegalPageContent(activeUsefulSubTab)
+    : rawLegalContent;
 
   useEffect(() => {
     let cancelled = false;
@@ -355,10 +377,10 @@ export default function FooterContentSettings() {
           address: response.data.contact?.address || '',
         });
         setLegalPages({
-          privacyPolicy: sanitizeLegalHtml(response.data.legalPages?.privacyPolicy || DEFAULT_PRIVACY_POLICY),
-          termsConditions: sanitizeLegalHtml(response.data.legalPages?.termsConditions || DEFAULT_TERMS_CONDITIONS),
-          disclaimer: sanitizeLegalHtml(response.data.legalPages?.disclaimer || DEFAULT_DISCLAIMER),
-          refundReturnPolicy: sanitizeLegalHtml(response.data.legalPages?.refundReturnPolicy || DEFAULT_REFUND_RETURN_POLICY),
+          privacyPolicy: resolveLegalContent(response.data.legalPages?.privacyPolicy, DEFAULT_PRIVACY_POLICY),
+          termsConditions: resolveLegalContent(response.data.legalPages?.termsConditions, DEFAULT_TERMS_CONDITIONS),
+          disclaimer: resolveLegalContent(response.data.legalPages?.disclaimer, DEFAULT_DISCLAIMER),
+          refundReturnPolicy: resolveLegalContent(response.data.legalPages?.refundReturnPolicy, DEFAULT_REFUND_RETURN_POLICY),
         });
       } catch (error) {
         if (!cancelled) {
@@ -457,6 +479,27 @@ export default function FooterContentSettings() {
         }
       }
       currentElement = currentElement.parentElement;
+    }
+
+    if (fontSize === '16' && anchorElement) {
+      if (block === 'H2') {
+        fontSize = '24';
+      } else if (block === 'H3') {
+        fontSize = '18';
+      } else if (typeof window !== 'undefined') {
+        try {
+          const comp = window.getComputedStyle(anchorElement).fontSize;
+          const px = parseFloat(comp);
+          if (!Number.isNaN(px) && px > 0) {
+            const matched = FONT_SIZE_OPTIONS.find((opt) => Math.abs(parseFloat(String(opt.id)) - px) <= 1.5);
+            if (matched) {
+              fontSize = String(matched.id);
+            }
+          }
+        } catch {
+          // Keep default fallback
+        }
+      }
     }
 
     return {
@@ -628,10 +671,10 @@ export default function FooterContentSettings() {
         socialLinks: normalizedSocialLinks,
         contact,
         legalPages: {
-          privacyPolicy: sanitizeLegalHtml(legalPages.privacyPolicy || DEFAULT_PRIVACY_POLICY),
-          termsConditions: sanitizeLegalHtml(legalPages.termsConditions || DEFAULT_TERMS_CONDITIONS),
-          disclaimer: sanitizeLegalHtml(legalPages.disclaimer || DEFAULT_DISCLAIMER),
-          refundReturnPolicy: sanitizeLegalHtml(legalPages.refundReturnPolicy || DEFAULT_REFUND_RETURN_POLICY),
+          privacyPolicy: sanitizeLegalHtml(legalPages.privacyPolicy ?? ''),
+          termsConditions: sanitizeLegalHtml(legalPages.termsConditions ?? ''),
+          disclaimer: sanitizeLegalHtml(legalPages.disclaimer ?? ''),
+          refundReturnPolicy: sanitizeLegalHtml(legalPages.refundReturnPolicy ?? ''),
         },
       });
 
@@ -649,10 +692,10 @@ export default function FooterContentSettings() {
         address: response.data.contact?.address || '',
       });
       setLegalPages({
-        privacyPolicy: sanitizeLegalHtml(response.data.legalPages?.privacyPolicy || DEFAULT_PRIVACY_POLICY),
-        termsConditions: sanitizeLegalHtml(response.data.legalPages?.termsConditions || DEFAULT_TERMS_CONDITIONS),
-        disclaimer: sanitizeLegalHtml(response.data.legalPages?.disclaimer || DEFAULT_DISCLAIMER),
-        refundReturnPolicy: sanitizeLegalHtml(response.data.legalPages?.refundReturnPolicy || DEFAULT_REFUND_RETURN_POLICY),
+        privacyPolicy: resolveLegalContent(response.data.legalPages?.privacyPolicy, DEFAULT_PRIVACY_POLICY),
+        termsConditions: resolveLegalContent(response.data.legalPages?.termsConditions, DEFAULT_TERMS_CONDITIONS),
+        disclaimer: resolveLegalContent(response.data.legalPages?.disclaimer, DEFAULT_DISCLAIMER),
+        refundReturnPolicy: resolveLegalContent(response.data.legalPages?.refundReturnPolicy, DEFAULT_REFUND_RETURN_POLICY),
       });
       toast.success(response.data.message);
     } catch (error) {
@@ -1028,11 +1071,22 @@ export default function FooterContentSettings() {
 
                       <button
                         type="button"
-                        onMouseDown={(event) => { event.preventDefault(); saveSelection(); }}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          saveSelection();
+                        }}
                         onClick={() => runEditorCommand('insertUnorderedList')}
                         aria-pressed={legalToolbarState.unorderedList}
-                        className={`rounded border px-2.5 py-1 font-medium transition hover:border-amber-300 hover:bg-amber-100 ${legalToolbarState.unorderedList ? 'border-[#d59f00] bg-amber-100 text-gray-950 shadow-sm' : 'border-gray-200 bg-gray-50 text-gray-800'}`}
-                        title={t('footerSettings.bulletList', 'Bullet list')}>`r`n                        {`? ${t('footerSettings.bulletListLabel', 'Bullet List')}`}`r`n                      </button>
+                        className={`inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-medium transition hover:border-amber-300 hover:bg-amber-100 ${
+                          legalToolbarState.unorderedList
+                            ? 'border-[#d59f00] bg-amber-100 text-gray-950 shadow-sm'
+                            : 'border-gray-200 bg-gray-50 text-gray-800'
+                        }`}
+                        title={t('footerSettings.bulletList', 'Bullet list')}
+                      >
+                        <List className="h-3.5 w-3.5 shrink-0" />
+                        <span>{t('footerSettings.bulletListLabel', 'Bullet List')}</span>
+                      </button>
                     </div>
                   </div>
 
@@ -1094,15 +1148,15 @@ export default function FooterContentSettings() {
                 <div
                   className={LEGAL_CONTENT_CLASS_NAME}
                   dangerouslySetInnerHTML={{
-                    __html: purifyHtml(
-                      activeUsefulSubTab === 'privacy'
-                        ? legalPages.privacyPolicy || DEFAULT_PRIVACY_POLICY
+                      __html: purifyHtml(
+                        activeUsefulSubTab === 'privacy'
+                        ? legalPages.privacyPolicy ?? DEFAULT_PRIVACY_POLICY
                         : activeUsefulSubTab === 'terms'
-                          ? legalPages.termsConditions || DEFAULT_TERMS_CONDITIONS
+                          ? legalPages.termsConditions ?? DEFAULT_TERMS_CONDITIONS
                           : activeUsefulSubTab === 'refund'
-                            ? legalPages.refundReturnPolicy || DEFAULT_REFUND_RETURN_POLICY
-                          : legalPages.disclaimer || DEFAULT_DISCLAIMER,
-                    ),
+                            ? legalPages.refundReturnPolicy ?? DEFAULT_REFUND_RETURN_POLICY
+                          : legalPages.disclaimer ?? DEFAULT_DISCLAIMER,
+                      ),
                   }}
                 />
               </div>

@@ -126,7 +126,9 @@ export const requireSuperAdminOrEmployeePermissions =
       return next();
     }
 
-    if (req.user.role !== 'EMPLOYEE') {
+    // The (legacy) ADMIN role works like an employee here: by the permissions of its role, the same rule the portal
+    // menu uses, so a menu entry never leads to a page whose every request is refused.
+    if (req.user.role !== 'EMPLOYEE' && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Super admin access required.' });
     }
 

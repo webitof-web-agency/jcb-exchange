@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
+import { communicationEventRegistry, getCommunicationEvent, getEmailTemplateCode } from './communicationEventRegistry';
 
 export const DEFAULT_HIRING_STAGES = [
   { name: 'New', code: 'NEW', order: 1, color: 'blue', isSystem: false, isTerminal: false },
@@ -12,7 +13,8 @@ export const DEFAULT_HIRING_STAGES = [
   { name: 'Offer Prepared', code: 'OFFER_PREPARED', order: 8, color: 'blue', isSystem: false, isTerminal: false },
   { name: 'Offer Sent', code: 'OFFER_SENT', order: 9, color: 'violet', isSystem: false, isTerminal: false },
   { name: 'Offer Accepted', code: 'OFFER_ACCEPTED', order: 10, color: 'green', isSystem: false, isTerminal: false },
-  { name: 'Hired', code: 'HIRED', order: 11, color: 'emerald', isSystem: false, isTerminal: true },
+  { name: 'Offer Declined', code: 'OFFER_DECLINED', order: 11, color: 'rose', isSystem: false, isTerminal: true },
+  { name: 'Hired', code: 'HIRED', order: 12, color: 'emerald', isSystem: false, isTerminal: true },
 ];
 
 export const TERMINAL_STATUSES = [
@@ -32,34 +34,17 @@ export const DEFAULT_DEPARTMENTS = [
   { name: 'Customer Support', code: 'SUPPORT', description: 'Customer Service, Escalations, and Helpdesk' },
 ];
 
-export const DEFAULT_EMAIL_TEMPLATES = [
-  {
-    name: 'Application Received',
-    code: 'APPLICATION_RECEIVED',
-    subject: 'Application Received for {{job_title}} - JCB Exchange',
-    bodyHtml: `<p>Dear {{candidate_name}},</p><p>Thank you for applying for the <strong>{{job_title}}</strong> position at JCB Exchange.</p><p>Your application reference number is <strong>{{application_id}}</strong>. Our recruitment team is reviewing your profile and will get back to you shortly if your qualifications match our requirements.</p><p>Best regards,<br/>Recruitment Team<br/>JCB Exchange</p>`,
-    variables: ['candidate_name', 'job_title', 'application_id', 'company_name'],
-    isSystem: true,
-  },
-  {
-    name: 'Interview Scheduled',
-    code: 'INTERVIEW_SCHEDULED',
-    subject: 'Interview Scheduled for {{job_title}} - JCB Exchange',
-    bodyHtml: `<p>Dear {{candidate_name}},</p><p>We are pleased to invite you for an interview for the <strong>{{job_title}}</strong> position.</p><p><strong>Date:</strong> {{interview_date}}<br/><strong>Time:</strong> {{interview_time}}<br/><strong>Application ID:</strong> {{application_id}}</p><p>Please let us know if you need to reschedule.</p><p>Best regards,<br/>Recruitment Team<br/>JCB Exchange</p>`,
-    variables: ['candidate_name', 'job_title', 'interview_date', 'interview_time', 'application_id', 'company_name'],
-    isSystem: true,
-  },
-  {
-    name: 'Offer Sent',
-    code: 'OFFER_SENT',
-    subject: 'Job Offer: {{job_title}} - JCB Exchange',
-    bodyHtml: `<p>Dear {{candidate_name}},</p><p>We are delighted to extend an offer of employment for the <strong>{{job_title}}</strong> position at JCB Exchange.</p><p>Expected Joining Date: <strong>{{joining_date}}</strong></p><p>Please review the attached offer letter and use the secure link below to accept or decline the offer:</p><p><a href="{{offer_response_url}}">Review offer and respond</a></p><p>Best regards,<br/>Human Resources<br/>JCB Exchange</p>`,
-    variables: ['candidate_name', 'job_title', 'joining_date', 'company_name', 'designation', 'offer_response_url'],
-    enabled: true,
-    attachmentMode: 'DYNAMIC_OFFER_PDF',
-    isSystem: true,
-  },
-];
+export const DEFAULT_EMAIL_TEMPLATES = communicationEventRegistry.map((event) => ({
+  name: event.name,
+  code: getEmailTemplateCode(event.eventCode),
+  eventCode: event.eventCode,
+  subject: event.defaultSubject,
+  bodyHtml: event.defaultBodyHtml,
+  variables: event.variables,
+  enabled: true,
+  attachmentMode: event.emailAttachmentMode,
+  isSystem: true,
+}));
 
 let defaultRecruitmentDataPromise: Promise<void> | null = null;
 
@@ -78,13 +63,55 @@ export const ensureDefaultRecruitmentData = async () => {
         })
       ));
 
+      await Promise.all(DEFAULT_HIRING_STAGES.map((stage) =>
+        prisma.applicationStage.upsert({
+          where: { code: stage.code },
+          update: { name: stage.name, order: stage.order, color: stage.color, isSystem: stage.isSystem, isTerminal: stage.isTerminal },
+          create: stage,
+        })
+      ));
+
       await Promise.all(DEFAULT_EMAIL_TEMPLATES.map((tpl) =>
         prisma.recruitmentEmailTemplate.upsert({
           where: { code: tpl.code },
-          update: {},
+          update: { eventCode: tpl.eventCode, attachmentMode: tpl.attachmentMode },
           create: tpl,
         })
       ));
+
+      // A system template that still holds an earlier default body word for word was never edited by HR: move it to
+      // the current default (for example the offer email's "View & sign your offer" link). Edited ones are kept.
+      await Promise.all(DEFAULT_EMAIL_TEMPLATES.map((tpl) => {
+        const previousBodies = getCommunicationEvent(tpl.eventCode)?.previousDefaultBodies ?? [];
+        return previousBodies.length
+          ? prisma.recruitmentEmailTemplate.updateMany({
+            where: { code: tpl.code, isSystem: true, bodyHtml: { in: previousBodies } },
+            data: { bodyHtml: tpl.bodyHtml, variables: tpl.variables },
+          })
+          : null;
+      }));
+
+      await Promise.all(DEFAULT_EMAIL_TEMPLATES.map(async (tpl) => {
+        const template = await prisma.recruitmentEmailTemplate.findUnique({ where: { code: tpl.code }, select: { id: true, archived: true } });
+        if (!template || template.archived) return;
+        const rule = await prisma.emailAutomationRule.findUnique({
+          where: { eventCode: tpl.eventCode },
+          select: { templateId: true, template: { select: { archived: true } } },
+        });
+        if (!rule) {
+          // update: {} so a rule made meanwhile (another instance starting, or HR saving) is left alone.
+          await prisma.emailAutomationRule.upsert({
+            where: { eventCode: tpl.eventCode },
+            update: {},
+            create: { eventCode: tpl.eventCode, enabled: true, templateId: template.id },
+          });
+          return;
+        }
+        // Keep the template HR chose: only a rule with no template, or whose template was archived, gets the default.
+        if (!rule.templateId || !rule.template || rule.template.archived) {
+          await prisma.emailAutomationRule.update({ where: { eventCode: tpl.eventCode }, data: { templateId: template.id } });
+        }
+      }));
     } catch (err) {
       defaultRecruitmentDataPromise = null;
       console.error('Error seeding default recruitment data:', err);

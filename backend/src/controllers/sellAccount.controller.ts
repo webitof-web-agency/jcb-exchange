@@ -29,6 +29,7 @@ import {
   buildSellAccountRefundAdvicePdf,
   buildVehicleSaleDeliveryChallanPdf,
   buildVehicleSaleInvoicePdf,
+  buildVehicleSaleProfitInvoicePdf,
   buildVehicleSalePaymentReceiptPdf,
 } from '../services/vehicleSaleInvoice.service';
 import {
@@ -280,6 +281,18 @@ export const resendSellAccountInvoice = async (req: Request, res: Response, next
 export const downloadSellAccountInvoice = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const invoice = await buildVehicleSaleInvoicePdf(String(req.params.id));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${invoice.fileName}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(invoice.buffer);
+  } catch (error) {
+    res.status(400).json({ success: false, error: errorMessage(error) });
+  }
+};
+
+export const downloadSellAccountProfitInvoice = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const invoice = await buildVehicleSaleProfitInvoicePdf(String(req.params.id));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${invoice.fileName}"`);
     res.setHeader('Cache-Control', 'private, no-store');

@@ -26,7 +26,7 @@ const sendReminders = async (config: CrmConfig, now: Date) => {
     take: BATCH,
     include: {
       contact: { select: { name: true, mobile: true } },
-      owner: { select: { id: true, name: true, mobile: true, role: true } },
+      owner: { select: { id: true, name: true, mobile: true, email: true, role: true } },
       lead: { select: { id: true, listingTitleSnapshot: true, leadType: true } },
     },
   });
@@ -51,6 +51,7 @@ const sendReminders = async (config: CrmConfig, now: Date) => {
         event: 'CRM_FOLLOW_UP_REMINDER',
         recipientType: followUp.owner.role === 'PARTNER' ? 'PARTNER' : 'EMPLOYEE',
         phone: followUp.owner.mobile,
+        email: followUp.owner.email,
         entityId: followUp.id,
         values: [followUp.owner.name, who, typeLabel(followUp.type), formatIst(followUp.dueAt), followUp.contact.mobile],
         variables: { staffName: followUp.owner.name, customerName: who, followUpType: typeLabel(followUp.type), dueAt: formatIst(followUp.dueAt), customerMobile: followUp.contact.mobile },
@@ -121,7 +122,7 @@ const customerReminders = async (now: Date) => {
   const upcoming = await prisma.crmFollowUp.findMany({
     where: { status: 'PENDING', customerRemindedAt: null, type: { in: ['VISIT', 'INSPECTION', 'MEETING'] }, dueAt: { gte: addMinutes(now, 60), lte: addDays(now, 1) } },
     take: BATCH,
-    include: { contact: { select: { name: true, mobile: true, whatsappNumber: true, crmProfile: { select: { doNotContact: true } } } } },
+    include: { contact: { select: { name: true, mobile: true, whatsappNumber: true, email: true, crmProfile: { select: { doNotContact: true } } } } },
   });
   for (const followUp of upcoming) {
     if (followUp.contact.crmProfile?.doNotContact) continue;
@@ -129,6 +130,7 @@ const customerReminders = async (now: Date) => {
       event: 'CRM_APPOINTMENT_REMINDER',
       recipientType: 'CUSTOMER',
       phone: followUp.contact.whatsappNumber || followUp.contact.mobile,
+      email: followUp.contact.email,
       entityId: followUp.id,
       values: [followUp.contact.name, typeLabel(followUp.type), formatIst(followUp.dueAt)],
       variables: { customerName: followUp.contact.name, followUpType: typeLabel(followUp.type), dueAt: formatIst(followUp.dueAt) },
@@ -145,7 +147,7 @@ const matchAlerts = async (since: Date) => {
   const leads = await prisma.lead.findMany({
     where: { matchAlertsEnabled: true, status: { notIn: [...terminal] }, mergedIntoId: null },
     take: BATCH,
-    include: { customer: { select: { name: true, mobile: true, whatsappNumber: true, crmProfile: { select: { doNotContact: true } } } } },
+    include: { customer: { select: { name: true, mobile: true, whatsappNumber: true, email: true, crmProfile: { select: { doNotContact: true } } } } },
   });
   let sent = 0;
   for (const lead of leads) {
@@ -158,6 +160,7 @@ const matchAlerts = async (since: Date) => {
       event: 'CRM_MATCHING_LISTING',
       recipientType: 'CUSTOMER',
       phone: lead.customer.whatsappNumber || lead.customer.mobile,
+      email: lead.customer.email,
       entityId: lead.id,
       values: [lead.customer.name, best.title, price, url],
       variables: { customerName: lead.customer.name, listingTitle: best.title, listingPrice: price, listingUrl: url },
@@ -184,7 +187,7 @@ const reengage = async (config: CrmConfig, now: Date) => {
       AND: [{ OR: [{ lastReengagedAt: null }, { lastReengagedAt: { lt: cutoff } }] }],
     },
     take: 50,
-    include: { customer: { select: { name: true, mobile: true, whatsappNumber: true, crmProfile: { select: { doNotContact: true } } } } },
+    include: { customer: { select: { name: true, mobile: true, whatsappNumber: true, email: true, crmProfile: { select: { doNotContact: true } } } } },
   });
   for (const lead of leads) {
     if (lead.customer.crmProfile?.doNotContact) continue;
@@ -193,6 +196,7 @@ const reengage = async (config: CrmConfig, now: Date) => {
       event: 'CRM_REENGAGEMENT',
       recipientType: 'CUSTOMER',
       phone: lead.customer.whatsappNumber || lead.customer.mobile,
+      email: lead.customer.email,
       entityId: lead.id,
       values: [lead.customer.name, enquiry],
       variables: { customerName: lead.customer.name, enquiry },

@@ -18,7 +18,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export const notifySellerOfListingStatus = async (input: {
   listing: { id: string; title: string };
-  partner: { id: string; mobile?: string | null; whatsappNumber?: string | null } | null | undefined;
+  partner: { id: string; mobile?: string | null; whatsappNumber?: string | null; email?: string | null } | null | undefined;
   status: string;
   note?: string | null;
 }) => {
@@ -56,6 +56,7 @@ export const notifySellerOfListingStatus = async (input: {
     relatedEntityId: listing.id,
     recipientType: 'PARTNER',
     recipientPhone: partner.whatsappNumber || partner.mobile,
+    recipientEmail: partner.email,
     // Status in the dedupe suffix: each real status change notifies once, retries of the same one do not.
     dedupeSuffix: status,
     payloadSnapshot: { listingId: listing.id, listingTitle: listing.title, listingStatus: status },

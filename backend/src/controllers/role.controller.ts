@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import { allowedAdminPermissions } from '../utils/adminPermissions';
+import { assertCanGrantPermissions, PermissionGrantError } from '../utils/permissionGrant';
+
+const operatorOf = (req: Request) => ({ userId: req.user!.id, role: req.user!.role });
 
 const normalizePermissionList = (permissions: unknown) =>
   Array.isArray(permissions)
@@ -58,6 +61,8 @@ export const createRole = async (req: Request, res: Response) => {
     if (!Array.isArray(permissions)) {
       return res.status(400).json({ error: 'Permissions must be an array' });
     }
+    // A role never carries more than the person creating it holds.
+    await assertCanGrantPermissions(operatorOf(req), normalizedPermissions, 'This role');
 
     const role = await prisma.customRole.create({
       data: {
@@ -69,6 +74,7 @@ export const createRole = async (req: Request, res: Response) => {
 
     res.status(201).json({ role: await mapRole(role) });
   } catch (error: any) {
+    if (error instanceof PermissionGrantError) return res.status(403).json({ error: error.message });
     if (error.code === 'P2002') {
       return res.status(400).json({ error: 'Role name already exists' });
     }
@@ -99,6 +105,10 @@ export const updateRole = async (req: Request, res: Response) => {
     }
 
     const normalizedPermissions = normalizePermissionList(permissions);
+    // Permissions already on the role may stay; nobody adds one they do not hold themselves (this also stops
+    // somebody widening the role they are on).
+    const existing = new Set(normalizePermissionList(role.permissions));
+    await assertCanGrantPermissions(operatorOf(req), normalizedPermissions.filter((permission) => !existing.has(permission)), 'Adding these permissions');
     const updatedRole = await prisma.customRole.update({
       where: { id },
       data: {
@@ -115,6 +125,7 @@ export const updateRole = async (req: Request, res: Response) => {
 
     res.json({ role: await mapRole(updatedRole) });
   } catch (error: any) {
+    if (error instanceof PermissionGrantError) return res.status(403).json({ error: error.message });
     if (error.code === 'P2002') {
       return res.status(400).json({ error: 'Role name already exists' });
     }

@@ -20,6 +20,10 @@ if (dsn) {
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0),
     beforeSend(event) {
       if (event.request) {
+        // Offer links carry a bearer token / short code in the path: never sent to error monitoring.
+        if (typeof event.request.url === 'string') {
+          event.request.url = event.request.url.replace(/(\/public\/offers\/)[^/?#]+/g, '$1****').replace(/(\/public\/offer-links\/)[^/?#]+/g, '$1****');
+        }
         delete event.request.data;
         delete event.request.cookies;
         delete event.request.query_string;

@@ -20,6 +20,7 @@ import prisma from './lib/prisma';
 import { startAiDailyBriefingJob } from './jobs/aiDailyBriefing.job';
 import { startAiDataSyncJob } from './jobs/aiDataSync.job';
 import { startAiMarketIntelligenceJob } from './jobs/aiMarketIntelligence.job';
+import { startHrmJoiningReminderJob } from './jobs/hrmJoiningReminder.job';
 
 const PORT = process.env.PORT || 5000;
 
@@ -47,6 +48,8 @@ if (backgroundJobsEnabled) {
   // AI read-only intelligence synchronization is also a singleton background worker.
   startAiDataSyncJob();
   startAiMarketIntelligenceJob();
+  // HRM: the day-before-joining reminder (once per Indian day after 09:00; HRM_JOINING_REMINDER=off stops it).
+  startHrmJoiningReminderJob();
   void Promise.all([
     provisionAutomationRules(prisma.whatsAppAutomationRule, [...marketplaceWhatsAppEvents, ...recruitmentWhatsAppEvents]),
     provisionAutomationRules(prisma.smsAutomationRule, [...marketplaceSmsEvents, ...recruitmentSmsEvents]),

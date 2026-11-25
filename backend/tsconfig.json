@@ -10,8 +10,8 @@
     "module": "nodenext",
     "target": "esnext",
     "types": [],
-    // For nodejs:
-    // "lib": ["esnext"],
+    // For nodejs. No DOM lib: browser globals such as `status` or `name` must not type-check in server code.
+    "lib": ["esnext"],
     // "types": ["node"],
     // and npm install -D @types/node
 

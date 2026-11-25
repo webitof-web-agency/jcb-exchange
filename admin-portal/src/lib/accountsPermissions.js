@@ -1,5 +1,5 @@
 /**
- * @typedef {'rto-work-status' | 'sell-accounts'} AccountModuleKey
+ * @typedef {'rto-work-status' | 'sell-accounts' | 'transport-delivery'} AccountModuleKey
  * @typedef {{
  *   key: AccountModuleKey;
  *   labelKey: string;
@@ -33,6 +33,16 @@ export const accountsNavItems = [
     updatePermissions: ['accounts.sell.update', 'accounts.sell.crud'],
     deletePermissions: ['accounts.sell.delete', 'accounts.sell.crud'],
     exportPermission: 'accounts.sell.export',
+  },
+  {
+    key: 'transport-delivery',
+    labelKey: 'admin.transportDelivery',
+    defaultLabel: 'Transport & Delivery',
+    permissions: ['accounts.transport.read', 'accounts.transport.crud'],
+    createPermissions: ['accounts.transport.create', 'accounts.transport.crud'],
+    updatePermissions: ['accounts.transport.update', 'accounts.transport.crud'],
+    deletePermissions: ['accounts.transport.delete', 'accounts.transport.crud'],
+    exportPermission: 'accounts.transport.export',
   },
 ];
 

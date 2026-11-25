@@ -1,0 +1,11 @@
+.git
+node_modules
+.next
+out
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+src/**/*.test.ts
+src/**/*.test.mjs

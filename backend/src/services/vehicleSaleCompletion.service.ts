@@ -1,3 +1,4 @@
+import { ensureVehicleTransportRecord } from './vehicleTransport.service';
 import { SellAccountDealStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { normalizeRtoWorkStatus } from './rtoStatus';
@@ -5,9 +6,10 @@ import { assertRemark, summarizeTransferTasks } from './rtoTransferTasks';
 import { recordRtoStatusChange } from './rtoTransferStore';
 import { getSellAccount, paymentSummaryForRecord } from './sellAccount.service';
 import { dispatchConfiguredSms } from './smsIntegration.service';
-import { issueInvoiceToken, nextVehicleSaleInvoiceNumberFor, vehicleTitleOf } from './vehicleSaleInvoice.service';
+import { issueInvoiceToken, nextVehicleSaleInvoiceNumberFor, nextVehicleSaleProfitInvoiceNumberFor, vehicleTitleOf } from './vehicleSaleInvoice.service';
 import { buildVehicleSaleInvoiceDeliveryMessage, isVehicleSaleInvoiceResendable } from './vehicleSaleInvoiceDelivery';
 import { dispatchConfiguredWhatsApp } from './whatsappIntegration.service';
+import { enqueueConfiguredEmail } from './recruitmentEmail.service';
 import { syncListingSoldStatusFromSellAccount } from './sellAccountListingSync';
 
 export class VehicleSaleCompletionError extends Error {
@@ -22,13 +24,34 @@ export const buildPublicInvoiceUrl = (publicApiBaseUrl: string, token: string) =
 
 const formatInr = (value: number) => `Rs. ${Math.round(value).toLocaleString('en-IN')}`;
 
-type ChannelResult = { channel: 'WHATSAPP' | 'SMS'; sent: boolean; status: string; detail?: string | null };
+type ChannelResult = { channel: 'WHATSAPP' | 'SMS' | 'EMAIL'; sent: boolean; status: string; detail?: string | null };
 
 const describeDispatch = (channel: ChannelResult['channel'], result: any): ChannelResult => {
+  if (channel === 'EMAIL') {
+    if (result?.queued) return { channel, sent: true, status: 'QUEUED' };
+    return { channel, sent: false, status: String(result?.reason || 'NOT_SENT'), detail: result?.reason || null };
+  }
   if (result?.queued && result?.sent) return { channel, sent: true, status: 'SENT' };
   if (result?.queued) return { channel, sent: false, status: 'FAILED', detail: result?.error || null };
   if (result?.duplicate) return { channel, sent: false, status: 'DUPLICATE' };
   return { channel, sent: false, status: String(result?.reason || 'NOT_SENT') };
+};
+
+export const resolvePurchaserEmail = async (record: { id: string; listingId?: string | null; purchaserNumber?: string | null }) => {
+  if (record.purchaserNumber) {
+    const user = await prisma.user.findFirst({
+      where: { mobile: record.purchaserNumber },
+      select: { email: true },
+    });
+    if (user?.email) return user.email;
+  }
+  const deed = await prisma.sellAccountDeedWorkflow.findFirst({
+    where: { sellAccountId: record.id, side: 'SALE' },
+    select: { signerEmail: true },
+  });
+  if (deed?.signerEmail) return deed.signerEmail;
+
+  return null;
 };
 
 /**
@@ -57,8 +80,9 @@ export const deliverVehicleSaleInvoice = async (
     invoiceUrl,
   };
   const deliveryMessage = buildVehicleSaleInvoiceDeliveryMessage(payloadSnapshot);
+  const purchaserEmail = await resolvePurchaserEmail(record);
 
-  const [whatsapp, sms] = await Promise.all([
+  const [whatsapp, sms, email] = await Promise.all([
     dispatchConfiguredWhatsApp({
       eventCode: 'VEHICLE_SALE_INVOICE',
       relatedEntityType: 'SELL_ACCOUNT',
@@ -79,9 +103,26 @@ export const deliverVehicleSaleInvoice = async (
       payloadSnapshot: deliveryMessage.payloadSnapshot,
       dedupeSuffix,
     }),
+    purchaserEmail
+      ? enqueueConfiguredEmail({
+        eventCode: 'VEHICLE_SALE_INVOICE',
+        relatedEntityType: 'SELL_ACCOUNT',
+        relatedEntityId: record.id,
+        recipientEmail: purchaserEmail,
+        payloadSnapshot: deliveryMessage.payloadSnapshot,
+        ...(dedupeSuffix ? { dedupeSuffix } : {}),
+      }).catch((error) => {
+        console.error('Email delivery failed for VEHICLE_SALE_INVOICE:', error);
+        return { queued: false, reason: 'DISPATCH_ERROR' };
+      })
+      : Promise.resolve(null),
   ]);
 
-  const channels = [describeDispatch('WHATSAPP', whatsapp), describeDispatch('SMS', sms)];
+  const channels: ChannelResult[] = [
+    describeDispatch('WHATSAPP', whatsapp),
+    describeDispatch('SMS', sms),
+    ...(purchaserEmail ? [describeDispatch('EMAIL', email)] : []),
+  ];
   const attemptedAt = new Date();
   const anySent = channels.some((channel) => channel.sent);
   await prisma.sellAccount.update({
@@ -109,11 +150,14 @@ export const issueAndDeliverVehicleSaleInvoiceAfterFullPayment = async (
     if (current.invoiceNumber && current.invoiceTokenHash) return { id: current.id, alreadyIssued: true };
     const now = new Date();
     const invoiceNumber = current.invoiceNumber || await nextVehicleSaleInvoiceNumberFor(tx, now);
+    const profitInvoiceNumber = current.profitInvoiceNumber || await nextVehicleSaleProfitInvoiceNumberFor(tx, now);
     await tx.sellAccount.update({
       where: { id: current.id },
       data: {
         invoiceNumber,
         invoiceGeneratedAt: current.invoiceGeneratedAt || now,
+        profitInvoiceNumber,
+        profitInvoiceGeneratedAt: current.profitInvoiceGeneratedAt || now,
         invoiceTokenHash: issued.tokenHash,
         invoiceTokenExpiresAt: issued.expiresAt,
       },
@@ -171,6 +215,7 @@ export const completeVehicleSale = async (
     const now = new Date();
     const issued = current.invoiceNumber && current.invoiceTokenHash ? null : issueInvoiceToken();
     const invoiceNumber = current.invoiceNumber || await nextVehicleSaleInvoiceNumberFor(tx, now);
+    const profitInvoiceNumber = current.profitInvoiceNumber || await nextVehicleSaleProfitInvoiceNumberFor(tx, now);
     const previousRtoStatus = normalizeRtoWorkStatus(rto.rtoStatus);
 
     await tx.vehicleRtoRecord.update({
@@ -186,6 +231,8 @@ export const completeVehicleSale = async (
         completedAt: now,
         invoiceNumber,
         invoiceGeneratedAt: current.invoiceGeneratedAt || now,
+        profitInvoiceNumber,
+        profitInvoiceGeneratedAt: current.profitInvoiceGeneratedAt || now,
         ...(issued ? { invoiceTokenHash: issued.tokenHash, invoiceTokenExpiresAt: issued.expiresAt } : {}),
         isLocked: true,
         lockedAt: now,
@@ -211,6 +258,9 @@ export const completeVehicleSale = async (
       true,
       { actorId, sourceReason: 'Deal completed via completeVehicleSale' },
     );
+
+    // Auto-create/ensure VehicleTransport record for post-sale logistics
+    await ensureVehicleTransportRecord(tx, current, actorId);
 
     return { id: current.id, token: issued?.token || null };
   });

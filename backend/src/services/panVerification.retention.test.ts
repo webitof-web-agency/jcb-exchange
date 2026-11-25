@@ -125,7 +125,8 @@ test('successful template upload stores only private artifact metadata and clear
     },
   );
   assert.match(String(templateCreates[0]?.sha256), /^[a-f0-9]{64}$/);
-  assert.deepEqual(updates[0], { encryptedResult: null, rawDataExpiresAt: null });
+  // The unsalted fingerprint is dropped too, so the PAN cannot be brute-forced from maskedPan + hash.
+  assert.deepEqual(updates[0], { encryptedResult: null, rawDataExpiresAt: null, requestFingerprint: null });
 });
 
 test('scheduled cleanup removes expired encrypted PAN payloads', async () => {

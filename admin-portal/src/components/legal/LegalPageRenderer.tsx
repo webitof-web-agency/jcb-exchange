@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, FileText, Loader2, Mail, MapPin, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, FileText, Loader2, Mail, MapPin, ShieldCheck } from 'lucide-react';
 import api from '@/lib/api';
 import { purifyHtml } from '@/lib/safeHtml';
 
@@ -32,7 +32,9 @@ export default function LegalPageRenderer({
         const response = await api.get('/master/footer');
         if (!active) return;
         const html = response.data?.data?.legalPages?.[pageKey];
-        if (typeof html === 'string' && html.trim().length > 10) {
+        if (typeof html === 'string') {
+          // A saved empty string is intentional. `null`/missing means that
+          // the page has never been customized and should use its fallback.
           setCustomHtml(html.trim());
         }
       } catch {
@@ -92,7 +94,7 @@ export default function LegalPageRenderer({
               <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
               <p className="mt-3 text-xs font-semibold text-gray-500">Loading policy content...</p>
             </div>
-          ) : customHtml ? (
+          ) : customHtml !== null ? (
             <div
               className="prose max-w-none text-sm leading-relaxed text-gray-700 sm:text-base prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:font-semibold prose-a:text-amber-700 prose-a:underline hover:prose-a:text-amber-800 prose-strong:text-gray-900 prose-ul:my-4 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-4 prose-ol:list-decimal prose-ol:pl-5 prose-li:my-1"
               dangerouslySetInnerHTML={{ __html: purifyHtml(customHtml) }}

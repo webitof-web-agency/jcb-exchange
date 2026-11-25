@@ -118,7 +118,14 @@ export const retrySmsLog = async (req: Request, res: Response) => {
     const id = String(req.params.id || '').trim();
     if (!id || id.length > 100) return res.status(400).json({ error: 'Valid SMS message id is required.' });
     const result = await retryFailedSmsMessage(id);
-    res.json({ message: result.sent ? 'SMS retry sent.' : 'SMS retry attempted but provider rejected it.', result });
+    const skipped = (result as { skipped?: boolean; reason?: string }).skipped;
+    const reason = (result as { reason?: string }).reason;
+    res.json({
+      message: result.sent
+        ? 'SMS retry sent.'
+        : skipped ? `SMS not sent: ${reason || 'the message is no longer valid'}. The message was cancelled.` : 'SMS retry attempted but provider rejected it.',
+      result,
+    });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to retry SMS message.' });
   }

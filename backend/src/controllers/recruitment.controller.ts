@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs/promises';
+import { randomUUID } from 'crypto';
 import prisma from '../lib/prisma';
 import {
   deleteFileFromDrive,
   extractDriveFileId,
   makeDriveFilePrivate,
+  streamDriveMediaWithHeaders,
   streamFileFromDrive,
   uploadFileToDrive,
 } from '../services/googleDrive.service';
@@ -35,9 +37,30 @@ import { dispatchPublishedSms } from '../services/smsIntegration.service';
 import { shouldDispatchSmsPublishedBroadcast } from '../modules/sms-core';
 import { normalizeOfferLetterData, validateOfferLetterData, type OfferLetterData } from '../utils/offerLetter';
 import { validateField } from '../utils/fieldValidation';
-import { sanitizeLegalHtml } from '../utils/htmlSanitizer';
-import { enqueueOfferEmail } from '../services/recruitmentEmail.service';
+import { sanitizeEmailHtml } from '../utils/htmlSanitizer';
+import { dispatchOfferCommunications, parseOfferChannels } from '../services/recruitmentOfferCommunication.service';
+import { lookupOfferShortLink } from '../services/offerShortLink.service';
 import { verifyOfferResponseToken } from '../utils/offerResponseToken';
+import { communicationEventRegistry, getCommunicationEvent, getEmailAttachmentModeForEvent, getEmailEventCodeForTemplateCode } from '../services/communicationEventRegistry';
+import { buildEmailTemplateDeletePlan } from '../services/emailTemplateLifecycle';
+import { handOfferToHrm, handOfferToHrmQuietly } from '../modules/hrm/services/offerHandoff.service';
+import { HrmHttpError } from '../modules/hrm/errors';
+import {
+  OfferAcceptanceConflict,
+  recordOfferAcceptance,
+  validateCandidateAcceptance,
+} from '../services/offerAcceptance.service';
+import { getOfferFormOptions as loadOfferFormOptions, resolveOfferPlacement, searchOfferReportingManagers, type OfferPlacement } from '../modules/hrm/services/offerPlacement.service';
+import {
+  annualCtcFrom,
+  canDeleteOffer,
+  canEditOffer,
+  describeOfferStatusChangeBlock,
+  isOfferStatus,
+  normalizeSalaryComponents,
+  totalSalaryComponents,
+  type SalaryComponent,
+} from '../utils/offerRules';
 
 const getParamString = (param: unknown): string => {
   if (typeof param === 'string') return param;
@@ -56,27 +79,274 @@ const getOfferResponse = async (token: string) => {
   return { offer, payload };
 };
 
+const notifyOfferResponse = async (offer: { id: string; candidate: { fullName: string }; job: { title: string }; createdById: string | null }, status: 'ACCEPTED' | 'DECLINED' | 'EXPIRED') => {
+  const recipients = await prisma.user.findMany({
+    where: { status: 'ACTIVE', OR: [{ role: 'SUPER_ADMIN' }, ...(offer.createdById ? [{ id: offer.createdById }] : [])] },
+    select: { id: true },
+  });
+  await Promise.all(recipients.map((recipient) => {
+    const dedupeKey = `${offer.id}:response:${status}:${recipient.id}`;
+    return prisma.notification.upsert({
+      where: { dedupeKey },
+      create: {
+        userId: recipient.id,
+        title: `Offer ${status === 'ACCEPTED' ? 'Accepted' : status === 'DECLINED' ? 'Declined' : 'Expired'}`,
+        message: `${offer.candidate.fullName}'s offer for ${offer.job.title} has ${status === 'ACCEPTED' ? 'been accepted' : status === 'DECLINED' ? 'been declined' : 'expired'}.`,
+        type: status === 'ACCEPTED' ? 'SUCCESS' : status === 'DECLINED' ? 'WARNING' : 'INFO',
+        link: '/admin/recruitment/offers',
+        dedupeKey,
+      },
+      update: {},
+    });
+  }));
+};
+
+type AcceptedOfferForMessages = {
+  id: string;
+  applicationId: string;
+  designation: string;
+  joiningDate: Date | null;
+  respondedAt: Date | null;
+  acceptanceMethod: string | null;
+  acceptanceCertificateUrl: string | null;
+  responseTokenVersion: number;
+  createdById: string | null;
+  candidate: { fullName: string; mobile?: string | null; email?: string | null };
+  application: { applicationRef: string };
+  job: { title: string };
+};
+
+const offerDay = (value: Date | null | undefined) => (value ? value.toISOString().slice(0, 10) : '');
+// A moment in time (when the candidate accepted) is shown as the Indian calendar day.
+const indiaDay = (value: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+
+/**
+ * After an acceptance (signed on the link or recorded by HR from a paper copy): the candidate gets the confirmation
+ * (with the acceptance certificate on email / WhatsApp, text on SMS) and the offer's creator plus the Super Admins get
+ * an alert. WhatsApp and SMS go only after HR picks the approved template / DLT id and switches the event on; email
+ * uses the default template and is on unless HR switches it off (Settings > Email > Recruitment).
+ */
+const dispatchOfferAcceptedMessages = async (offer: AcceptedOfferForMessages) => {
+  const common = {
+    candidateName: offer.candidate.fullName,
+    applicationId: offer.applicationId,
+    applicationRef: offer.application.applicationRef,
+    jobTitle: offer.job.title,
+    designation: offer.designation,
+    joiningDate: offerDay(offer.joiningDate),
+    acceptedOn: indiaDay(offer.respondedAt ?? new Date()),
+  };
+  void dispatchRecruitmentWhatsApp({
+    eventCode: 'RECRUITMENT_OFFER_ACCEPTED',
+    relatedEntityType: 'OFFER',
+    relatedEntityId: offer.id,
+    recipientType: 'CANDIDATE',
+    recipientPhone: offer.candidate.mobile,
+    recipientEmail: offer.candidate.email,
+    payloadSnapshot: {
+      ...common,
+      acceptanceMethod: offer.acceptanceMethod ?? '',
+      // A secure (signed-in) document URL, not a bearer link: the WhatsApp document header / email attachment.
+      acceptanceDocumentUrl: offer.acceptanceCertificateUrl ?? '',
+      acceptanceDocumentFileName: `Offer_Acceptance_${offer.application.applicationRef}.pdf`,
+    },
+  });
+  try {
+    const superAdmins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN', status: 'ACTIVE' }, select: { id: true, mobile: true, whatsappNumber: true, email: true } });
+    const creator = offer.createdById && !superAdmins.some((user) => user.id === offer.createdById)
+      ? await prisma.user.findFirst({ where: { id: offer.createdById, status: 'ACTIVE' }, select: { id: true, mobile: true, whatsappNumber: true, email: true } })
+      : null;
+    for (const [user, recipientType] of [...superAdmins.map((user) => [user, 'SUPER_ADMIN'] as const), ...(creator ? [[creator, 'RECRUITER'] as const] : [])]) {
+      void dispatchRecruitmentWhatsApp({
+        eventCode: 'RECRUITMENT_OFFER_ACCEPTED_HR',
+        relatedEntityType: 'OFFER',
+        relatedEntityId: offer.id,
+        recipientType,
+        recipientPhone: user.whatsappNumber || user.mobile,
+        recipientEmail: user.email,
+        // The certificate too, for a template with a DOCUMENT header (a secure signed-in URL, not a bearer link).
+        payloadSnapshot: { ...common, acceptanceDocumentUrl: offer.acceptanceCertificateUrl ?? '', acceptanceDocumentFileName: `Offer_Acceptance_${offer.application.applicationRef}.pdf` },
+      });
+    }
+  } catch (error) {
+    console.error('[recruitment] offer accepted HR alert failed:', error instanceof Error ? error.message : error);
+  }
+};
+
+const notifyOfferResponseSafely = async (offer: Parameters<typeof notifyOfferResponse>[0], status: Parameters<typeof notifyOfferResponse>[1]) => {
+  try {
+    await notifyOfferResponse(offer, status);
+  } catch (error) {
+    console.error('[recruitment] offer response notification failed:', error instanceof Error ? error.message : error);
+  }
+};
+
+/**
+ * An accepted offer becomes an HRM record. The acceptance is already saved when this runs, so a failure here is
+ * logged for HR (the record can be created again from HRM: POST /hrm/onboarding/from-offer/:offerId) and never shown
+ * to the candidate as an error. The audit names the offer's creator (or an active Super Admin) with their real role.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const handOfferToHrmSafely = async (offer: { id: string }, _ipAddress?: string | null) => {
+  // Failures are recorded on the offer (hrmHandoffStatus FAILED) and retried by the background worker.
+  await handOfferToHrmQuietly(offer.id);
+};
+
+/** HR runs the HRM handoff of an accepted offer again (after fixing a duplicate, a switched-off office, ...). */
+export const retryOfferHrmHandoff = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = getParamString(req.params.id);
+    const result = await handOfferToHrm(id);
+    res.status(200).json({ success: true, result });
+  } catch (error) {
+    if (sendHrmError(res, error)) return;
+    if (error instanceof Error) return res.status(500).json({ success: false, error: `The HRM record could not be created: ${error.message}` });
+    next(error);
+  }
+};
+
+/** HRM validation errors (placement) reach the admin as a normal 4xx answer. */
+const sendHrmError = (res: Response, error: unknown) => {
+  if (!(error instanceof HrmHttpError)) return false;
+  res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
+  return true;
+};
+
+/**
+ * What the candidate sees on the offer link: the job they applied for, what they submitted, the offer itself (with
+ * the salary breakup) and, once accepted, how it was accepted. Only this candidate's own data.
+ */
+const buildPublicOfferView = async (offer: Prisma.OfferGetPayload<{ include: { candidate: true; job: true; application: true } }>) => {
+  const letter = (offer.offerLetterData && typeof offer.offerLetterData === 'object' ? offer.offerLetterData : {}) as Partial<OfferLetterData> & Record<string, unknown>;
+  const snapshot = (offer.application.applicantSnapshot && typeof offer.application.applicantSnapshot === 'object'
+    ? offer.application.applicantSnapshot
+    : {}) as Record<string, unknown>;
+  const answers = await prisma.applicationAnswer.findMany({
+    where: { applicationId: offer.applicationId },
+    select: { answerText: true, question: { select: { question: true, order: true } } },
+    orderBy: { question: { order: 'asc' } },
+  });
+  const pick = (key: string, fallback: unknown) => (snapshot[key] ?? fallback ?? null);
+  const salaryPeriod = letter.salaryPeriod === 'month' ? 'month' : 'annum';
+  return {
+    id: offer.id,
+    status: offer.status,
+    companyName: letter.companyName || 'JCB Exchange',
+    letterNo: letter.offerLetterNo || null,
+    letterDate: letter.letterDate || null,
+    candidateName: offer.candidate.fullName,
+    jobTitle: offer.job.title,
+    designation: offer.designation,
+    department: offer.department,
+    placeOfPosting: offer.joiningLocation,
+    employmentType: offer.employmentType ?? offer.job.employmentType,
+    reportingManager: offer.reportingManager,
+    joiningDate: offer.joiningDate,
+    offerValidUntil: offer.offerValidUntil ?? (typeof letter.offerValidUntil === 'string' && letter.offerValidUntil ? letter.offerValidUntil : null),
+    probationPeriod: offer.probationPeriod,
+    noticePeriod: letter.noticePeriod || null,
+    salary: {
+      amount: Number(offer.ctc),
+      period: salaryPeriod,
+      annualCtc: offer.annualCtc !== null ? Number(offer.annualCtc) : annualCtcFrom(Number(offer.ctc), salaryPeriod),
+      components: readStoredComponents(offer.salaryComponents),
+    },
+    additionalTerms: offer.additionalTerms,
+    application: {
+      applicationRef: offer.application.applicationRef,
+      appliedAt: offer.application.appliedAt,
+      jobLocation: [offer.job.locationCity, offer.job.locationState].filter(Boolean).join(', '),
+      // Personal details are shown only while the offer is open; once it is answered or closed, the link (which
+      // may sit in a mailbox for months) shows the offer and its outcome, not the person's contact data.
+      details: offer.status !== 'SENT' ? null : {
+        fullName: pick('fullName', offer.candidate.fullName),
+        email: pick('email', offer.candidate.email),
+        mobile: pick('mobile', offer.candidate.mobile),
+        address: pick('address', offer.candidate.address),
+        city: pick('currentCity', offer.candidate.currentCity),
+        state: pick('state', offer.candidate.state),
+        currentCompany: pick('currentCompany', offer.candidate.currentCompany),
+        currentDesignation: pick('currentDesignation', offer.candidate.currentDesignation),
+        totalExperience: pick('totalExperience', offer.candidate.totalExperience),
+        relevantExperience: pick('relevantExperience', offer.candidate.relevantExperience),
+        noticePeriod: pick('noticePeriod', offer.candidate.noticePeriod),
+      },
+      answers: offer.status !== 'SENT' ? [] : answers.map((answer) => ({ question: answer.question.question, answer: answer.answerText ?? '' })),
+    },
+    offerLetterFileName: offer.offerLetterFileName,
+    offerLetterAvailable: Boolean(offer.offerLetterUrl) && offer.status !== 'WITHDRAWN',
+    acceptance: offer.status === 'ACCEPTED' ? {
+      method: offer.acceptanceMethod,
+      name: offer.acceptedName,
+      place: offer.acceptedPlace,
+      acceptedAt: offer.respondedAt,
+      certificateAvailable: Boolean(offer.acceptanceCertificateUrl),
+    } : null,
+  };
+};
+
 export const getPublicOfferResponse = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const token = getParamString(req.params.token);
     const response = await getOfferResponse(token);
-    if (!response) return res.status(404).json({ success: false, error: 'This offer link is invalid or has expired.' });
+    if (!response) return res.status(404).json({ success: false, error: 'This offer link is invalid or has been replaced by a newer one.' });
 
-    const { offer, payload } = response;
-    const isExpired = Boolean(offer.offerValidUntil && offer.offerValidUntil.getTime() <= Date.now()) || payload.expiresAt * 1000 <= Date.now();
-    res.status(200).json({
-      success: true,
-      offer: {
-        id: offer.id,
-        candidateName: offer.candidate.fullName,
-        jobTitle: offer.job.title,
-        designation: offer.designation,
-        joiningLocation: offer.joiningLocation,
-        joiningDate: offer.joiningDate,
-        offerValidUntil: offer.offerValidUntil,
-        status: isExpired && offer.status === 'SENT' ? 'EXPIRED' : offer.status,
-      },
-    });
+    // The link works until HR marks the offer Expired / Withdrawn or resends it (a resend closes this link).
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    res.status(200).json({ success: true, offer: await buildPublicOfferView(response.offer) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Streams one of the offer's private files (letter, acceptance certificate, signed copy) to the browser. */
+const streamOfferFile = async (req: Request, res: Response, fileUrl: string | null, fileName: string, contentType: string, disposition: 'inline' | 'attachment') => {
+  const driveFileId = extractDriveFileId(fileUrl);
+  if (!driveFileId) {
+    res.status(404).json({ success: false, error: 'The file is unavailable.' });
+    return;
+  }
+  const { stream, totalSize, byteRange, headers } = await streamDriveMediaWithHeaders(
+    driveFileId,
+    typeof req.headers.range === 'string' ? req.headers.range : undefined,
+  );
+  res.status(byteRange ? 206 : 200);
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `${disposition}; filename="${path.basename(fileName).replace(/[\r\n"]/g, '_')}"`);
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (headers['content-length']) res.setHeader('Content-Length', String(headers['content-length']));
+  else if (totalSize !== null) res.setHeader('Content-Length', String(totalSize));
+  if (headers['content-range']) res.setHeader('Content-Range', String(headers['content-range']));
+  stream.on('error', (error) => { if (!res.headersSent) res.status(502).end(); else res.destroy(error as Error); });
+  stream.pipe(res);
+};
+
+/** The acceptance certificate, for the candidate who accepted. */
+export const getPublicOfferCertificate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const response = await getOfferResponse(getParamString(req.params.token));
+    if (!response || response.offer.status !== 'ACCEPTED' || !response.offer.acceptanceCertificateUrl) {
+      return res.status(404).json({ success: false, error: 'The acceptance certificate is not available.' });
+    }
+    await streamOfferFile(req, res, response.offer.acceptanceCertificateUrl, `Offer_Acceptance_${response.offer.application.applicationRef}.pdf`, 'application/pdf', 'attachment');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPublicOfferPdf = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = getParamString(req.params.token);
+    const response = await getOfferResponse(token);
+    if (!response) return res.status(404).json({ success: false, error: 'This offer link is invalid or has expired.' });
+    const { offer } = response;
+    if (offer.status === 'WITHDRAWN') return res.status(410).json({ success: false, error: 'This offer was withdrawn.' });
+
+    await streamOfferFile(req, res, offer.offerLetterUrl, offer.offerLetterFileName || 'Offer_Letter.pdf', 'application/pdf', req.query.download === '1' ? 'attachment' : 'inline');
   } catch (error) {
     next(error);
   }
@@ -93,52 +363,93 @@ export const respondToPublicOffer = async (req: Request, res: Response, next: Ne
     const response = await getOfferResponse(token);
     if (!response) return res.status(404).json({ success: false, error: 'This offer link is invalid or has expired.' });
     const { offer, payload } = response;
-    if ((offer.offerValidUntil && offer.offerValidUntil.getTime() <= Date.now()) || payload.expiresAt * 1000 <= Date.now()) {
-      return res.status(410).json({ success: false, error: 'This offer has expired.' });
-    }
     if (offer.status !== 'SENT') {
       return res.status(409).json({ success: false, error: `This offer is already ${offer.status.toLowerCase()}.`, status: offer.status });
     }
 
-    const status = action === 'ACCEPT' ? 'ACCEPTED' : 'DECLINED';
+    if (action === 'ACCEPT') {
+      const checked = validateCandidateAcceptance(req.body ?? {}, offer.candidate.fullName, Boolean(req.file));
+      if ('error' in checked) return res.status(400).json({ success: false, error: checked.error });
+      const file = checked.value.method === 'DRAWN'
+        ? { buffer: checked.drawn!, mimeType: 'image/png', originalName: 'signature.png' }
+        : checked.value.method === 'UPLOADED_SCAN' && req.file
+          ? { buffer: req.file.buffer, mimeType: req.file.mimetype, originalName: req.file.originalname }
+          : null;
+      let accepted: Awaited<ReturnType<typeof recordOfferAcceptance>>;
+      try {
+        accepted = await recordOfferAcceptance({
+          offer,
+          tokenVersion: payload.version,
+          method: checked.value.method,
+          acceptedName: checked.value.fullName,
+          place: checked.value.place,
+          ipAddress: req.ip ?? null,
+          userAgent: req.get('user-agent') ?? null,
+          file,
+        });
+      } catch (error) {
+        if (error instanceof OfferAcceptanceConflict) return res.status(409).json({ success: false, error: error.message });
+        throw error;
+      }
+      // The acceptance is saved: answer the candidate now; HRM and the notifications follow (never as an error).
+      res.status(200).json({ success: true, status: 'ACCEPTED', message: 'Thank you. Your acceptance has been recorded.' });
+      void (async () => {
+        await handOfferToHrmSafely(offer, req.ip);
+        await notifyOfferResponseSafely(offer, 'ACCEPTED');
+        await dispatchOfferAcceptedMessages({ ...offer, ...accepted, candidate: offer.candidate, application: offer.application, job: offer.job });
+      })().catch((error) => console.error('[recruitment] follow-up after offer acceptance failed:', error instanceof Error ? error.message : error));
+      return;
+    }
+
+    const declineReason = typeof req.body?.declineReason === 'string' ? req.body.declineReason.trim() : '';
+    if (declineReason.length < 3 || declineReason.length > 1000) {
+      return res.status(400).json({ success: false, error: 'Please provide a decline reason between 3 and 1000 characters.' });
+    }
+    // Only a decline reaches this point (an acceptance is recorded above, with its evidence).
+    const status = 'DECLINED' as 'ACCEPTED' | 'DECLINED';
     const updated = await prisma.$transaction(async (transaction) => {
       const result = await transaction.offer.updateMany({
         where: { id: offer.id, status: 'SENT', responseTokenVersion: payload.version },
-        data: { status, respondedAt: new Date() },
+        data: { status, respondedAt: new Date(), declineReason: status === 'DECLINED' ? declineReason : null },
       });
       if (result.count !== 1) return null;
-      if (status === 'ACCEPTED') {
-        await transaction.jobApplication.update({ where: { id: offer.applicationId }, data: { currentStage: 'OFFER_ACCEPTED' } });
-      }
+      const nextStage = status === 'ACCEPTED' ? 'OFFER_ACCEPTED' : 'OFFER_DECLINED';
+      await transaction.jobApplication.update({
+        where: { id: offer.applicationId },
+        data: { currentStage: nextStage, terminalStatus: status === 'DECLINED' ? 'Offer Declined' : null },
+      });
+      await transaction.applicationStageHistory.create({
+        data: {
+          applicationId: offer.applicationId,
+          fromStage: offer.application.currentStage,
+          toStage: nextStage,
+          fromTerminalStatus: offer.application.terminalStatus,
+          toTerminalStatus: status === 'DECLINED' ? 'Offer Declined' : null,
+          changedById: null,
+          notes: status === 'DECLINED' ? declineReason : 'Candidate accepted the offer.',
+        },
+      });
+      await transaction.recruitmentActivityLog.create({
+        data: {
+          candidateId: offer.candidateId,
+          applicationId: offer.applicationId,
+          actorId: null,
+          action: `OFFER_${status}`,
+          title: `Candidate ${status === 'ACCEPTED' ? 'Accepted' : 'Declined'} Offer`,
+          details: 'Candidate response received through the secure offer link.',
+          metadata: {
+            responseTokenVersion: payload.version,
+            source: 'PUBLIC_OFFER_LINK',
+            ...(status === 'DECLINED' ? { declineReason } : {}),
+            ...(req.ip ? { ip: req.ip } : {}),
+            ...(req.get('user-agent') ? { userAgent: req.get('user-agent') } : {}),
+          },
+        },
+      });
       return transaction.offer.findUnique({ where: { id: offer.id } });
     });
     if (!updated) return res.status(409).json({ success: false, error: 'This offer has already received a response.' });
-
-    await logRecruitmentActivity({
-      candidateId: offer.candidateId,
-      applicationId: offer.applicationId,
-      actorId: null,
-      action: `OFFER_${status}`,
-      title: `Candidate ${status === 'ACCEPTED' ? 'Accepted' : 'Declined'} Offer`,
-      details: `Candidate response received through the secure offer link.`,
-    });
-
-    const recipients = await prisma.user.findMany({
-      where: { status: 'ACTIVE', OR: [{ role: 'SUPER_ADMIN' }, ...(offer.createdById ? [{ id: offer.createdById }] : [])] },
-      select: { id: true },
-    });
-    await Promise.all(recipients.map((recipient) => prisma.notification.upsert({
-      where: { dedupeKey: `${offer.id}:response:${status}:${recipient.id}` },
-      create: {
-        userId: recipient.id,
-        title: `Offer ${status === 'ACCEPTED' ? 'Accepted' : 'Declined'}`,
-        message: `${offer.candidate.fullName} has ${status === 'ACCEPTED' ? 'accepted' : 'declined'} the offer for ${offer.job.title}.`,
-        type: status === 'ACCEPTED' ? 'SUCCESS' : 'WARNING',
-        link: '/admin/recruitment/offers',
-        dedupeKey: `${offer.id}:response:${status}:${recipient.id}`,
-      },
-      update: {},
-    })));
+    await notifyOfferResponseSafely(offer, status);
 
     dispatchRecruitmentCandidateWhatsApp({
       eventCode: 'RECRUITMENT_OFFER_STATUS_UPDATED',
@@ -228,10 +539,11 @@ const dispatchRecruitmentCandidateWhatsApp = ({
     | 'RECRUITMENT_INTERVIEW_RESCHEDULED'
     | 'RECRUITMENT_INTERVIEW_CANCELLED'
     | 'RECRUITMENT_OFFER_SENT'
-    | 'RECRUITMENT_OFFER_STATUS_UPDATED';
+    | 'RECRUITMENT_OFFER_STATUS_UPDATED'
+    | 'RECRUITMENT_OFFER_ACCEPTED';
   relatedEntityType: string;
   relatedEntityId: string;
-  candidate: { mobile?: string | null; fullName?: string | null };
+  candidate: { mobile?: string | null; email?: string | null; fullName?: string | null };
   payloadSnapshot: Record<string, unknown>;
 }) => {
   void dispatchRecruitmentWhatsApp({
@@ -240,6 +552,7 @@ const dispatchRecruitmentCandidateWhatsApp = ({
     relatedEntityId,
     recipientType: 'CANDIDATE',
     recipientPhone: candidate.mobile,
+    recipientEmail: candidate.email,
     payloadSnapshot: { candidateName: candidate.fullName || null, ...payloadSnapshot },
   });
 };
@@ -258,7 +571,7 @@ const dispatchNewApplicationInternalAlerts = async ({
   try {
     const superAdmins = await prisma.user.findMany({
       where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
-      select: { id: true, mobile: true, whatsappNumber: true },
+      select: { id: true, mobile: true, whatsappNumber: true, email: true },
     });
     const superAdminIds = new Set(superAdmins.map((user) => user.id));
     superAdmins.forEach((superAdmin) => {
@@ -268,6 +581,7 @@ const dispatchNewApplicationInternalAlerts = async ({
         relatedEntityId: applicationId,
         recipientType: 'SUPER_ADMIN',
         recipientPhone: superAdmin.whatsappNumber || superAdmin.mobile,
+        recipientEmail: superAdmin.email,
         payloadSnapshot: { applicationRef, candidateName: candidate.fullName, jobId: job.id, jobTitle: job.title },
       });
     });
@@ -275,7 +589,7 @@ const dispatchNewApplicationInternalAlerts = async ({
     if (!job.createdById || superAdminIds.has(job.createdById)) return;
     const recruiter = await prisma.user.findFirst({
       where: { id: job.createdById, status: 'ACTIVE' },
-      select: { mobile: true, whatsappNumber: true },
+      select: { mobile: true, whatsappNumber: true, email: true },
     });
     if (!recruiter) return;
     void dispatchRecruitmentWhatsApp({
@@ -284,6 +598,7 @@ const dispatchNewApplicationInternalAlerts = async ({
       relatedEntityId: applicationId,
       recipientType: 'RECRUITER',
       recipientPhone: recruiter.whatsappNumber || recruiter.mobile,
+      recipientEmail: recruiter.email,
       payloadSnapshot: { applicationRef, candidateName: candidate.fullName, jobId: job.id, jobTitle: job.title },
     });
   } catch (error) {
@@ -579,6 +894,13 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
       });
     }
 
+    if (job.coverLetterRequired && !(typeof body.coverLetter === 'string' && body.coverLetter.trim().length >= 20)) {
+      return res.status(400).json({
+        success: false,
+        error: 'A cover letter (at least 20 characters) is required to apply for this job.',
+      });
+    }
+
     let customAnswers: Record<string, unknown> = {};
     try {
       customAnswers = parseCustomAnswersPayload(body.customAnswers);
@@ -600,73 +922,59 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
       });
     }
 
-    let candidate = await prisma.candidate.findFirst({
-      where: {
-        OR: [{ email }, { mobile }],
-      },
-    });
+    // What the applicant typed this time. It is kept on the application; the shared candidate row is only filled
+    // where it is empty, so nobody can rewrite another person's profile through the public form.
+    const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '') || null;
+    const decimal = (value: unknown) => {
+      const parsed = typeof value === 'string' && value.trim() ? Number.parseFloat(value) : NaN;
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    };
+    const submitted = {
+      fullName,
+      email,
+      mobile,
+      currentCity: text(body.currentCity),
+      state: text(body.state),
+      address: text(body.address),
+      currentCompany: text(body.currentCompany),
+      currentDesignation: text(body.currentDesignation),
+      totalExperience: decimal(body.totalExperience),
+      relevantExperience: decimal(body.relevantExperience),
+      currentCtc: decimal(body.currentCtc),
+      expectedCtc: decimal(body.expectedCtc),
+      noticePeriod: text(body.noticePeriod),
+      employmentStatus: (text(body.employmentStatus) as CandidateEmploymentStatus | null),
+      linkedInUrl: text(body.linkedInUrl),
+      portfolioUrl: text(body.portfolioUrl),
+      coverLetter: text(body.coverLetter),
+    };
 
-    if (!candidate) {
-      candidate = await prisma.candidate.create({
-        data: {
-          fullName,
-          email,
-          mobile,
-          currentCity: body.currentCity?.trim() || null,
-          state: body.state?.trim() || null,
-          address: body.address?.trim() || null,
-          currentCompany: body.currentCompany?.trim() || null,
-          currentDesignation: body.currentDesignation?.trim() || null,
-          totalExperience: body.totalExperience ? parseFloat(body.totalExperience) : null,
-          relevantExperience: body.relevantExperience ? parseFloat(body.relevantExperience) : null,
-          currentCtc: body.currentCtc ? parseFloat(body.currentCtc) : null,
-          expectedCtc: body.expectedCtc ? parseFloat(body.expectedCtc) : null,
-          noticePeriod: body.noticePeriod?.trim() || null,
-          employmentStatus: (body.employmentStatus as CandidateEmploymentStatus) || null,
-          linkedInUrl: body.linkedInUrl?.trim() || null,
-          portfolioUrl: body.portfolioUrl?.trim() || null,
-          coverLetter: body.coverLetter?.trim() || null,
-        },
-      });
-    } else {
-      candidate = await prisma.candidate.update({
-        where: { id: candidate.id },
-        data: {
-          fullName,
-          currentCity: body.currentCity?.trim() || candidate.currentCity,
-          state: body.state?.trim() || candidate.state,
-          address: body.address?.trim() || candidate.address,
-          currentCompany: body.currentCompany?.trim() || candidate.currentCompany,
-          currentDesignation: body.currentDesignation?.trim() || candidate.currentDesignation,
-          totalExperience: body.totalExperience ? parseFloat(body.totalExperience) : candidate.totalExperience,
-          relevantExperience: body.relevantExperience ? parseFloat(body.relevantExperience) : candidate.relevantExperience,
-          currentCtc: body.currentCtc ? parseFloat(body.currentCtc) : candidate.currentCtc,
-          expectedCtc: body.expectedCtc ? parseFloat(body.expectedCtc) : candidate.expectedCtc,
-          noticePeriod: body.noticePeriod?.trim() || candidate.noticePeriod,
-          employmentStatus: (body.employmentStatus as CandidateEmploymentStatus) || candidate.employmentStatus,
-          linkedInUrl: body.linkedInUrl?.trim() || candidate.linkedInUrl,
-          portfolioUrl: body.portfolioUrl?.trim() || candidate.portfolioUrl,
-          coverLetter: body.coverLetter?.trim() || candidate.coverLetter,
-        },
+    // One person = one candidate row. An email of one person with the mobile of another is refused instead of
+    // silently merging two people.
+    const [byEmail, byMobile] = await Promise.all([
+      prisma.candidate.findUnique({ where: { email } }),
+      prisma.candidate.findUnique({ where: { mobile } }),
+    ]);
+    if (byEmail && byMobile && byEmail.id !== byMobile.id) {
+      return res.status(409).json({
+        success: false,
+        error: 'This email and mobile number belong to different applicants. Use the email and mobile you applied with before, or contact HR.',
       });
     }
+    const existingCandidate = byEmail ?? byMobile;
 
-    const existingApp = await prisma.jobApplication.findUnique({
-      where: {
-        jobId_candidateId: {
-          jobId: job.id,
-          candidateId: candidate.id,
-        },
-      },
-    });
-
-    if (existingApp && !body.overrideDuplicate) {
-      return res.status(400).json({
-        success: false,
-        error: 'You have already submitted an application for this position.',
-        alreadyApplied: true,
-        applicationRef: existingApp.applicationRef,
+    if (existingCandidate) {
+      const existingApp = await prisma.jobApplication.findUnique({
+        where: { jobId_candidateId: { jobId: job.id, candidateId: existingCandidate.id } },
       });
+      if (existingApp) {
+        return res.status(400).json({
+          success: false,
+          error: 'You have already submitted an application for this position.',
+          alreadyApplied: true,
+          applicationRef: existingApp.applicationRef,
+        });
+      }
     }
 
     let resumeFileUrl: string | null = null;
@@ -690,25 +998,40 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
     }
 
     const applicationRef = await generateApplicationRef();
+    const validQuestionIds = new Set(job.customQuestions.map((question) => question.id));
 
-    const application = await prisma.jobApplication.create({
-      data: {
-        applicationRef,
-        jobId: job.id,
-        candidateId: candidate.id,
-        currentStage: 'NEW',
-        isDuplicateOverride: !!body.overrideDuplicate,
-      },
-    });
+    const { candidate, application } = await prisma.$transaction(async (transaction) => {
+      const candidateRow = existingCandidate
+        ? await transaction.candidate.update({
+          where: { id: existingCandidate.id },
+          // Only empty fields are filled; what is already on file stays as it is.
+          data: Object.fromEntries(Object.entries({
+            currentCity: submitted.currentCity, state: submitted.state, address: submitted.address,
+            currentCompany: submitted.currentCompany, currentDesignation: submitted.currentDesignation,
+            totalExperience: submitted.totalExperience, relevantExperience: submitted.relevantExperience,
+            currentCtc: submitted.currentCtc, expectedCtc: submitted.expectedCtc, noticePeriod: submitted.noticePeriod,
+            employmentStatus: submitted.employmentStatus, linkedInUrl: submitted.linkedInUrl,
+            portfolioUrl: submitted.portfolioUrl, coverLetter: submitted.coverLetter,
+          }).filter(([key, value]) => value !== null && (existingCandidate as Record<string, unknown>)[key] == null)) as Prisma.CandidateUpdateInput,
+        })
+        : await transaction.candidate.create({ data: submitted });
 
-    if (Object.keys(customAnswers).length > 0) {
-      const answerEntries = Object.entries(customAnswers);
-      const validQuestionIds = new Set(job.customQuestions.map((question) => question.id));
-      for (const [questionId, ansValue] of answerEntries) {
+      const applicationRow = await transaction.jobApplication.create({
+        data: {
+          applicationRef,
+          jobId: job.id,
+          candidateId: candidateRow.id,
+          currentStage: 'NEW',
+          isDuplicateOverride: false,
+          applicantSnapshot: submitted as Prisma.InputJsonValue,
+        },
+      });
+
+      for (const [questionId, ansValue] of Object.entries(customAnswers)) {
         if (validQuestionIds.has(questionId) && hasApplicationAnswerValue(ansValue)) {
-          await prisma.applicationAnswer.create({
+          await transaction.applicationAnswer.create({
             data: {
-              applicationId: application.id,
+              applicationId: applicationRow.id,
               questionId,
               answerText: stringifyApplicationAnswer(ansValue),
               answerJson: typeof ansValue !== 'string' ? (ansValue as Prisma.InputJsonValue) : Prisma.JsonNull,
@@ -716,28 +1039,25 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
           });
         }
       }
-    }
 
-    if (resumeFileUrl) {
-      await prisma.candidateDocument.create({
-        data: {
-          candidateId: candidate.id,
-          applicationId: application.id,
-          category: 'RESUME',
-          fileName: resumeFileName,
-          fileUrl: resumeFileUrl,
-          fileSize: resumeFileSize,
-          mimeType: resumeMimeType,
-        },
+      if (resumeFileUrl) {
+        await transaction.candidateDocument.create({
+          data: {
+            candidateId: candidateRow.id,
+            applicationId: applicationRow.id,
+            category: 'RESUME',
+            fileName: resumeFileName,
+            fileUrl: resumeFileUrl,
+            fileSize: resumeFileSize,
+            mimeType: resumeMimeType,
+          },
+        });
+      }
+
+      await transaction.applicationStageHistory.create({
+        data: { applicationId: applicationRow.id, toStage: 'NEW', notes: 'Application submitted by candidate' },
       });
-    }
-
-    await prisma.applicationStageHistory.create({
-      data: {
-        applicationId: application.id,
-        toStage: 'NEW',
-        notes: 'Application submitted by candidate',
-      },
+      return { candidate: candidateRow, application: applicationRow };
     });
 
     await logRecruitmentActivity({
@@ -1571,6 +1891,7 @@ export const deleteJob = async (req: Request, res: Response, next: NextFunction)
 
 export const getAdminApplications = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    await ensureDefaultRecruitmentData();
     const {
       jobId,
       jobSlug,
@@ -1853,9 +2174,15 @@ export const getAdminApplicationById = async (req: Request, res: Response, next:
       return res.status(404).json({ success: false, error: 'Application record not found.' });
     }
 
+    // The HRM employee code of an accepted offer, for the Offer tab's "In HRM · EMP-0007".
+    const hrmIds = application.offers.map((offer) => offer.hrmEmployeeId).filter((value): value is string => Boolean(value));
+    const codes = new Map(hrmIds.length
+      ? (await prisma.hrmEmployee.findMany({ where: { id: { in: hrmIds } }, select: { id: true, employeeCode: true } })).map((row) => [row.id, row.employeeCode])
+      : []);
+
     res.status(200).json({
       success: true,
-      application,
+      application: { ...application, offers: application.offers.map((offer) => ({ ...offer, hrmEmployeeCode: offer.hrmEmployeeId ? codes.get(offer.hrmEmployeeId) ?? null : null })) },
     });
   } catch (error) {
     next(error);
@@ -1888,6 +2215,15 @@ export const updateApplicationStage = async (req: Request, res: Response, next: 
       }
     }
 
+    // An offer is accepted by the candidate (offer link) or recorded by HR on the Offers page, with its evidence.
+    // Hiring must not flip a pending offer to accepted on the side.
+    if (targetStage === 'HIRED') {
+      const pendingOffer = await prisma.offer.findFirst({ where: { applicationId: id, status: 'SENT' }, select: { id: true } });
+      if (pendingOffer) {
+        return res.status(409).json({ success: false, error: 'The offer is still waiting for the candidate. Record the acceptance on the Offers page first, then mark the application as hired.' });
+      }
+    }
+
     const updatedApp = await prisma.jobApplication.update({
       where: { id },
       data: {
@@ -1895,6 +2231,13 @@ export const updateApplicationStage = async (req: Request, res: Response, next: 
         terminalStatus: terminalStatus !== undefined ? terminalStatus : previousTerminal,
       },
     });
+
+    if (targetStage === 'HIRED') {
+      await prisma.interview.updateMany({
+        where: { applicationId: id, status: 'SCHEDULED' },
+        data: { status: 'COMPLETED' },
+      });
+    }
 
     await prisma.applicationStageHistory.create({
       data: {
@@ -2896,6 +3239,219 @@ export const submitInterviewFeedback = async (req: Request, res: Response, next:
 
 // ==================== OFFER MANAGEMENT ====================
 
+type OfferHrmFields = {
+  placement: OfferPlacement | null;
+  components: SalaryComponent[] | undefined;
+  annualCtc: number;
+};
+
+const sameText = (a: unknown, b: unknown) => String(a ?? '').replace(/\s+/g, ' ').trim().toLowerCase() === String(b ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * Reads the HRM placement (department, designation, office, manager) and the salary breakup sent with an offer and
+ * checks them against the letter that was generated: the letter must name the same department and designation, and
+ * the salary on the letter must equal the breakup total. Throws HrmHttpError for a bad placement; returns a message
+ * for a letter / breakup mismatch.
+ */
+const readOfferHrmFields = async (
+  body: Record<string, unknown>,
+  offerData: OfferLetterData,
+  existing?: { components: SalaryComponent[] },
+): Promise<OfferHrmFields | { error: string }> => {
+  const placement = await resolveOfferPlacement({
+    hrmOrgUnitId: body.hrmOrgUnitId,
+    designation: offerData.designation,
+    locationType: body.locationType,
+    stateId: body.stateId,
+    cityId: body.cityId,
+    isOfficeManager: body.isOfficeManager,
+    employmentType: body.employmentType,
+    reportingManagerEmployeeId: body.reportingManagerEmployeeId,
+  });
+  if (placement) {
+    if (!sameText(offerData.department, placement.departmentName)) {
+      return { error: `The letter says department "${offerData.department}" but the selected HRM department is "${placement.departmentName}". Regenerate the letter.` };
+    }
+    if (!sameText(offerData.designation, placement.designation)) {
+      return { error: `The letter says designation "${offerData.designation}" but the designation list has "${placement.designation}". Regenerate the letter.` };
+    }
+  }
+
+  let components: SalaryComponent[] | undefined;
+  if (body.salaryComponents !== undefined) {
+    const parsed = normalizeSalaryComponents(body.salaryComponents);
+    if ('error' in parsed) return { error: parsed.error };
+    components = parsed.components;
+  }
+  const breakup = components ?? existing?.components ?? [];
+  const amount = Number(String(offerData.salaryAmount).replace(/,/g, ''));
+  if (breakup.length) {
+    const totals = totalSalaryComponents(breakup);
+    const expected = offerData.salaryPeriod === 'month' ? totals.ctcMonthly : totals.annualCtc;
+    if (!Number.isFinite(amount) || Math.abs(amount - expected) > 1) {
+      return { error: `The salary on the letter (${offerData.salaryAmount} per ${offerData.salaryPeriod}) does not match the salary breakup total (${expected} per ${offerData.salaryPeriod}). Regenerate the letter.` };
+    }
+    return { placement, components, annualCtc: totals.annualCtc };
+  }
+  return { placement, components, annualCtc: annualCtcFrom(Number.isFinite(amount) ? amount : 0, offerData.salaryPeriod) };
+};
+
+/** The offer columns written from the HRM fields. Without a placement in the request, an existing one is kept. */
+const offerHrmColumns = (fields: OfferHrmFields, keepExistingPlacement: boolean): Prisma.OfferUncheckedUpdateInput => ({
+  ...(fields.placement || !keepExistingPlacement ? {
+    hrmOrgUnitId: fields.placement?.hrmOrgUnitId ?? null,
+    locationType: fields.placement?.locationType ?? null,
+    stateId: fields.placement?.stateId ?? null,
+    cityId: fields.placement?.cityId ?? null,
+    isOfficeManager: fields.placement?.isOfficeManager ?? false,
+    employmentType: fields.placement?.employmentType ?? null,
+    reportingManagerEmployeeId: fields.placement?.reportingManagerEmployeeId ?? null,
+    ...(fields.placement ? { reportingManager: fields.placement.reportingManagerName } : {}),
+  } : {}),
+  ...(fields.components !== undefined ? { salaryComponents: fields.components.length ? (fields.components as unknown as Prisma.InputJsonValue) : Prisma.JsonNull } : {}),
+  annualCtc: fields.annualCtc,
+});
+
+const readStoredComponents = (value: unknown): SalaryComponent[] => {
+  const parsed = normalizeSalaryComponents(value ?? null);
+  return 'error' in parsed ? [] : parsed.components;
+};
+
+class OfferConflict extends Error {}
+
+/**
+ * A live offer: a draft, a sent one, or an accepted one that is still on its way into HRM. An accepted offer whose
+ * joining HR cancelled (no-show) or whose HRM review HR dismissed stays ACCEPTED - the candidate did accept and the
+ * evidence stays viewable - but it is closed, so the candidate can be offered again.
+ */
+const LIVE_OFFER_WHERE: Prisma.OfferWhereInput = {
+  OR: [
+    { status: { in: ['DRAFT', 'SENT'] } },
+    { status: 'ACCEPTED', OR: [{ hrmHandoffStatus: null }, { hrmHandoffStatus: { notIn: ['DISMISSED', 'CANCELLED'] } }] },
+  ],
+};
+
+/**
+ * One live offer per application. Checked inside the writing transaction under a per-application lock, so two
+ * tabs or a re-send of an older offer cannot leave two working links (and two HRM records if both were accepted).
+ */
+const assertNoOtherLiveOffer = async (transaction: Prisma.TransactionClient, applicationId: string, exceptOfferId?: string) => {
+  await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'recruitment-offer:' + applicationId}))`;
+  const other = await transaction.offer.findFirst({
+    where: { applicationId, AND: [LIVE_OFFER_WHERE], ...(exceptOfferId ? { NOT: { id: exceptOfferId } } : {}) },
+    select: { status: true },
+  });
+  if (other) {
+    throw new OfferConflict(other.status === 'ACCEPTED'
+      ? 'This application already has an accepted offer.'
+      : 'This application already has another open offer. Withdraw it first.');
+  }
+};
+
+/**
+ * HR records an acceptance signed on paper (at the office, or returned by email / post): the signed copy is required,
+ * with the date it was signed and an optional note. The same evidence, certificate and HRM handoff as an online
+ * acceptance follow.
+ */
+export const acceptOfferOffline = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = getParamString(req.params.id);
+    const offer = await prisma.offer.findUnique({ where: { id }, include: { candidate: true, job: true, application: true } });
+    if (!offer) return res.status(404).json({ success: false, error: 'Offer not found.' });
+    if (offer.status !== 'SENT') {
+      return res.status(409).json({ success: false, error: offer.status === 'ACCEPTED' ? 'This offer is already accepted.' : 'Only an offer that is waiting for the candidate can be recorded as accepted. Resend it first.' });
+    }
+    if (!req.file) return res.status(400).json({ success: false, error: 'Upload the signed offer letter (PDF, JPG or PNG).' });
+    const signedOn = typeof req.body?.signedOn === 'string' ? req.body.signedOn.trim() : '';
+    // Dates are compared as Indian calendar days (YYYY-MM-DD strings).
+    const istDay = (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+    const signedDate = /^\d{4}-\d{2}-\d{2}$/.test(signedOn) ? new Date(`${signedOn}T12:00:00.000Z`) : null;
+    if (!signedDate || Number.isNaN(signedDate.getTime()) || istDay(signedDate) !== signedOn || signedOn > istDay(new Date())) {
+      return res.status(400).json({ success: false, error: 'Enter the date the candidate signed (not in the future).' });
+    }
+    if (offer.sentAt && signedOn < istDay(offer.sentAt)) {
+      return res.status(400).json({ success: false, error: 'The signing date cannot be before the offer was sent.' });
+    }
+    const typedPlace = typeof req.body?.place === 'string' ? req.body.place.trim().replace(/\s+/g, ' ') : '';
+    const place = (typedPlace || offer.joiningLocation || 'Office').slice(0, 120);
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 1000) : '';
+    const actor = req.user?.id ? await prisma.user.findUnique({ where: { id: req.user.id }, select: { id: true, name: true, email: true } }) : null;
+
+    let updated;
+    try {
+      updated = await recordOfferAcceptance({
+        offer,
+        tokenVersion: null,
+        method: 'OFFLINE_HR',
+        acceptedName: offer.candidate.fullName,
+        place,
+        ipAddress: req.ip ?? null,
+        userAgent: req.get('user-agent') ?? null,
+        file: { buffer: req.file.buffer, mimeType: req.file.mimetype, originalName: req.file.originalname },
+        note: note || null,
+        acceptedById: actor?.id ?? null,
+        recordedByName: actor ? (actor.name || actor.email || actor.id) : null,
+        acceptedAt: signedDate,
+      });
+    } catch (error) {
+      if (error instanceof OfferAcceptanceConflict) return res.status(409).json({ success: false, error: error.message });
+      throw error;
+    }
+    res.status(200).json({ success: true, offer: updated, message: 'The signed offer was recorded and the candidate is moving to HRM onboarding.' });
+    void (async () => {
+      await handOfferToHrmSafely(offer, req.ip);
+      await notifyOfferResponseSafely(offer, 'ACCEPTED');
+      await dispatchOfferAcceptedMessages({ ...offer, ...updated, candidate: offer.candidate, application: offer.application, job: offer.job });
+    })().catch((error) => console.error('[recruitment] follow-up after offline acceptance failed:', error instanceof Error ? error.message : error));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Acceptance evidence for HR: the certificate, or the signed copy / drawn signature. */
+export const downloadOfferAcceptanceFile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = getParamString(req.params.id);
+    const kind = getParamString(req.params.kind);
+    const offer = await prisma.offer.findUnique({ where: { id }, include: { application: { select: { applicationRef: true } } } });
+    if (!offer || offer.status !== 'ACCEPTED') return res.status(404).json({ success: false, error: 'No acceptance is recorded for this offer.' });
+    if (kind === 'certificate') {
+      await streamOfferFile(req, res, offer.acceptanceCertificateUrl, `Offer_Acceptance_${offer.application.applicationRef}.pdf`, 'application/pdf', 'attachment');
+      return;
+    }
+    if (kind === 'signature') {
+      const document = offer.signatureFileUrl
+        ? await prisma.candidateDocument.findFirst({ where: { fileUrl: offer.signatureFileUrl }, select: { fileName: true, mimeType: true } })
+        : null;
+      const mimeType = document?.mimeType || (offer.acceptanceMethod === 'DRAWN' ? 'image/png' : 'application/octet-stream');
+      await streamOfferFile(req, res, offer.signatureFileUrl, document?.fileName || `Offer_Signature_${offer.application.applicationRef}`, mimeType, 'attachment');
+      return;
+    }
+    res.status(404).json({ success: false, error: 'Unknown file.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** HRM masters for the offer form (department, designation, states, head office, managers). */
+export const getOfferFormOptions = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.status(200).json({ success: true, options: await loadOfferFormOptions() });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Working employees the new joiner could report to. */
+export const getOfferManagerOptions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const search = typeof req.query.search === 'string' ? req.query.search : '';
+    res.status(200).json({ success: true, managers: await searchOfferReportingManagers(search) });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getAdminOffers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status, page = '1', limit = '20' } = req.query;
@@ -2906,14 +3462,26 @@ export const getAdminOffers = async (req: Request, res: Response, next: NextFunc
 
     const where: Prisma.OfferWhereInput = {};
     if (status && typeof status === 'string' && status.trim()) {
+      if (!isOfferStatus(status.trim())) return res.status(400).json({ success: false, error: 'Invalid offer status filter.' });
       where.status = status.trim() as OfferStatus;
+    }
+    const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 80) : '';
+    if (search) {
+      where.OR = [
+        { designation: { contains: search, mode: 'insensitive' } },
+        { application: { applicationRef: { contains: search, mode: 'insensitive' } } },
+        { candidate: { fullName: { contains: search, mode: 'insensitive' } } },
+        { candidate: { email: { contains: search, mode: 'insensitive' } } },
+        { candidate: { mobile: { contains: search } } },
+        { job: { title: { contains: search, mode: 'insensitive' } } },
+      ];
     }
 
     const selectCandidateBasic = {
       select: { id: true, fullName: true, email: true, mobile: true },
     };
 
-    const [offersRaw, total] = await Promise.all([
+    const [offersRaw, total, statusGroups] = await Promise.all([
       prisma.offer.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -2926,24 +3494,98 @@ export const getAdminOffers = async (req: Request, res: Response, next: NextFunc
           joiningLocation: true,
           joiningDate: true,
           offerValidUntil: true,
+          offerLetterUrl: true,
+          offerLetterFileName: true,
+          offerLetterData: true,
+          department: true,
+          probationPeriod: true,
+          reportingManager: true,
+          additionalTerms: true,
+          hrmOrgUnitId: true,
+          locationType: true,
+          stateId: true,
+          cityId: true,
+          isOfficeManager: true,
+          employmentType: true,
+          reportingManagerEmployeeId: true,
+          annualCtc: true,
+          salaryComponents: true,
+          acceptanceMethod: true,
+          acceptedName: true,
+          acceptedPlace: true,
+          respondedAt: true,
+          documentHash: true,
+          acceptanceCertificateUrl: true,
+          signatureFileUrl: true,
+          hrmHandoffStatus: true,
+          hrmHandoffError: true,
+          hrmHandoffAttempts: true,
+          hrmEmployeeId: true,
           status: true,
           createdAt: true,
           candidate: selectCandidateBasic,
           job: { select: { id: true, title: true, jobCode: true } },
-          application: { select: { id: true, applicationRef: true } },
+          application: { select: { id: true, applicationRef: true, currentStage: true } },
         },
       }),
       prisma.offer.count({ where }),
+      // Counts for the status chips, for the same search (all statuses).
+      prisma.offer.groupBy({ by: ['status'], where: search ? { OR: where.OR! } : {}, _count: { _all: true } }),
     ]);
+    const hrmIds = offersRaw.map((offer) => offer.hrmEmployeeId).filter((value): value is string => Boolean(value));
+    const hrmCodes = new Map(hrmIds.length
+      ? (await prisma.hrmEmployee.findMany({ where: { id: { in: hrmIds } }, select: { id: true, employeeCode: true } })).map((row) => [row.id, row.employeeCode])
+      : []);
+    const statusCounts = Object.fromEntries(statusGroups.map((group) => [group.status, (group._count as { _all?: number } | undefined)?._all ?? 0]));
 
-    const offers = offersRaw.map((offer, index) => ({
+    const offers = offersRaw.map((offer, index) => {
+      const letter = (offer.offerLetterData && typeof offer.offerLetterData === 'object' ? offer.offerLetterData : {}) as Partial<OfferLetterData>;
+      const salaryPeriod = letter.salaryPeriod === 'month' ? 'month' : 'annum';
+      return {
       id: offer.id,
       offerRef: `OFFER-${new Date(offer.createdAt).getFullYear()}-${String(skip + index + 1).padStart(4, '0')}`,
       designation: offer.designation,
-      annualCtc: Number(offer.ctc),
+      department: offer.department,
+      // Always per year (an amount stated per month on the letter is multiplied by 12).
+      annualCtc: offer.annualCtc !== null ? Number(offer.annualCtc) : annualCtcFrom(Number(offer.ctc), salaryPeriod),
+      salaryAmount: Number(offer.ctc),
+      salaryPeriod,
+      offerLetterData: offer.offerLetterData,
+      probationPeriod: offer.probationPeriod,
+      reportingManager: offer.reportingManager,
+      additionalTerms: offer.additionalTerms,
+      placement: offer.hrmOrgUnitId ? {
+        hrmOrgUnitId: offer.hrmOrgUnitId,
+        locationType: offer.locationType,
+        stateId: offer.stateId,
+        cityId: offer.cityId,
+        isOfficeManager: offer.isOfficeManager,
+        employmentType: offer.employmentType,
+        reportingManagerEmployeeId: offer.reportingManagerEmployeeId,
+      } : null,
+      salaryComponents: readStoredComponents(offer.salaryComponents),
+      acceptance: offer.status === 'ACCEPTED' ? {
+        method: offer.acceptanceMethod,
+        name: offer.acceptedName,
+        place: offer.acceptedPlace,
+        acceptedAt: offer.respondedAt,
+        documentHash: offer.documentHash,
+        hasCertificate: Boolean(offer.acceptanceCertificateUrl),
+        hasSignatureFile: Boolean(offer.signatureFileUrl),
+      } : null,
+      // Where the accepted offer stands in HRM (pre-joining record), for the "Open in HRM" / Retry actions.
+      hrm: offer.status === 'ACCEPTED' ? {
+        status: offer.hrmHandoffStatus,
+        note: offer.hrmHandoffError,
+        attempts: offer.hrmHandoffAttempts,
+        employeeId: offer.hrmEmployeeId,
+        employeeCode: offer.hrmEmployeeId ? hrmCodes.get(offer.hrmEmployeeId) ?? null : null,
+      } : null,
       workLocation: offer.joiningLocation,
       joiningDate: offer.joiningDate,
       expiryDate: offer.offerValidUntil,
+      offerLetterUrl: offer.offerLetterUrl || null,
+      offerLetterFileName: offer.offerLetterFileName || null,
       status: offer.status,
       createdAt: offer.createdAt,
       application: {
@@ -2951,11 +3593,13 @@ export const getAdminOffers = async (req: Request, res: Response, next: NextFunc
         candidate: offer.candidate,
         job: offer.job,
       },
-    }));
+    };
+    });
 
     res.status(200).json({
       success: true,
       offers,
+      statusCounts,
       pagination: {
         total,
         page: pageNum,
@@ -2963,6 +3607,51 @@ export const getAdminOffers = async (req: Request, res: Response, next: NextFunc
         totalPages: Math.ceil(total / limitNum),
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const downloadAdminOfferPdf = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = getParamString(req.params.id);
+    const offer = await prisma.offer.findUnique({
+      where: { id },
+      include: {
+        candidate: { select: { fullName: true } },
+        application: { select: { applicationRef: true } },
+      },
+    });
+
+    if (!offer) {
+      return res.status(404).json({ success: false, error: 'Offer not found.' });
+    }
+
+    const driveFileId = extractDriveFileId(offer.offerLetterUrl);
+    if (!driveFileId) {
+      return res.status(404).json({ success: false, error: 'Offer letter PDF is unavailable.' });
+    }
+
+    const { stream, totalSize, byteRange, headers } = await streamDriveMediaWithHeaders(
+      driveFileId,
+      typeof req.headers.range === 'string' ? req.headers.range : undefined,
+    );
+    const candidateNameClean = (offer.candidate?.fullName || 'Candidate').replace(/[^a-z0-9]+/gi, '_');
+    const defaultFileName = `Offer_Letter_${offer.application?.applicationRef || id}_${candidateNameClean}.pdf`;
+    const fileName = path.basename(offer.offerLetterFileName || defaultFileName).replace(/[\r\n"]/g, '_');
+
+    res.status(byteRange ? 206 : 200);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (headers['content-length']) res.setHeader('Content-Length', String(headers['content-length']));
+    else if (totalSize !== null) res.setHeader('Content-Length', String(totalSize));
+    if (headers['content-range']) res.setHeader('Content-Range', String(headers['content-range']));
+    stream.on('error', next);
+    stream.pipe(res);
   } catch (error) {
     next(error);
   }
@@ -3030,6 +3719,13 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
     if (!uploadedOfferPdf || uploadedOfferPdf.mimetype !== 'application/pdf') {
       return res.status(400).json({ success: false, error: 'A generated PDF offer letter is required.' });
     }
+    // One open offer per application: a second one would leave two links and two answers.
+    const openOffer = await prisma.offer.findFirst({ where: { applicationId, AND: [LIVE_OFFER_WHERE] }, select: { status: true } });
+    if (openOffer) {
+      return res.status(409).json({ success: false, error: openOffer.status === 'ACCEPTED' ? 'This application already has an accepted offer.' : 'This application already has an open offer. Edit or withdraw it instead.' });
+    }
+    const hrmFields = await readOfferHrmFields(req.body as Record<string, unknown>, offerData);
+    if ('error' in hrmFields) return res.status(400).json({ success: false, error: hrmFields.error });
 
     const fileName = `Offer_Letter_${application.applicationRef}_${offerData.employeeName.replace(/[^a-z0-9]+/gi, '_')}.pdf`;
     const uploadedDriveFile = await uploadFileToDrive(
@@ -3043,7 +3739,10 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
     const salaryValue = Number(offerData.salaryAmount.replace(/,/g, ''));
     const offerCtc = Number.isFinite(salaryValue) && salaryValue > 0 ? salaryValue : Number(ctc);
 
-    const offer = await prisma.$transaction(async (transaction) => {
+    let offer;
+    try {
+      offer = await prisma.$transaction(async (transaction) => {
+      await assertNoOtherLiveOffer(transaction, applicationId);
       const createdOffer = await transaction.offer.create({
         data: {
           applicationId,
@@ -3061,6 +3760,7 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
           offerLetterUrl: secureOfferUrl,
           offerLetterFileName: fileName,
           offerLetterData: offerData as Prisma.InputJsonValue,
+          ...(offerHrmColumns(hrmFields, false) as Partial<Prisma.OfferUncheckedCreateInput>),
           status: 'SENT',
           createdById: userId,
           sentAt: now,
@@ -3081,11 +3781,18 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
 
       await transaction.jobApplication.update({
         where: { id: applicationId },
-        data: { currentStage: 'OFFER_SENT' },
+        data: { currentStage: 'OFFER_SENT', terminalStatus: null },
       });
 
       return createdOffer;
-    });
+      });
+    } catch (error) {
+      if (error instanceof OfferConflict) {
+        await deleteFileFromDrive(uploadedDriveFile.fileId).catch(() => undefined);
+        return res.status(409).json({ success: false, error: error.message });
+      }
+      throw error;
+    }
 
     await logRecruitmentActivity({
       candidateId: application.candidateId,
@@ -3117,43 +3824,48 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
       });
     }
 
-    dispatchRecruitmentCandidateWhatsApp({
-      eventCode: 'RECRUITMENT_OFFER_SENT',
-      relatedEntityType: 'OFFER',
-      relatedEntityId: offer.id,
+    const communications = await dispatchOfferCommunications({
+      ...offer,
       candidate: application.candidate,
-      payloadSnapshot: {
-        applicationId,
-        applicationRef: application.applicationRef,
-        jobTitle: application.job.title,
-        designation: offer.designation,
-        offerLetterUrl: secureOfferUrl,
-        offerLetterFileName: fileName,
-      },
-    });
-
-    void enqueueOfferEmail(offer.id).catch((error: unknown) => {
-      console.error('[email] offer email could not be queued:', error instanceof Error ? error.message : error);
+      application: { id: application.id, applicationRef: application.applicationRef },
+      job: { title: application.job.title },
     });
 
     res.status(201).json({
       success: true,
       offer,
+      communications,
       message: 'Offer sent successfully.',
     });
   } catch (error) {
+    if (sendHrmError(res, error)) return;
     next(error);
   }
 };
 
+const TERMINAL_STATUS_FOR_OFFER: Partial<Record<OfferStatus, string>> = {
+  DECLINED: 'Offer Declined',
+  EXPIRED: 'No Response',
+  WITHDRAWN: 'Offer Withdrawn',
+};
+const STAGE_FOR_OFFER: Partial<Record<OfferStatus, string>> = {
+  SENT: 'OFFER_SENT',
+  ACCEPTED: 'OFFER_ACCEPTED',
+  DECLINED: 'OFFER_DECLINED',
+};
+
+/**
+ * HR changes an offer's status by hand: resend (SENT), record the candidate's answer (ACCEPTED / DECLINED), close it
+ * (EXPIRED) or take it back (WITHDRAWN). Only the moves in offerRules are allowed; resend, expire and withdraw close
+ * the current link. An accepted offer goes to HRM pre-joining exactly like a candidate's own acceptance.
+ */
 export const updateOfferStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = getParamString(req.params.id);
-    const { status, offerLetterUrl } = req.body;
+    const status = req.body?.status;
     const userId = req.user?.id || null;
-    const validStatuses = ['DRAFT', 'SENT', 'ACCEPTED', 'DECLINED', 'EXPIRED'] as const;
 
-    if (typeof status !== 'string' || !validStatuses.includes(status as (typeof validStatuses)[number])) {
+    if (!isOfferStatus(status) || status === 'DRAFT') {
       return res.status(400).json({ success: false, error: 'Invalid offer status.' });
     }
 
@@ -3161,32 +3873,73 @@ export const updateOfferStatus = async (req: Request, res: Response, next: NextF
       where: { id },
       include: { application: true, candidate: true, job: true },
     });
-
     if (!offer) {
       return res.status(404).json({ success: false, error: 'Offer not found.' });
     }
-
-    const updatedOffer = await prisma.offer.update({
-      where: { id },
-      data: {
-        status: status as OfferStatus,
-        offerLetterUrl: offerLetterUrl !== undefined ? offerLetterUrl : offer.offerLetterUrl,
-        sentAt: status === 'SENT' ? new Date() : offer.sentAt,
-        respondedAt: status === 'ACCEPTED' || status === 'DECLINED' ? new Date() : status === 'SENT' ? null : offer.respondedAt,
-        ...(status === 'SENT' ? { responseTokenVersion: { increment: 1 } } : {}),
-      },
-    });
-
-    let targetStage = offer.application.currentStage;
-    if (status === 'SENT') targetStage = 'OFFER_SENT';
-    if (status === 'ACCEPTED') targetStage = 'OFFER_ACCEPTED';
-
-    if (targetStage !== offer.application.currentStage) {
-      await prisma.jobApplication.update({
-        where: { id: offer.applicationId },
-        data: { currentStage: targetStage },
-      });
+    const blocked = describeOfferStatusChangeBlock(offer.status, status);
+    if (blocked) return res.status(409).json({ success: false, error: blocked });
+    if (status === 'ACCEPTED') {
+      // An acceptance always carries evidence: the candidate signs on the link, or HR uploads the signed copy.
+      return res.status(400).json({ success: false, error: 'Record an acceptance with the signed copy (Record signed acceptance), so the evidence is kept.', code: 'USE_OFFLINE_ACCEPTANCE' });
     }
+    if (status === 'SENT' && !offer.offerLetterUrl) {
+      return res.status(400).json({ success: false, error: 'A generated PDF offer letter is required before sending.' });
+    }
+    const rawReason = typeof req.body?.reason === 'string' ? req.body.reason : typeof req.body?.declineReason === 'string' ? req.body.declineReason : '';
+    const reason = rawReason.trim().slice(0, 1000);
+    // A (re)send can go out on chosen channels only; every send gives a new link, so the old one closes everywhere.
+    const channels = status === 'SENT' ? parseOfferChannels(req.body?.channels) : undefined;
+    if (channels && !channels.length) return res.status(400).json({ success: false, error: 'Choose at least one channel: email, WhatsApp or SMS.' });
+    if ((status === 'DECLINED' || status === 'WITHDRAWN') && reason.length < 3) {
+      return res.status(400).json({ success: false, error: status === 'DECLINED' ? 'Give the reason the candidate declined.' : 'Give the reason the offer is withdrawn.' });
+    }
+
+    const now = new Date();
+    // A resend issues a new link (the old one stops). Expired / withdrawn offers keep their link so the candidate
+    // sees that the offer is closed; only a SENT offer can be answered.
+    const closesLink = status === 'SENT';
+    const targetStage = STAGE_FOR_OFFER[status] ?? offer.application.currentStage;
+    const targetTerminal = status in TERMINAL_STATUS_FOR_OFFER ? TERMINAL_STATUS_FOR_OFFER[status]! : null;
+
+    let updatedOffer;
+    try {
+      updatedOffer = await prisma.$transaction(async (transaction) => {
+      if (status === 'SENT' && offer.status !== 'SENT') await assertNoOtherLiveOffer(transaction, offer.applicationId, id);
+      // Only from the status we read: two people changing the same offer cannot both win.
+      const result = await transaction.offer.updateMany({
+        // ...and from the link version we read: two resends at once cannot both bump it (one wins, one gets 409).
+        where: { id, status: offer.status, responseTokenVersion: offer.responseTokenVersion },
+        data: {
+          status,
+          sentAt: status === 'SENT' ? now : offer.sentAt,
+          respondedAt: status === 'DECLINED' ? now : status === 'SENT' ? null : offer.respondedAt,
+          declineReason: status === 'DECLINED' ? reason : status === 'SENT' ? null : offer.declineReason,
+          ...(closesLink ? { responseTokenVersion: { increment: 1 } } : {}),
+        },
+      });
+      if (result.count !== 1) return null;
+      await transaction.jobApplication.update({
+        where: { id: offer.applicationId },
+        data: { currentStage: targetStage, terminalStatus: targetTerminal },
+      });
+      await transaction.applicationStageHistory.create({
+        data: {
+          applicationId: offer.applicationId,
+          fromStage: offer.application.currentStage,
+          toStage: targetStage,
+          fromTerminalStatus: offer.application.terminalStatus,
+          toTerminalStatus: targetTerminal,
+          changedById: userId,
+          notes: reason || `Offer marked ${status.toLowerCase()} by HR.`,
+        },
+      });
+      return transaction.offer.findUnique({ where: { id } });
+      });
+    } catch (error) {
+      if (error instanceof OfferConflict) return res.status(409).json({ success: false, error: error.message });
+      throw error;
+    }
+    if (!updatedOffer) return res.status(409).json({ success: false, error: 'This offer was changed a moment ago. Refresh and try again.' });
 
     await logRecruitmentActivity({
       candidateId: offer.candidateId,
@@ -3194,27 +3947,57 @@ export const updateOfferStatus = async (req: Request, res: Response, next: NextF
       actorId: userId,
       action: 'OFFER_STATUS_UPDATED',
       title: `Offer Status: ${status}`,
-      details: `Offer state changed to ${status}`,
+      details: reason ? `Offer state changed to ${status}: ${reason}` : `Offer state changed to ${status}`,
     });
 
-    dispatchRecruitmentCandidateWhatsApp({
-      eventCode: 'RECRUITMENT_OFFER_STATUS_UPDATED',
-      relatedEntityType: 'OFFER_STATUS',
-      relatedEntityId: `${offer.id}:${status}`,
-      candidate: offer.candidate,
-      payloadSnapshot: { applicationId: offer.applicationId, applicationRef: offer.application.applicationRef, jobTitle: offer.job.title, offerStatus: status },
-    });
 
-    if (status === 'SENT') {
-      void enqueueOfferEmail(updatedOffer.id).catch((error: unknown) => {
-        console.error('[email] manually resent offer email could not be queued:', error instanceof Error ? error.message : error);
+    const communications = status === 'SENT'
+      ? await dispatchOfferCommunications({
+        ...updatedOffer,
+        candidate: offer.candidate,
+        application: { id: offer.applicationId, applicationRef: offer.application.applicationRef },
+        job: { title: offer.job.title },
+      }, `version-${updatedOffer.responseTokenVersion}`, { channels })
+      : undefined;
+
+    if (status !== 'SENT') {
+      dispatchRecruitmentCandidateWhatsApp({
+        eventCode: 'RECRUITMENT_OFFER_STATUS_UPDATED',
+        relatedEntityType: 'OFFER_STATUS',
+        relatedEntityId: `${offer.id}:${status}`,
+        candidate: offer.candidate,
+        payloadSnapshot: { applicationId: offer.applicationId, applicationRef: offer.application.applicationRef, jobTitle: offer.job.title, offerStatus: status },
       });
     }
 
     res.status(200).json({
       success: true,
       offer: updatedOffer,
+      ...(communications ? { communications } : {}),
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** POST /admin/offers/:id/resend { channels?: ['email','whatsapp','sms'] }: a new link on the chosen channels. */
+export const resendOffer = (req: Request, res: Response, next: NextFunction) => {
+  req.body = { ...(req.body && typeof req.body === 'object' ? req.body : {}), status: 'SENT' };
+  return updateOfferStatus(req, res, next);
+};
+
+/**
+ * GET /public/offer-links/:code: where a short link (https://<site>/o/<code>) leads. The current link version opens
+ * the offer page; a link from before a resend answers 410 (closed), an unknown code 404.
+ */
+export const getPublicOfferShortLink = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    const found = await lookupOfferShortLink(getParamString(req.params.code));
+    if (found.status === 'OPEN') return res.status(200).json({ success: true, path: found.path });
+    if (found.status === 'CLOSED') return res.status(410).json({ success: false, status: 'CLOSED', error: 'This offer link has been replaced by a newer one. Please use the latest message from JCB Exchange.' });
+    return res.status(404).json({ success: false, status: 'NOT_FOUND', error: 'This offer link is not valid.' });
   } catch (error) {
     next(error);
   }
@@ -3228,6 +4011,9 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
       include: { application: { include: { candidate: true, job: { include: { department: true } } } } },
     });
     if (!existing) return res.status(404).json({ success: false, error: 'Offer not found.' });
+    if (!canEditOffer(existing.status)) {
+      return res.status(409).json({ success: false, error: existing.status === 'ACCEPTED' ? 'This offer is accepted and the person is in HRM onboarding, so it can no longer be edited.' : 'This offer was withdrawn. Create a new offer instead.' });
+    }
 
     const { designation, department, joiningLocation, ctc, joiningDate, offerValidUntil, probationPeriod, reportingManager, additionalTerms } = req.body;
     if (!designation || !ctc) return res.status(400).json({ success: false, error: 'Designation and CTC are required.' });
@@ -3283,6 +4069,8 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
     if (uploadedOfferPdf && uploadedOfferPdf.mimetype !== 'application/pdf') {
       return res.status(400).json({ success: false, error: 'Offer letter must be a PDF.' });
     }
+    const hrmFields = await readOfferHrmFields(req.body as Record<string, unknown>, offerData, { components: readStoredComponents(existing.salaryComponents) });
+    if ('error' in hrmFields) return res.status(400).json({ success: false, error: hrmFields.error });
 
     let offerLetterUrl = existing.offerLetterUrl;
     let offerLetterFileName = existing.offerLetterFileName;
@@ -3308,9 +4096,13 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
     const salaryValue = Number(offerData.salaryAmount.replace(/,/g, ''));
     const offerCtc = Number.isFinite(salaryValue) && salaryValue > 0 ? salaryValue : Number(ctc);
 
-    const offer = await prisma.$transaction(async (transaction) => {
-      const updatedOffer = await transaction.offer.update({
-        where: { id },
+    let offer;
+    try {
+      offer = await prisma.$transaction(async (transaction) => {
+      if (existing.status !== 'SENT') await assertNoOtherLiveOffer(transaction, existing.applicationId, id);
+      // Only if nobody (the candidate through the link, another HR user) changed the offer since it was read.
+      const written = await transaction.offer.updateMany({
+        where: { id, status: existing.status, responseTokenVersion: existing.responseTokenVersion },
         data: {
         designation: offerData.designation,
         department: offerData.department,
@@ -3324,12 +4116,32 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
         offerLetterUrl,
         offerLetterFileName,
         offerLetterData: offerData as Prisma.InputJsonValue,
+        ...(offerHrmColumns(hrmFields, true) as Prisma.OfferUpdateManyMutationInput),
         status: 'SENT',
         sentAt: new Date(),
         respondedAt: null,
+        declineReason: null,
         responseTokenVersion: { increment: 1 },
         },
       });
+      if (written.count !== 1) throw new OfferConflict('This offer was answered or changed a moment ago. Refresh and check it before sending again.');
+      const updatedOffer = await transaction.offer.findUniqueOrThrow({ where: { id } });
+
+      // The offer is live again: the application shows "offer sent" and is no longer closed.
+      if (existing.application.currentStage !== 'OFFER_SENT' || existing.application.terminalStatus) {
+        await transaction.jobApplication.update({ where: { id: existing.applicationId }, data: { currentStage: 'OFFER_SENT', terminalStatus: null } });
+        await transaction.applicationStageHistory.create({
+          data: {
+            applicationId: existing.applicationId,
+            fromStage: existing.application.currentStage,
+            toStage: 'OFFER_SENT',
+            fromTerminalStatus: existing.application.terminalStatus,
+            toTerminalStatus: null,
+            changedById: req.user?.id || null,
+            notes: 'Offer edited and sent again.',
+          },
+        });
+      }
 
       if (uploadedOfferPdf) {
         const currentDocument = await transaction.candidateDocument.findFirst({
@@ -3357,12 +4169,27 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
       }
 
       return updatedOffer;
-    });
-    void enqueueOfferEmail(offer.id).catch((error: unknown) => {
-      console.error('[email] updated offer email could not be queued:', error instanceof Error ? error.message : error);
-    });
-    res.status(200).json({ success: true, offer, message: 'Offer updated successfully.' });
+      });
+    } catch (error) {
+      if (error instanceof OfferConflict) {
+        if (uploadedOfferPdf && offerLetterUrl && offerLetterUrl !== existing.offerLetterUrl) {
+          const newFileId = extractDriveFileId(offerLetterUrl);
+          if (newFileId) await deleteFileFromDrive(newFileId).catch(() => undefined);
+        }
+        return res.status(409).json({ success: false, error: error.message });
+      }
+      throw error;
+    }
+
+    const communications = await dispatchOfferCommunications({
+      ...offer,
+      candidate: existing.application.candidate,
+      application: { id: existing.applicationId, applicationRef: existing.application.applicationRef },
+      job: { title: existing.application.job.title },
+    }, `version-${offer.responseTokenVersion}`);
+    res.status(200).json({ success: true, offer, communications, message: 'Offer updated successfully.' });
   } catch (error) {
+    if (sendHrmError(res, error)) return;
     next(error);
   }
 };
@@ -3372,6 +4199,9 @@ export const deleteOffer = async (req: Request, res: Response, next: NextFunctio
     const id = getParamString(req.params.id);
     const offer = await prisma.offer.findUnique({ where: { id } });
     if (!offer) return res.status(404).json({ success: false, error: 'Offer not found.' });
+    if (!canDeleteOffer(offer.status)) {
+      return res.status(409).json({ success: false, error: 'An accepted offer is part of the employee record in HRM and cannot be deleted.' });
+    }
 
     if (offer.offerLetterUrl) {
       const fileId = extractDriveFileId(offer.offerLetterUrl);
@@ -3438,16 +4268,31 @@ export const getRecruitmentSettings = async (req: Request, res: Response, next: 
     };
     const fetchTemplates = () => prisma.recruitmentEmailTemplate.findMany({
       orderBy: { name: 'asc' },
-        select: { id: true, name: true, code: true, subject: true, bodyHtml: true, variables: true, enabled: true, attachmentMode: true, isSystem: true },
+        select: { id: true, name: true, code: true, eventCode: true, subject: true, bodyHtml: true, variables: true, enabled: true, attachmentMode: true, isSystem: true, archived: true },
+    });
+    const fetchEmailRules = () => prisma.emailAutomationRule.findMany({
+      select: { eventCode: true, enabled: true, templateId: true },
     });
 
-    const [departments, stages, templates] = await Promise.all([
+    const [departments, stages, templates, emailRules] = await Promise.all([
       section === 'all' || section === 'departments' ? fetchDepartments() : Promise.resolve([]),
       section === 'all' || section === 'pipeline' ? fetchStages() : Promise.resolve([]),
       section === 'all' || section === 'templates' ? fetchTemplates() : Promise.resolve([]),
+      section === 'all' || section === 'templates' ? fetchEmailRules() : Promise.resolve([]),
     ]);
 
-    const emailTemplates = templates.map((template) => ({
+    // Older recruitment templates use short legacy codes (for example
+    // APPLICATION_RECEIVED). If a previous seed created the full WhatsApp
+    // event code as well, expose only the canonical template so one event has
+    // exactly one editable Email rule in the UI.
+    const canonicalTemplates = templates.filter((template) => {
+      if (template.archived) return false;
+      const eventCode = template.eventCode || getEmailEventCodeForTemplateCode(template.code);
+      return Boolean(eventCode);
+    });
+
+    const emailTemplates = canonicalTemplates.map((template) => ({
+      eventCode: template.eventCode || getEmailEventCodeForTemplateCode(template.code) || template.code,
       id: template.id,
       name: template.name,
       type: template.code,
@@ -3456,14 +4301,31 @@ export const getRecruitmentSettings = async (req: Request, res: Response, next: 
       variables: template.variables,
       enabled: template.enabled,
       attachmentMode: template.attachmentMode,
+      attachmentSupported: template.attachmentMode !== 'NONE',
       isDefault: template.isSystem,
     }));
+
+    const emailEvents = communicationEventRegistry.map((event) => {
+      const eventTemplates = emailTemplates.filter((template) => template.eventCode === event.eventCode);
+      const rule = emailRules.find((item) => item.eventCode === event.eventCode);
+      const selectedTemplateId = rule?.templateId || eventTemplates.find((template) => template.isDefault)?.id || eventTemplates[0]?.id || null;
+      return {
+        eventCode: event.eventCode,
+        name: event.name,
+        variables: event.variables,
+        attachmentMode: event.emailAttachmentMode,
+        templates: eventTemplates,
+        selectedTemplateId,
+        enabled: rule?.enabled ?? eventTemplates.find((template) => template.id === selectedTemplateId)?.enabled ?? true,
+      };
+    });
 
     res.status(200).json({
       success: true,
       departments,
       stages,
       templates: emailTemplates,
+      emailEvents,
       data: {
         departments: departments.map((department) => ({
           ...department,
@@ -3471,6 +4333,7 @@ export const getRecruitmentSettings = async (req: Request, res: Response, next: 
         })),
         stages,
         emailTemplates,
+        emailEvents,
       },
     });
   } catch (error) {
@@ -3835,33 +4698,220 @@ export const updateDepartment = async (req: Request, res: Response, next: NextFu
   }
 };
 
-export const updateEmailTemplate = async (req: Request, res: Response, next: NextFunction) => {
+const extractEmailTemplateVariables = (subject: string, bodyHtml: string) => Array.from(new Set(
+  [...`${subject}\n${bodyHtml}`.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)]
+    .map((match) => match[1]?.trim())
+    .filter((variable): variable is string => Boolean(variable)),
+));
+
+const validateEmailTemplateContent = (eventCode: string, subject: string, bodyHtml: string) => {
+  const event = getCommunicationEvent(eventCode);
+  if (!event) return { error: 'This email event is not supported.' } as const;
+  const variables = extractEmailTemplateVariables(subject, bodyHtml);
+  const unsupported = variables.filter((variable) => !event.variables.includes(variable));
+  if (unsupported.length) {
+    return { error: `Unsupported merge tag(s) for this event: ${unsupported.map((variable) => `{{${variable}}}`).join(', ')}` } as const;
+  }
+  if (eventCode === 'RECRUITMENT_OFFER_SENT' && !variables.includes('offer_response_url') && !variables.includes('offer_short_url')) {
+    return { error: 'Offer templates must include {{offer_short_url}} or {{offer_response_url}} for the secure Accept/Decline link.' } as const;
+  }
+  // The subject is stored in the delivery log: a link there would put the candidate's secret link in the log.
+  const subjectVariables = extractEmailTemplateVariables(subject, '');
+  if (subjectVariables.some((variable) => /url|link/i.test(variable) || variable === 'offer_short_code')) {
+    return { error: 'Links cannot be used in the subject. Put {{offer_short_url}} / {{offer_response_url}} in the body.' } as const;
+  }
+  return { variables } as const;
+};
+
+const normalizeTemplateCode = (eventCode: string, name: string) => {
+  const slug = name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48) || 'CUSTOM';
+  return `EMAIL_${eventCode}_${slug}_${randomUUID().replace(/-/g, '').slice(0, 10)}`;
+};
+
+export const createEmailTemplate = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const id = getParamString(req.params.id);
-    const { subject, bodyHtml, enabled, attachmentMode } = req.body;
+    const { eventCode, name, subject, bodyHtml, enabled, select } = req.body as Record<string, unknown>;
+    if (typeof eventCode !== 'string' || !getCommunicationEvent(eventCode)) {
+      return res.status(400).json({ success: false, error: 'A valid communication event is required.' });
+    }
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 120) {
+      return res.status(400).json({ success: false, error: 'A template name is required and must be under 120 characters.' });
+    }
     if (typeof subject !== 'string' || !subject.trim() || subject.length > 998) {
       return res.status(400).json({ success: false, error: 'A valid email subject is required.' });
     }
     if (typeof bodyHtml !== 'string' || !bodyHtml.trim() || bodyHtml.length > 100_000) {
       return res.status(400).json({ success: false, error: 'Email body is required and must be under 100,000 characters.' });
     }
-    const existingTemplate = await prisma.recruitmentEmailTemplate.findUnique({ where: { id }, select: { attachmentMode: true, enabled: true } });
+    const validation = validateEmailTemplateContent(eventCode, subject, bodyHtml);
+    if ('error' in validation) return res.status(400).json({ success: false, error: validation.error });
+    const event = getCommunicationEvent(eventCode)!;
+    const template = await prisma.recruitmentEmailTemplate.create({
+      data: {
+        name: name.trim(),
+        code: normalizeTemplateCode(eventCode, name),
+        eventCode,
+        subject: subject.trim().replace(/[\r\n]+/g, ' '),
+        bodyHtml: sanitizeEmailHtml(bodyHtml),
+        variables: validation.variables,
+        enabled: enabled !== false,
+        attachmentMode: event.emailAttachmentMode,
+        isSystem: false,
+        archived: false,
+      },
+    });
+    await prisma.emailAutomationRule.upsert({
+      where: { eventCode },
+      update: select === true ? { templateId: template.id, enabled: enabled !== false } : {},
+      create: { eventCode, templateId: template.id, enabled: enabled !== false },
+    });
+    res.status(201).json({ success: true, template, message: 'Email template created successfully.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateEmailAutomationRule = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const eventCode = getParamString(req.params.eventCode);
+    const { templateId, enabled } = req.body as Record<string, unknown>;
+    const event = getCommunicationEvent(eventCode);
+    if (!event) return res.status(400).json({ success: false, error: 'Unsupported communication event.' });
+    if (templateId !== undefined && templateId !== null && typeof templateId !== 'string') {
+      return res.status(400).json({ success: false, error: 'templateId must be a string or null.' });
+    }
+    let selectedTemplateId: string | null | undefined = templateId === null ? null : templateId as string | undefined;
+    if (selectedTemplateId) {
+      const template = await prisma.recruitmentEmailTemplate.findFirst({ where: { id: selectedTemplateId, eventCode, archived: false }, select: { id: true } });
+      if (!template) return res.status(400).json({ success: false, error: 'Selected template does not belong to this event.' });
+    }
+    const rule = await prisma.emailAutomationRule.upsert({
+      where: { eventCode },
+      update: {
+        ...(selectedTemplateId !== undefined ? { templateId: selectedTemplateId } : {}),
+        ...(typeof enabled === 'boolean' ? { enabled } : {}),
+      },
+      create: {
+        eventCode,
+        templateId: selectedTemplateId || null,
+        enabled: typeof enabled === 'boolean' ? enabled : true,
+      },
+    });
+    res.status(200).json({ success: true, rule });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateEmailTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = getParamString(req.params.id);
+    const { name, subject, bodyHtml, enabled, attachmentMode } = req.body;
+    if (typeof subject !== 'string' || !subject.trim() || subject.length > 998) {
+      return res.status(400).json({ success: false, error: 'A valid email subject is required.' });
+    }
+    if (typeof bodyHtml !== 'string' || !bodyHtml.trim() || bodyHtml.length > 100_000) {
+      return res.status(400).json({ success: false, error: 'Email body is required and must be under 100,000 characters.' });
+    }
+    const existingTemplate = await prisma.recruitmentEmailTemplate.findUnique({
+      where: { id },
+      select: { name: true, code: true, eventCode: true, attachmentMode: true, enabled: true, archived: true, isSystem: true },
+    });
     if (!existingTemplate) return res.status(404).json({ success: false, error: 'Email template not found.' });
-    const normalizedAttachmentMode = attachmentMode === undefined
-      ? existingTemplate.attachmentMode
-      : attachmentMode === 'DYNAMIC_OFFER_PDF' ? 'DYNAMIC_OFFER_PDF' : 'NONE';
+    if (existingTemplate.archived) return res.status(400).json({ success: false, error: 'Archived email templates cannot be edited.' });
+    if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.trim().length > 120)) {
+      return res.status(400).json({ success: false, error: 'A template name is required and must be under 120 characters.' });
+    }
+    if (existingTemplate.isSystem && typeof name === 'string' && name.trim() !== existingTemplate.name) {
+      return res.status(400).json({ success: false, error: 'Default system template names cannot be changed.' });
+    }
+    const eventCode = existingTemplate.eventCode || getEmailEventCodeForTemplateCode(existingTemplate.code) || existingTemplate.code;
+    const event = getCommunicationEvent(eventCode);
+    if (!event) return res.status(400).json({ success: false, error: 'This email template is not linked to a supported communication event.' });
+    const normalizedAttachmentMode = getEmailAttachmentModeForEvent(eventCode);
+    if (attachmentMode !== undefined && attachmentMode !== normalizedAttachmentMode) {
+      return res.status(400).json({ success: false, error: 'Attachment policy is fixed by the WhatsApp event and cannot be changed here.' });
+    }
+    const validation = validateEmailTemplateContent(eventCode, subject, bodyHtml);
+    if ('error' in validation) return res.status(400).json({ success: false, error: validation.error });
+
+    if (typeof name === 'string' && name.trim() !== existingTemplate.name) {
+      const duplicate = await prisma.recruitmentEmailTemplate.findFirst({
+        where: { eventCode, name: name.trim(), archived: false, id: { not: id } },
+        select: { id: true },
+      });
+      if (duplicate) return res.status(409).json({ success: false, error: 'A template with this name already exists for the event.' });
+    }
 
     const tpl = await prisma.recruitmentEmailTemplate.update({
       where: { id },
       data: {
+        ...(!existingTemplate.isSystem && typeof name === 'string' ? { name: name.trim() } : {}),
         subject: subject.trim().replace(/[\r\n]+/g, ' '),
-        bodyHtml: sanitizeLegalHtml(bodyHtml),
+        bodyHtml: sanitizeEmailHtml(bodyHtml),
+        variables: validation.variables,
         enabled: enabled === undefined ? existingTemplate.enabled : enabled === true,
         attachmentMode: normalizedAttachmentMode,
       },
     });
 
     res.status(200).json({ success: true, template: tpl });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Archive a custom template instead of hard-deleting it. Delivery history keeps
+ * its template relation, while active automation is moved back to the event's
+ * system template so a delete can never break future notifications.
+ */
+export const deleteEmailTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = getParamString(req.params.id);
+    const template = await prisma.recruitmentEmailTemplate.findUnique({
+      where: { id },
+      select: { id: true, eventCode: true, isSystem: true, archived: true },
+    });
+    if (!template) return res.status(404).json({ success: false, error: 'Email template not found.' });
+    if (template.isSystem) {
+      return res.status(400).json({ success: false, error: 'Default system templates cannot be deleted.' });
+    }
+    if (template.archived) return res.status(404).json({ success: false, error: 'Email template not found.' });
+
+    const fallback = await prisma.recruitmentEmailTemplate.findFirst({
+      where: { eventCode: template.eventCode, isSystem: true, archived: false },
+      select: { id: true },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      const currentRule = await tx.emailAutomationRule.findUnique({
+        where: { eventCode: template.eventCode },
+        select: { enabled: true, templateId: true },
+      });
+      const plan = buildEmailTemplateDeletePlan({
+        templateId: id,
+        eventCode: template.eventCode,
+        fallbackTemplateId: fallback?.id ?? null,
+        ...(currentRule ? { currentRule } : {}),
+      });
+
+      await tx.recruitmentEmailTemplate.update({
+        where: { id },
+        data: plan.template,
+      });
+      await tx.emailAutomationRule.upsert({
+        where: { eventCode: plan.rule.eventCode },
+        update: { templateId: plan.rule.templateId },
+        create: plan.rule,
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      fallbackTemplateId: fallback?.id ?? null,
+      message: 'Email template deleted successfully.',
+    });
   } catch (error) {
     next(error);
   }

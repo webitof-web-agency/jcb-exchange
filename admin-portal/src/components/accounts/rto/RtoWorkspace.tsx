@@ -790,7 +790,7 @@ export default function RtoWorkspace({ recordId }: { recordId?: string }) {
                 <p className="text-xs text-gray-600">Invoice <b>{sell.invoiceNumber}</b>{sell.invoiceSentAt ? ` · sent ${dateTime(sell.invoiceSentAt)}` : ' · not sent yet'}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {(sell.invoiceDelivery?.channels || []).map((channel) => (
-                    <span key={channel.channel} title={channel.detail || undefined} className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${channel.sent ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{channel.channel === 'WHATSAPP' ? 'WhatsApp' : 'SMS'}: {channel.sent ? 'Sent' : labelText(channel.status)}</span>
+                    <span key={channel.channel} title={channel.detail || undefined} className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${channel.sent ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{channel.channel === 'WHATSAPP' ? 'WhatsApp' : channel.channel === 'EMAIL' ? 'Email' : 'SMS'}: {channel.sent ? 'Sent' : labelText(channel.status)}</span>
                   ))}
                 </div>
                 {invoiceUrl ? (

@@ -23,7 +23,7 @@ import FinanceCommandPalette from '@/components/financeWorkspace/FinanceCommandP
 import AiFloatingChat from '@/components/ai/AiFloatingChat';
 import { CRM_READ_PERMISSIONS, CRM_VIEW_PERMISSIONS } from '@/lib/adminPermissionCatalog';
 import { ArrowRight, Bell, ExternalLink, LogOut, User as UserIcon, Settings, LayoutDashboard, ShieldCheck, List, Users, ChevronDown, ChevronRight, Tags, UsersRound, UserCheck, Repeat, MessagesSquare, Truck, CarFront, BadgeIndianRupee, Menu, X as XIcon, Languages, PanelsTopLeft, Briefcase, BarChart3, WalletCards, BookOpen, ScanLine, FileText, HandCoins, ClipboardCheck, ReceiptText, ListTodo, Sparkles } from 'lucide-react';
-import { CalendarClock, Columns3, Contact, FileArchive, FileUp, ListChecks, Mail, Megaphone, MessageCircle, Smartphone } from 'lucide-react';
+import { CalendarClock, Columns3, Contact, FileArchive, FileUp, Landmark, ListChecks, Mail, Megaphone, MessageCircle, Smartphone, UserPlus } from 'lucide-react';
 import { useApiBillingSummary } from '@/hooks/useApiBillingSummary';
 import { ApiWalletHeader } from '@/components/apiBilling/ApiBillingDisplay';
 import {
@@ -52,9 +52,13 @@ import { UserAvatar } from '@/components/profile/AvatarUpload';
 import { getPublicSiteTarget } from '@/lib/publicSite.mjs';
 import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 import { shouldDismissDropdown } from '@/lib/dropdownInteractions';
+import { getHrmPayrollPath, HRM_PAYROLL_MODULES } from '@/lib/hrmNavigation';
+import { canOpenHrmPath, canSeeHrmMenu, canUseHrmPayroll, getFirstHrmPath, getVisibleHrmPages, HRM_ANY_PAGE_PERMISSIONS, isHrmPath } from '@/lib/hrmAccess';
+import { getRecruitmentRoutePermissions } from '@/lib/recruitmentPermissions';
 
 const navItems = [
   { href: '/admin/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard },
+  { href: '/admin/hrm', labelKey: 'admin.hrm', defaultLabel: 'HRM', icon: Briefcase },
   { href: '/admin/ai', labelKey: 'admin.aiCommandCenter', defaultLabel: 'JCB Intelligence Hub', icon: Sparkles },
   { href: '/admin/verifications', labelKey: 'admin.verifications', icon: ShieldCheck },
   { href: '/admin/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine },
@@ -83,6 +87,8 @@ const navItems = [
 
 const employeeModuleNavItems = [
   { href: '/employee/dashboard', labelKey: 'admin.dashboard', icon: LayoutDashboard, permissions: ['dashboard.view'] },
+  // Shown when any HRM page can be opened (canSeeHrmMenu); every HRM page has its own permission (hrmAccess.ts).
+  { href: '/employee/hrm', labelKey: 'admin.hrm', defaultLabel: 'HRM', icon: Briefcase, permissions: HRM_ANY_PAGE_PERMISSIONS },
   { href: '/employee/ai', labelKey: 'admin.aiCommandCenter', defaultLabel: 'JCB Intelligence Hub', icon: Sparkles, permissions: ['ai.use'] },
   { href: '/employee/verifications', labelKey: 'admin.verifications', icon: ShieldCheck, permissions: ['kyc.manage', 'kyc.edit.override'] },
   { href: '/employee/identity-hub', labelKey: 'admin.identityHub', icon: ScanLine, permissions: IDENTITY_HUB_VIEW_PERMISSIONS },
@@ -171,6 +177,22 @@ const getRequiredPermissionsForPath = (pathname: string) => {
   return matchedModule?.permissions || null;
 };
 
+type PortalViewer = { role?: string | null; permissions?: string[] | null } | null | undefined;
+
+/**
+ * May an employee-portal login (EMPLOYEE or the legacy ADMIN role) open this path? HRM and Recruitment use their own
+ * per-page maps (the same ones the sidebar uses); everything else the module permissions above.
+ */
+const canEmployeeOpenPath = (pathname: string, viewer: PortalViewer) => {
+  if (isHrmPath(pathname)) return canOpenHrmPath(viewer, pathname);
+  const recruitmentPermissions = getRecruitmentRoutePermissions(pathname);
+  if (recruitmentPermissions) return hasAnyPermission(viewer?.permissions ?? undefined, recruitmentPermissions);
+  const requiredPermissions = getRequiredPermissionsForPath(pathname);
+  return !requiredPermissions || hasAnyPermission(viewer?.permissions ?? undefined, requiredPermissions);
+};
+
+type EmployeeRouteDecision = { action: 'allow' } | { action: 'redirect'; to: string } | { action: 'logout' };
+
 const formatPortalLabel = (value?: string | null) =>
   value
     ? value
@@ -213,6 +235,14 @@ export default function AdminLayout({
     value: null,
   });
   const [crmMenuExpansion, setCrmMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
+    pathname: '',
+    value: null,
+  });
+  const [hrmMenuExpansion, setHrmMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
+    pathname: '',
+    value: null,
+  });
+  const [hrmPayrollMenuExpansion, setHrmPayrollMenuExpansion] = useState<{ pathname: string; value: boolean | null }>({
     pathname: '',
     value: null,
   });
@@ -315,7 +345,6 @@ export default function AdminLayout({
   // the /employee portal, limited to its permissions.
   const isEmployee = user?.role === 'EMPLOYEE' || user?.role === 'ADMIN';
   const userPermissions = useMemo(() => user?.permissions || [], [user?.permissions]);
-  const userPermissionKey = userPermissions.join('|');
   const canUseCrm = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && hasAnyPermission(userPermissions, CRM_VIEW_PERMISSIONS));
   const { notifications, unreadCount: notificationUnreadCount, markAsRead: markNotificationAsRead, markAllAsRead: markAllNotificationsAsRead } = useRealtimeNotifications({
     enabled: hasHydrated && isAuthenticated && (isSuperAdmin || isAdmin),
@@ -338,14 +367,24 @@ export default function AdminLayout({
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, [canUseCrm, pathname]);
-  const employeeHomeHref = useMemo(() => getEmployeeLandingPath(userPermissions), [userPermissions]);
+  const hrmViewer = useMemo(() => ({ role: user?.role ?? null, permissions: userPermissions }), [user?.role, userPermissions]);
   const employeeNavItems = useMemo(
     () =>
       employeeModuleNavItems.filter(
-        (item) => hasAnyPermission(userPermissions, item.permissions)
+        // HRM shows when any of its pages can be opened (each page has its own permission).
+        (item) => (item.href === '/employee/hrm' ? canSeeHrmMenu(hrmViewer) : hasAnyPermission(userPermissions, item.permissions))
       ),
-    [userPermissions]
+    [hrmViewer, userPermissions]
   );
+  // The first page this login can open. Without dashboard.view that is never the dashboard (it answers 403):
+  // the module landing paths first, else the first visible menu entry.
+  const employeeHomeHref = useMemo(() => {
+    const landing = getEmployeeLandingPath(userPermissions);
+    if (landing !== '/employee/dashboard' || hasAnyPermission(userPermissions, ['dashboard.view'])) return landing;
+    const firstItem = employeeNavItems.find((item) => item.href !== '/employee/dashboard');
+    if (!firstItem) return landing;
+    return firstItem.href === '/employee/hrm' ? getFirstHrmPath(hrmViewer, 'employee') ?? landing : firstItem.href;
+  }, [employeeNavItems, hrmViewer, userPermissions]);
   const employeeCanSeeUsers = hasAnyPermission(userPermissions, employeeUsersPermissions);
   const employeeCanSeeRoles = hasAnyPermission(userPermissions, employeeRolesPermissions);
   // Recruitment-only (HR) and accounts-only roles have no module nav items; counting only those logged such
@@ -371,6 +410,9 @@ export default function AdminLayout({
     ? recruitmentMenuExpansion.value
     : null;
   const isRecruitmentDropdownExpanded = isRecruitmentMenuExpanded ?? isRecruitmentSectionActive;
+  const isHrmSectionActive = pathname.startsWith('/admin/hrm') || pathname.startsWith('/employee/hrm');
+  const isHrmDropdownExpanded = (hrmMenuExpansion.pathname === pathname ? hrmMenuExpansion.value : null) ?? isHrmSectionActive;
+  const isHrmPayrollExpanded = (hrmPayrollMenuExpansion.pathname === pathname ? hrmPayrollMenuExpansion.value : null) ?? pathname.includes('/hrm/payroll');
 
   const visibleAccountsNavItems = useMemo(
     () => (isSuperAdmin || user?.role === 'ADMIN'
@@ -425,6 +467,24 @@ export default function AdminLayout({
   });
   // ─────────────────────────────────────────────────────────────────────────────
 
+  // Worked out during render, so a page the login may not open is never shown (or allowed to fire its requests)
+  // while the redirect is on its way: the layout shows "Checking access…" instead.
+  const employeeRouteDecision = useMemo<EmployeeRouteDecision>(() => {
+    if (!isEmployee) return { action: 'allow' };
+    const employeeRedirect = pathname.startsWith('/admin')
+      ? resolveEmployeeRouteRedirect(pathname, userPermissions)
+      : null;
+    if (employeeRedirect && employeeRedirect !== pathname) return { action: 'redirect', to: employeeRedirect };
+    if (pathname === '/admin/dashboard') return employeeHomeHref === pathname ? { action: 'allow' } : { action: 'redirect', to: employeeHomeHref };
+    const allowed = pathname === '/employee/dashboard'
+      ? hasAnyPermission(userPermissions, ['dashboard.view'])
+      : canEmployeeOpenPath(pathname, hrmViewer);
+    if (allowed) return { action: 'allow' };
+    if (!employeeHasAnyVisibleRoute) return { action: 'logout' };
+    // Nowhere better to go: show the page (the server still refuses what it must) rather than wait forever.
+    return employeeHomeHref === pathname ? { action: 'allow' } : { action: 'redirect', to: employeeHomeHref };
+  }, [employeeHasAnyVisibleRoute, employeeHomeHref, hrmViewer, isEmployee, pathname, userPermissions]);
+
   useEffect(() => {
     if (!hasHydrated) {
       return;
@@ -440,44 +500,16 @@ export default function AdminLayout({
     }
 
     if (isEmployee) {
-      const employeeRedirect = pathname.startsWith('/admin')
-        ? resolveEmployeeRouteRedirect(pathname, userPermissions)
-        : null;
-
-      if (employeeRedirect && employeeRedirect !== pathname) {
-        router.replace(employeeRedirect);
+      if (employeeRouteDecision.action === 'logout') {
+        logout();
+        router.replace('/login');
         return;
       }
-
-      if (pathname === '/admin/dashboard') {
-        router.replace(employeeHomeHref);
-        return;
+      if (employeeRouteDecision.action === 'redirect') {
+        router.replace(employeeRouteDecision.to);
       }
-
-      const requiredPermissions = getRequiredPermissionsForPath(pathname);
-      if (pathname === '/employee/dashboard' && !hasAnyPermission(userPermissions, ['dashboard.view'])) {
-        if (!employeeHasAnyVisibleRoute) {
-          logout();
-          router.replace('/login');
-          return;
-        }
-
-        router.replace(employeeHomeHref);
-        return;
-      }
-
-      if (requiredPermissions && !hasAnyPermission(userPermissions, requiredPermissions)) {
-        if (!employeeHasAnyVisibleRoute) {
-          logout();
-          router.replace('/login');
-          return;
-        }
-
-        router.replace(employeeHomeHref);
-      }
-      return;
     }
-  }, [employeeCanSeeRoles, employeeCanSeeUsers, employeeHasAnyVisibleRoute, employeeHomeHref, hasHydrated, isAccessInactive, isAccessRevoked, isAdmin, isAuthenticated, isEmployee, isSuperAdmin, pathname, router, user, userPermissionKey, userPermissions, logout]);
+  }, [employeeRouteDecision, hasHydrated, isAccessInactive, isAccessRevoked, isAdmin, isAuthenticated, isEmployee, isSuperAdmin, router, logout]);
 
   useEffect(() => {
     if (!hasHydrated || !isAuthenticated || !['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'].includes(user?.role || '')) {
@@ -679,10 +711,15 @@ export default function AdminLayout({
           : formatPortalLabel(user?.role) || t('common.notAvailable');
   const pageTitleMap: Record<string, string> = {
     '/admin/dashboard': t('admin.superAdminDashboard'),
+    '/admin/hrm': t('admin.hrm', 'HRM'),
+    '/admin/hrm/organisation': t('admin.hrmOrganisation', 'HRM · Organisation'),
+    '/admin/hrm/onboarding': t('admin.hrmOnboarding', 'HRM · Onboarding'),
+    '/admin/hrm/reports': t('admin.hrmReports', 'HRM · Reports'),
     '/admin/ai': t('admin.aiCommandCenter', 'JCB Intelligence Hub'),
     '/admin/analytics': t('admin.analytics'),
     '/admin/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
     '/admin/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
+    '/admin/accounts/transport-delivery': t('admin.transportDelivery', 'Transport & Delivery'),
     '/admin/accounts/vehicle-docs': t('admin.vehicleDocs', 'Vehicle Docs'),
     '/admin/invoices': t('admin.invoices', 'Invoices'),
     '/admin/tasks': t('admin.tasks', 'Tasks'),
@@ -690,6 +727,7 @@ export default function AdminLayout({
     '/admin/finance/workspace': t('admin.financeDashboard', 'Finance Dashboard'),
     '/employee/accounts/rto-work-status': t('admin.rtoWork', 'RTO Work'),
     '/employee/accounts/sell-accounts': t('admin.soldVehicles', 'Sold Vehicles'),
+    '/employee/accounts/transport-delivery': t('admin.transportDelivery', 'Transport & Delivery'),
     '/employee/accounts/vehicle-docs': t('admin.vehicleDocs', 'Vehicle Docs'),
     '/employee/invoices': t('admin.invoices', 'Invoices'),
     '/employee/tasks': t('admin.tasks', 'Tasks'),
@@ -733,6 +771,10 @@ export default function AdminLayout({
     '/admin/recruitment/pipeline': t('admin.recruitmentPipeline', 'Pipeline Stages'),
     '/admin/recruitment/settings': t('admin.recruitmentSettings', 'Recruitment Settings'),
     '/employee/dashboard': t('admin.employeeDashboard'),
+    '/employee/hrm': t('admin.hrm', 'HRM'),
+    '/employee/hrm/organisation': t('admin.hrmOrganisation', 'HRM · Organisation'),
+    '/employee/hrm/onboarding': t('admin.hrmOnboarding', 'HRM · Onboarding'),
+    '/employee/hrm/reports': t('admin.hrmReports', 'HRM · Reports'),
     '/employee/ai': t('admin.aiCommandCenter', 'JCB Intelligence Hub'),
     '/employee/analytics': t('admin.analytics'),
     '/employee/enquiries': t('admin.enquiryManagement'),
@@ -770,6 +812,7 @@ export default function AdminLayout({
   const getPageTitle = () => {
     if (pageTitleMap[pathname]) return pageTitleMap[pathname];
     if (pathname.includes('/accounts/sell-accounts/')) return t('admin.soldVehicle', 'Sold Vehicle');
+    if (pathname.includes('/accounts/transport-delivery')) return t('admin.transportDelivery', 'Transport & Delivery');
     if (pathname.includes('/accounts/vehicle-docs/')) return t('admin.vehicleDocs', 'Vehicle Docs');
     if (pathname.includes('/accounts/rto-work-status/')) return t('admin.rtoWork', 'RTO Work');
     if (isFinanceTransactionDetailPath(pathname)) return t('admin.transactionDetails', 'Transaction Details');
@@ -800,6 +843,7 @@ export default function AdminLayout({
     if (pathname.startsWith('/admin/recruitment/jobs/') || pathname.startsWith('/employee/recruitment/jobs/')) {
       return t('admin.recruitmentJobDetails', 'Job Details');
     }
+    if (/^\/(admin|employee)\/hrm\/organisation\/offices\/[^/]+$/.test(pathname)) return t('admin.hrmOffice', 'HRM · Office');
     return isSuperAdmin ? t('admin.superAdminDashboard') : isEmployee ? t('admin.employeeDashboard') : t('admin.adminDashboard');
   };
   const pageTitle = getPageTitle();
@@ -813,6 +857,7 @@ export default function AdminLayout({
   const usersListHref = isEmployee ? '/employee/users' : '/admin/users';
   const rolesListHref = isEmployee ? '/employee/users/roles' : '/admin/users/roles';
   const routePrefix = isEmployee ? '/employee' : '/admin';
+  const hrmPortal = isEmployee ? 'employee' : 'admin';
   const getVisibleNavItem = (suffix: string) => visibleNavItems.find((item) => item.href.endsWith(suffix));
   const dashboardNavItem = getVisibleNavItem('/dashboard');
   const aiNavItem = getVisibleNavItem('/ai');
@@ -822,8 +867,8 @@ export default function AdminLayout({
   const canShowSettingsLink = isSuperAdmin || Boolean(getVisibleNavItem('/settings'));
   const canShowUsersMenu = isSuperAdmin || (isEmployee && (employeeCanSeeUsers || employeeCanSeeRoles));
   // Sold Vehicles and RTO Work sit right after Listings in Daily Operations.
-  const accountsSidebarIcons = { 'sell-accounts': HandCoins, 'rto-work-status': ClipboardCheck } as const;
-  const accountsSidebarItems = (['sell-accounts', 'rto-work-status'] as const)
+  const accountsSidebarIcons = { 'sell-accounts': HandCoins, 'rto-work-status': ClipboardCheck, 'transport-delivery': Truck } as const;
+  const accountsSidebarItems = (['sell-accounts', 'rto-work-status', 'transport-delivery'] as const)
     .map((key) => visibleAccountsNavItems.find((item) => item.key === key))
     .filter((item) => item !== undefined)
     .map((item) => ({
@@ -835,8 +880,10 @@ export default function AdminLayout({
   if (visibleAccountsNavItems.some((item) => item.key === 'sell-accounts')) {
     accountsSidebarItems.push({ href: `${routePrefix}/accounts/vehicle-docs`, labelKey: 'admin.vehicleDocs', defaultLabel: 'Vehicle Docs', icon: FileArchive });
   }
+  // HRM sits directly under CRM inside Daily Operations.
   const hasDailyOperationsNav = accountsSidebarItems.length > 0 || [
     '/crm',
+    '/hrm',
     '/listings',
     '/tasks',
     '/verifications',
@@ -1062,6 +1109,31 @@ export default function AdminLayout({
     );
   };
 
+  const renderHrmNavGroup = () => {
+    const hrmItem = getVisibleNavItem('/hrm');
+    if (!hrmItem) return null;
+    const base = hrmItem.href;
+    // The same page map as the route guard (hrmAccess.ts). Only Super Admin is all-access in HRM; the ADMIN role is
+    // checked like an employee. Payroll is Finance Hub's, which does treat ADMIN as all-access.
+    const canUsePayroll = canUseHrmPayroll(hrmViewer);
+    const hrmIcons = { directory: Users, organisation: Landmark, onboarding: UserPlus, reports: BarChart3, attendance: CalendarClock, leave: ClipboardCheck, compensation: BadgeIndianRupee, performance: BarChart3, exit: FileText } as const;
+    const children = getVisibleHrmPages(hrmViewer, hrmPortal).map((page) => ({
+      href: page.href,
+      label: page.label,
+      icon: hrmIcons[page.key],
+      // Not exact: the office pages under /organisation/offices/<id> keep Organisation highlighted.
+      exact: page.key !== 'organisation',
+    }));
+    const isGroupActive = pathname === base || pathname.startsWith(`${base}/`);
+
+    return <div className="space-y-1">
+      <button type="button" onClick={() => setHrmMenuExpansion({ pathname, value: !isHrmDropdownExpanded })} aria-expanded={isHrmDropdownExpanded} className={`group flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs text-left transition-all duration-150 ${isGroupActive ? 'bg-gradient-to-r from-amber-400/15 via-amber-400/5 to-transparent text-[#FFC107] font-semibold border-l-[3px] border-[#FFC107]' : 'border-l-[3px] border-transparent text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] font-medium'}`}><span className="flex min-w-0 items-center gap-2.5"><Briefcase className={`h-4 w-4 shrink-0 ${isGroupActive ? 'text-[#FFC107]' : 'text-zinc-400 group-hover:text-zinc-200'}`} /><span className="truncate">{t('admin.hrm', 'HRM')}</span></span><ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${isHrmDropdownExpanded ? 'rotate-180' : ''} ${isGroupActive ? 'text-[#FFC107]' : 'text-zinc-500 group-hover:text-zinc-300'}`} /></button>
+      {isHrmDropdownExpanded ? <div className="ml-3.5 my-1 space-y-0.5 border-l border-white/[0.08] pl-2.5">{children.map((child) => { const active = child.exact ? pathname === child.href : pathname === child.href || pathname.startsWith(`${child.href}/`); const Icon = child.icon; return <Link key={child.href} href={child.href} onClick={() => setIsMobileMenuOpen(false)} className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-all duration-150 ${active ? 'bg-[#FFC107]/15 text-[#FFC107] font-semibold shadow-2xs' : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] font-medium'}`}><Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-[#FFC107]' : 'text-zinc-500 group-hover:text-zinc-300'}`} /><span className="truncate">{child.label}</span></Link>; })}
+        {canUsePayroll ? <div><button type="button" onClick={() => setHrmPayrollMenuExpansion({ pathname, value: !isHrmPayrollExpanded })} aria-expanded={isHrmPayrollExpanded} className={`group flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition-all duration-150 ${pathname.includes('/hrm/payroll') ? 'bg-[#FFC107]/15 text-[#FFC107] font-semibold' : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] font-medium'}`}><span className="flex items-center gap-2"><WalletCards className="h-3.5 w-3.5" />Payroll</span><ChevronDown className={`h-3 w-3 transition-transform ${isHrmPayrollExpanded ? 'rotate-180' : ''}`} /></button>{isHrmPayrollExpanded ? <div className="ml-3 mt-0.5 space-y-0.5 border-l border-white/[0.08] pl-2">{HRM_PAYROLL_MODULES.map((module) => { const href = getHrmPayrollPath(hrmPortal, module.key); const active = pathname === href; return <Link key={module.key} href={href} onClick={() => setIsMobileMenuOpen(false)} className={`block rounded-md px-2 py-1.5 text-[11px] transition-colors ${active ? 'bg-[#FFC107]/15 text-[#FFC107] font-semibold' : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200'}`}>{module.label}</Link>; })}</div> : null}</div> : null}
+      </div> : null}
+    </div>;
+  };
+
   return (
     <div
       className="fixed inset-0 flex h-full w-full min-h-0 overflow-hidden bg-gray-100"
@@ -1106,6 +1178,7 @@ export default function AdminLayout({
             <section className="space-y-1">
               {renderSectionLabel('Daily Operations')}
               {renderCrmNavGroup()}
+              {renderHrmNavGroup()}
               {renderStandardNavItem(getVisibleNavItem('/listings'))}
               {accountsSidebarItems.map((item) => renderStandardNavItem(item))}
               {renderStandardNavItem(getVisibleNavItem('/tasks'))}
@@ -1273,6 +1346,7 @@ export default function AdminLayout({
                 <>
                   {renderStandardNavItem(getVisibleNavItem('/whatsapp'))}
                   {renderStandardNavItem(getVisibleNavItem('/sms'))}
+                  {renderStandardNavItem(getVisibleNavItem('/email'))}
                 </>
               ))}
             </section>
@@ -1729,7 +1803,9 @@ export default function AdminLayout({
             </div>
           </div>
         </header>
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-gray-100 overscroll-contain p-3 sm:p-4 lg:p-4.5 pb-8">{children}</div>
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-gray-100 overscroll-contain p-3 sm:p-4 lg:p-4.5 pb-8">{employeeRouteDecision.action === 'allow' ? children : (
+          <div role="status" className="flex min-h-[40vh] items-center justify-center text-sm text-gray-500">{t('admin.checkingAccess', 'Checking access…')}</div>
+        )}</div>
         <AiFloatingChat />
         {hasFinanceNav ? (
           <FinanceCommandPalette

@@ -2,9 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import PDFDocument from 'pdfkit';
 
-// Built-in Money Receipt and Bill of Supply, used when the DOCX stationery templates are not
-// installed on the machine (they are provisioned separately) or no DOCX converter is available.
-// Layouts follow the dealer money receipt and Tally-style bill of supply the business uses.
+// Portable money receipts, bills of supply and delivery challans. A receipt is always rendered
+// here so its appearance never depends on a server having a DOCX template or office converter.
 
 type Company = { name: string; addressLine: string; cin?: string | null; gstin?: string | null; state?: string | null };
 type Signatory = { name: string; designation: string };
@@ -24,6 +23,7 @@ export type MoneyReceiptPdfData = {
   drawnOn: string;
   amount: string;
   amountInWords: string;
+  balance?: string;
   remarks: string;
   signatory: Signatory;
 };
@@ -167,7 +167,7 @@ const drawCompanyHeader = (
   return startY + 4 + headerH + 4; // bottom of header + small gap
 };
 
-export const renderMoneyReceiptPdf = async (data: MoneyReceiptPdfData, logo?: Buffer | null) => {
+const renderLegacyMoneyReceiptPdf = async (data: MoneyReceiptPdfData, logo?: Buffer | null) => {
   const { doc, done } = startDocument(`Money Receipt ${data.receiptNumber}`);
   const left = 36;
   const width = 523;
@@ -267,6 +267,174 @@ export const renderMoneyReceiptPdf = async (data: MoneyReceiptPdfData, logo?: Bu
       doc.page.height - doc.page.margins.bottom - 14,
       { width, align: 'center', lineBreak: false },
     );
+
+  doc.end();
+  return done;
+};
+
+const drawClassicMoneyReceiptLogo = (
+  doc: PDFKit.PDFDocument,
+  logo: Buffer | null | undefined,
+  x: number,
+  y: number,
+) => {
+  const draw = (candidate: Buffer) => {
+    try {
+      doc.image(candidate, x, y, { fit: [125, 58] });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (logo && draw(logo)) return;
+  const candidates = [
+    path.resolve(process.cwd(), 'templates', 'vehicle-sale', 'jcb-exchange-logo.jpg'),
+    path.resolve(process.cwd(), 'backend', 'templates', 'vehicle-sale', 'jcb-exchange-logo.jpg'),
+    path.resolve(__dirname, '..', '..', 'templates', 'vehicle-sale', 'jcb-exchange-logo.jpg'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (existsSync(candidate) && draw(readFileSync(candidate))) return;
+    } catch {
+      // The receipt remains usable when a branding file cannot be read.
+    }
+  }
+};
+
+const classicReceiptBox = (
+  doc: PDFKit.PDFDocument,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  horizontalAt?: number,
+  verticalAt?: number,
+) => {
+  doc.rect(x, y, width, height).lineWidth(0.65).strokeColor('#111111').stroke();
+  if (horizontalAt !== undefined) {
+    doc.moveTo(x, y + horizontalAt).lineTo(x + width, y + horizontalAt).lineWidth(0.65).strokeColor('#111111').stroke();
+  }
+  if (verticalAt !== undefined) {
+    doc.moveTo(x + verticalAt, y).lineTo(x + verticalAt, y + height).lineWidth(0.65).strokeColor('#111111').stroke();
+  }
+};
+
+/**
+ * Canonical money-receipt layout. Every delivery channel calls this renderer, so an existing
+ * receipt, a new receipt, a local download and a public-link/WhatsApp document stay identical.
+ */
+export const renderMoneyReceiptPdf = async (data: MoneyReceiptPdfData, logo?: Buffer | null) => {
+  const { doc, done } = startDocument('Money Receipt ' + data.receiptNumber);
+  const left = 36;
+  const width = 523;
+  const half = width / 2;
+
+  drawClassicMoneyReceiptLogo(doc, logo, left, 42);
+  const companyX = left + 145;
+  const companyWidth = width - 145;
+  let headerY = 52;
+  doc.font('Helvetica-Bold').fontSize(13.5).fillColor('#000000')
+    .text(data.company.name.toUpperCase(), companyX, headerY, { width: companyWidth, align: 'right' });
+  headerY = Math.max(77, Math.ceil(doc.y) + 5);
+  doc.font('Helvetica').fontSize(7.8).fillColor('#374151')
+    .text(data.company.addressLine, companyX, headerY, { width: companyWidth, align: 'right', lineGap: 1 });
+  headerY = Math.max(104, Math.ceil(doc.y) + 4);
+  if (data.company.gstin) {
+    doc.font('Helvetica').fontSize(7.8).fillColor('#374151')
+      .text('GSTIN: ' + data.company.gstin, companyX, headerY, { width: companyWidth, align: 'right' });
+    headerY = Math.ceil(doc.y);
+  }
+
+  // Header divider line separating logo & company details from the document title.
+  const dividerY = Math.max(114, headerY + 8);
+  doc.rect(left, dividerY, width, 2).fill(ORANGE);
+
+  let y = Math.max(142, dividerY + 16);
+  doc.font('Helvetica-Bold').fontSize(13).fillColor('#000000')
+    .text(data.title, left, y, { width, align: 'center' });
+  y = Math.max(176, Math.ceil(doc.y) + 16);
+
+  const cellPadX = 6;
+  const cellPadY = 5;
+  const colW = half - cellPadX * 2;
+
+  const receiptNoText = 'RECEIPT NO : ' + data.receiptNumber;
+  const dateText = 'DATE : ' + data.receiptDate;
+  doc.font('Helvetica-Bold').fontSize(8.8);
+  const refRow1H = Math.max(
+    21,
+    Math.ceil(Math.max(doc.heightOfString(receiptNoText, { width: colW }), doc.heightOfString(dateText, { width: colW })) + cellPadY * 2),
+  );
+
+  const modelText = 'MODEL : ' + data.vehicleTitle;
+  const customerIdText = 'CUSTOMER ID : ' + data.customerId;
+  doc.font('Helvetica-Bold').fontSize(8.3);
+  const refRow2H = Math.max(
+    21,
+    Math.ceil(Math.max(doc.heightOfString(modelText, { width: colW }), doc.heightOfString(customerIdText, { width: colW })) + cellPadY * 2),
+  );
+
+  classicReceiptBox(doc, left, y, width, refRow1H + refRow2H, refRow1H, half);
+  doc.font('Helvetica-Bold').fontSize(8.8).fillColor('#000000');
+  doc.text(receiptNoText, left + cellPadX, y + cellPadY, { width: colW });
+  doc.text(dateText, left + half + cellPadX, y + cellPadY, { width: colW });
+  doc.font('Helvetica-Bold').fontSize(8.3).fillColor('#000000');
+  doc.text(modelText, left + cellPadX, y + refRow1H + cellPadY, { width: colW });
+  doc.text(customerIdText, left + half + cellPadX, y + refRow1H + cellPadY, { width: colW });
+  y += refRow1H + refRow2H + 22;
+
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
+    .text('RECEIVED WITH THANKS FROM: ' + data.customerName.toUpperCase(), left, y, { width });
+  y = Math.max(y + 24, Math.ceil(doc.y) + 12);
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
+    .text('PLACE : ' + data.place.toUpperCase(), left, y, { width });
+  y = Math.max(y + 28, Math.ceil(doc.y) + 16);
+
+  doc.font('Helvetica').fontSize(9);
+  const payRow1H = Math.max(
+    21,
+    Math.ceil(Math.max(doc.heightOfString('MODE', { width: colW }), doc.heightOfString('AMOUNT', { width: colW })) + cellPadY * 2),
+  );
+  doc.font('Helvetica-Bold').fontSize(9);
+  const payRow2H = Math.max(
+    21,
+    Math.ceil(Math.max(doc.heightOfString(data.mode, { width: colW }), doc.heightOfString(data.amount, { width: colW })) + cellPadY * 2),
+  );
+
+  classicReceiptBox(doc, left, y, width, payRow1H + payRow2H, payRow1H, half);
+  doc.font('Helvetica').fontSize(9).fillColor('#000000')
+    .text('MODE', left + cellPadX, y + cellPadY, { width: colW });
+  doc.text('AMOUNT', left + half + cellPadX, y + cellPadY, { width: colW });
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
+    .text(data.mode, left + cellPadX, y + payRow1H + cellPadY, { width: colW });
+  doc.text(data.amount, left + half + cellPadX, y + payRow1H + cellPadY, { width: colW });
+  y += payRow1H + payRow2H + 10;
+
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
+    .text(data.amountInWords, left, y, { width });
+  y = Math.ceil(doc.y) + 10;
+
+  if (data.balance) {
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
+      .text('CUSTOMER BALANCE : ' + data.balance, left, y, { width });
+    y = Math.ceil(doc.y) + 12;
+  } else {
+    y += 8;
+  }
+
+  doc.font('Helvetica-Bold').fontSize(8.6).fillColor('#000000')
+    .text('Remarks: ' + data.remarks, left, y, { width, lineGap: 2 });
+  y = Math.ceil(doc.y) + 32;
+
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
+    .text('FOR, ' + data.company.name.toUpperCase(), left + half, y, { width: half, align: 'right' });
+  y += 58;
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#000000')
+    .text("CUSTOMER'S SIGNATURE", left, y, { width: half });
+  const signatory = data.signatory.name === data.signatory.designation
+    ? 'AUTHORISED SIGNATORY'
+    : 'AUTHORISED SIGNATORY: ' + data.signatory.name + ' (' + data.signatory.designation + ')';
+  doc.text(signatory, left + half, y, { width: half, align: 'right' });
 
   doc.end();
   return done;

@@ -2,7 +2,7 @@ import {
   AadhaarVerificationSide,
   AadhaarVerificationStatus,
 } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import prisma from '../lib/prisma';
 import { decryptPanData, encryptPanData } from './panVerification.dataCrypto';
 import { deleteFileFromDrive, uploadFileToDrive } from './googleDrive.service';
@@ -88,6 +88,9 @@ export const AADHAAR_RAW_DATA_TTL_MS = 5 * 60 * 1000;
 export const AADHAAR_EPHEMERAL_SESSION_TTL_MS = 15 * 60 * 1000;
 export const MAX_AADHAAR_TEMPLATE_SIZE = 5 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+// The column is required, so once a template is stored we write a random value
+// in place of the hash of the Aadhaar number.
+const redactedAadhaarFingerprint = () => createHash('sha256').update(randomBytes(32)).digest('hex');
 
 export const getAadhaarRawDataExpiresAt = (completedAt = new Date()) =>
   new Date(completedAt.getTime() + AADHAAR_RAW_DATA_TTL_MS);
@@ -751,7 +754,7 @@ export class AadhaarVerificationService {
     }
     if (record.template) {
       if (record.encryptedResult || record.ephemeralExpiresAt) {
-        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null } });
+        await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null, requestFingerprint: redactedAadhaarFingerprint() } });
         record.encryptedResult = null;
         record.rawDataExpiresAt = null;
         record.ephemeralExpiresAt = null;
@@ -780,7 +783,9 @@ export class AadhaarVerificationService {
         },
       });
       templateId = template.id;
-      await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null } });
+      // The stored template is what we keep. Replace the unsalted fingerprint
+      // so the Aadhaar number cannot be brute-forced from the last 4 digits.
+      await this.record.update({ where: { id: record.id }, data: { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null, requestFingerprint: redactedAadhaarFingerprint() } });
       return {
         record: recordSummary({ ...record, encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null, template }),
         result: null,

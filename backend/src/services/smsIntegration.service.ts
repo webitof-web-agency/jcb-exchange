@@ -19,9 +19,13 @@ import {
   renderSmsVariables,
   validateSmsTemplateConfiguration,
 } from '../modules/sms-core/templatePolicy';
+import { applySmsOfferLinkResolution, buildSmsOutboxSnapshot, maskSentOfferLinkValues, readSmsOfferLinkRef } from '../modules/sms-core/offerLinkBinding';
+import { buildOfferShortUrl, maskOfferLinks } from '../utils/offerShortCode';
+import { resolveOfferResponseOrigin } from '../utils/offerResponseToken';
 import { getSmsPublishedBroadcastRecipients } from './smsAudience.service';
 import { resolveNotificationPreference } from './notificationRecipient.service';
 import { provisionAutomationRules } from './notificationAutomationProvisioning.service';
+import { resolveOfferLinkForDelivery } from './offerShortLink.service';
 
 const SETTINGS_ID = 'default';
 const MASKED_SECRET = '********';
@@ -62,6 +66,10 @@ export const recruitmentSmsEvents = [
   'RECRUITMENT_INTERVIEW_CANCELLED',
   'RECRUITMENT_OFFER_SENT',
   'RECRUITMENT_OFFER_STATUS_UPDATED',
+  'RECRUITMENT_OFFER_ACCEPTED',
+  'RECRUITMENT_OFFER_ACCEPTED_HR',
+  'RECRUITMENT_JOINING_REMINDER',
+  'RECRUITMENT_JOINING_WELCOME',
   'RECRUITMENT_NEW_JOB_PUBLISHED',
 ] as const;
 
@@ -208,6 +216,8 @@ const getSmsAutomationConfiguration = async (eventCodes: readonly SmsAutomationE
         updatedAt: null,
       }),
       variableOptions: getSmsTemplateVariableOptions(eventCode),
+      // The fixed part HR writes in the approved DLT text before the offerShortCode variable.
+      ...(eventCode === 'RECRUITMENT_OFFER_SENT' ? { offerShortLinkPrefix: buildOfferShortUrl(resolveOfferResponseOrigin(), '') } : {}),
     })),
   };
 };
@@ -294,11 +304,37 @@ const deliverSmsOutboxMessage = async (messageLogId: string, { respectSchedule =
     return true;
   });
   if (!claimed) throw new Error('This SMS message is already being processed or is no longer eligible for delivery.');
+  // The link values filled in for this attempt: blanked from any stored error text.
+  let resolvedPayload: Record<string, unknown> | null = null;
   try {
+    // Late binding: an offer SMS is queued without its link. The current link is built now (first send, worker
+    // retry and manual retry all pass here); a message written for an older link version or for an offer that is
+    // no longer open is cancelled instead of sent. Checked before the settings so a dead link never uses retries.
+    let variablesPayload = stored.payloadSnapshot;
+    const offerLink = readSmsOfferLinkRef(stored.payloadSnapshot);
+    if (offerLink) {
+      const decision = applySmsOfferLinkResolution(
+        stored.payloadSnapshot,
+        await resolveOfferLinkForDelivery(offerLink.offerId, offerLink.tokenVersion),
+      );
+      if (!decision.send) {
+        const processedAt = new Date();
+        await prisma.$transaction([
+          prisma.smsMessageLog.update({ where: { id: messageLog.id }, data: { status: 'SKIPPED', errorMessage: decision.reason } }),
+          prisma.smsOutbox.update({
+            where: { id: messageLog.outbox.id },
+            data: { status: 'CANCELLED', nextAttemptAt: null, lastError: decision.reason, processedAt, lockedAt: null },
+          }),
+        ]);
+        return { sent: false, skipped: true, messageLogId: messageLog.id, reason: decision.reason };
+      }
+      variablesPayload = decision.payload;
+      resolvedPayload = decision.payload;
+    }
     const settings = await getEnabledSmsSettings();
     const apiKey = decryptSmsCredential(settings.encryptedApiKey!, getCredentialSecret());
     const missingVariables = stored.variablesValues === null
-      ? getMissingSmsTemplateVariables(stored.variablesTemplate, stored.payloadSnapshot)
+      ? getMissingSmsTemplateVariables(stored.variablesTemplate, variablesPayload)
       : [];
     if (missingVariables.length) {
       throw new Error(`SMS template values are missing from event data: ${missingVariables.join(', ')}.`);
@@ -309,7 +345,7 @@ const deliverSmsOutboxMessage = async (messageLogId: string, { respectSchedule =
       senderId: settings.senderId!,
       messageId: stored.messageId,
       numbers: messageLog.recipientPhone,
-      variablesValues: stored.variablesValues ?? renderSmsVariables(stored.variablesTemplate, stored.payloadSnapshot),
+      variablesValues: stored.variablesValues ?? renderSmsVariables(stored.variablesTemplate, variablesPayload),
       smsDetails: settings.smsDetails === '1' ? '1' : '0',
     });
     await prisma.$transaction([
@@ -318,7 +354,8 @@ const deliverSmsOutboxMessage = async (messageLogId: string, { respectSchedule =
     ]);
     return { sent: true, messageLogId: messageLog.id };
   } catch (error) {
-    const lastError = error instanceof Error ? error.message.slice(0, 1000) : 'Unable to send SMS automation.';
+    // A provider error may echo the request; the stored text must not carry an offer link in clear.
+    const lastError = maskSentOfferLinkValues(error instanceof Error ? error.message.slice(0, 1000) : 'Unable to send SMS automation.', resolvedPayload);
     await prisma.$transaction([
       prisma.smsMessageLog.update({ where: { id: messageLog.id }, data: { status: 'FAILED', errorMessage: lastError } }),
       prisma.smsOutbox.update({
@@ -386,12 +423,14 @@ export const processSmsOutbox = async ({ limit = 50 }: { limit?: number } = {}) 
     take: Math.min(100, Math.max(1, limit)),
     select: { messageLogId: true },
   });
-  const results = await Promise.all(pending.map(({ messageLogId }) => deliverSmsOutboxMessage(messageLogId, { respectSchedule: true }).catch((error) => ({ sent: false, error: error instanceof Error ? error.message : 'Unable to process SMS outbox message.' }))));
+  const results: Array<{ sent: boolean; skipped?: boolean }> = await Promise.all(pending.map(({ messageLogId }) => deliverSmsOutboxMessage(messageLogId, { respectSchedule: true }).catch((error) => ({ sent: false, error: error instanceof Error ? error.message : 'Unable to process SMS outbox message.' }))));
   return {
     recovered,
     selected: pending.length,
     sent: results.filter((result) => result.sent).length,
-    failed: results.filter((result) => !result.sent).length,
+    // Cancelled on purpose (offer link superseded / offer closed): not a failure.
+    skipped: results.filter((result) => result.skipped).length,
+    failed: results.filter((result) => !result.sent && !result.skipped).length,
   };
 };
 
@@ -452,10 +491,12 @@ export const dispatchConfiguredSms = async (input: SmsDispatchInput) => {
       rule: rule ? { enabled: rule.enabled, messageId: rule.messageId } : null,
     });
     if (!decision.shouldQueue || !rule?.messageId) return { queued: false, reason: decision.shouldQueue ? 'MESSAGE_ID_REQUIRED' : decision.reason };
-    const normalizedVariables = validateSmsTemplateConfiguration(input.eventCode, true, rule.variablesTemplate);
+    // Names and order only: the "offer rule needs a link" check is for saving a rule, not for every send.
+    const normalizedVariables = validateSmsTemplateConfiguration(input.eventCode, true, rule.variablesTemplate, { requireOfferLink: false });
     const dedupeKey = buildDedupeKey(input, decision.recipientPhone);
     const existing = await prisma.smsMessageLog.findUnique({ where: { dedupeKey } });
     if (existing) return { queued: false, duplicate: true, messageLogId: existing.id };
+    const payloadSnapshot = input.payloadSnapshot || {};
     let messageLog;
     try {
       messageLog = await prisma.smsMessageLog.create({
@@ -466,14 +507,16 @@ export const dispatchConfiguredSms = async (input: SmsDispatchInput) => {
           recipientType: input.recipientType,
           recipientPhone: decision.recipientPhone,
           dedupeKey,
-          payloadSnapshot: (input.payloadSnapshot || {}) as Prisma.InputJsonValue,
+          // The log is for display: offer links are always masked there.
+          payloadSnapshot: maskOfferLinks(payloadSnapshot) as Prisma.InputJsonValue,
           outbox: {
             create: {
               payload: {
                 eventCode: input.eventCode,
                 messageId: rule.messageId,
                 variablesTemplate: normalizedVariables || '',
-                payloadSnapshot: (input.payloadSnapshot || {}) as Prisma.InputJsonValue,
+                // An offer message keeps payload.offerLink and masked link values; delivery fills in the real link.
+                payloadSnapshot: buildSmsOutboxSnapshot(payloadSnapshot) as Prisma.InputJsonValue,
               },
             },
           },
@@ -547,7 +590,8 @@ export const sendSmsTestMessage = async ({ messageId, variablesValues, actorUser
       relatedEntityId: actorUserId,
       recipientType: 'TEST',
       recipientPhone,
-      payloadSnapshot: { messageId: messageId.trim(), variablesValues: variablesValues || '' },
+      // Typed test values could hold an offer link: masked in the log, sent as typed from the outbox.
+      payloadSnapshot: maskOfferLinks({ messageId: messageId.trim(), variablesValues: variablesValues || '' }),
       outbox: { create: { payload: { messageId: messageId.trim(), variablesValues: variablesValues || '', payloadSnapshot: {} } } },
     },
   });

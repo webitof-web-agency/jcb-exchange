@@ -11,6 +11,9 @@ const MARKETPLACE_TEMPLATE_VARIABLES: Record<string, readonly string[]> = {
   MARKETPLACE_NEW_LISTING_PUBLISHED: ['listingId', 'vehicleShortTitle', 'listingStatus'],
   MARKETPLACE_NEW_PAYMENT_SUPERADMIN: ['listingTitle', 'method'],
   MARKETPLACE_KYC_SUBMITTED_SUPERADMIN: ['partnerId'],
+  // Transport & Delivery module notifications
+  VEHICLE_TRANSPORT_DISPATCHED: ['customerName', 'machineTitle', 'vehicleNumber', 'challanNumber', 'transportStatus'],
+  VEHICLE_TRANSPORT_STATUS_UPDATE: ['customerName', 'machineTitle', 'vehicleNumber', 'challanNumber', 'transportStatus'],
 };
 
 const getTextValue = (value: unknown, fallback: string) => {

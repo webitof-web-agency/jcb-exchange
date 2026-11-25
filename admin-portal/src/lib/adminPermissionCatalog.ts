@@ -17,6 +17,14 @@ export const KYC_PERMISSION_DEFINITIONS: AdminPermissionDefinition[] = [
   { id: 'kyc.edit.override', label: 'KYC Edit Override' },
 ];
 
+export const EMAIL_PERMISSION_DEFINITIONS: AdminPermissionDefinition[] = [
+  { id: 'email.read', label: 'View Email Communications' },
+  { id: 'email.manage', label: 'Manage SMTP Settings & Email Delivery' },
+];
+
+export const EMAIL_VIEW_PERMISSIONS = ['email.read', 'email.manage'];
+export const EMAIL_MANAGE_PERMISSIONS = ['email.manage'];
+
 export const AI_PERMISSION_DEFINITIONS: AdminPermissionDefinition[] = [
   { id: 'ai.use', label: 'Use JCB Intelligence Hub' },
   { id: 'ai.manage', label: 'Manage Shared AI Provider Settings' },
@@ -26,6 +34,8 @@ export const AI_PERMISSION_DEFINITIONS: AdminPermissionDefinition[] = [
 
 export type AdminPermissionGroupDefinition = {
   groupName: string;
+  /** Optional hint shown above the group in the role editor. */
+  note?: string;
   permissions: AdminPermissionDefinition[];
 };
 
@@ -132,3 +142,64 @@ export const FINANCE_WORKSPACE_PERMISSION_GROUPS: AdminPermissionGroupDefinition
 
 export const FINANCE_WORKSPACE_PERMISSION_IDS = FINANCE_WORKSPACE_PERMISSION_GROUPS
   .flatMap((group) => group.permissions.map((permission) => permission.id));
+
+// Labels say what each key really unlocks on the server (backend/src/modules/hrm/routes.ts and services).
+export const HRM_PERMISSION_GROUPS: AdminPermissionGroupDefinition[] = [
+  {
+    groupName: 'Employee master & organization',
+    note: 'Almost every HRM page lists or opens employees, so an HRM role also needs "View HRM employees" (hrm.employees.read). '
+      + 'Which employees it sees comes from its HRM access scope (or hrm.scope.all).',
+    permissions: [
+      { id: 'hrm.employees.read', label: 'View HRM employees' },
+      { id: 'hrm.employees.manage', label: 'Employees: edit, deactivate, link login, reset password (with users.update)' },
+      { id: 'hrm.org.read', label: 'View HRM organization' },
+      { id: 'hrm.org.manage', label: 'Manage HRM organization (head-office masters need all-India access)' },
+      { id: 'hrm.assignments.manage', label: 'Manage employment assignments' },
+    ],
+  },
+  {
+    groupName: 'Onboarding & documents',
+    permissions: [
+      { id: 'hrm.onboarding.read', label: 'View HRM onboarding' },
+      {
+        id: 'hrm.onboarding.manage',
+        label: 'Onboarding: start, confirm joining, cancel, resolve review (Confirm joining also needs users.create / users.read / users.update for the login)',
+      },
+      { id: 'hrm.documents.read', label: 'View employee documents' },
+      { id: 'hrm.documents.manage', label: 'Upload employee documents' },
+      { id: 'hrm.documents.verify', label: 'Verify employee documents' },
+    ],
+  },
+  {
+    groupName: 'Attendance, leave & compensation',
+    permissions: [
+      { id: 'hrm.attendance.read', label: 'View attendance' },
+      { id: 'hrm.attendance.manage', label: 'Manage attendance' },
+      { id: 'hrm.leave.read', label: 'View leave' },
+      { id: 'hrm.leave.manage', label: 'Manage leave requests' },
+      { id: 'hrm.leave.approve', label: 'Approve leave' },
+      { id: 'hrm.compensation.read', label: 'View salary history' },
+      { id: 'hrm.compensation.manage', label: 'Manage salary history' },
+      { id: 'hrm.compensation.approve', label: 'Approve / reject salaries (never your own)' },
+    ],
+  },
+  {
+    groupName: 'Performance, incentives & exit',
+    permissions: [
+      { id: 'hrm.performance.read', label: 'View performance' },
+      { id: 'hrm.performance.manage', label: 'Manage performance' },
+      { id: 'hrm.incentive.read', label: 'View incentives' },
+      { id: 'hrm.incentive.manage', label: 'Manage incentives' },
+      { id: 'hrm.exit.read', label: 'View exits' },
+      { id: 'hrm.exit.manage', label: 'Manage exits' },
+    ],
+  },
+  {
+    groupName: 'Scope & audit',
+    permissions: [
+      { id: 'hrm.scope.manage', label: 'Give / end HRM access scopes (never wider than your own)' },
+      { id: 'hrm.scope.all', label: 'All-India HRM access: every employee, give any access scope' },
+      { id: 'hrm.audit.read', label: 'View HRM audit logs (all-India HR only)' },
+    ],
+  },
+];

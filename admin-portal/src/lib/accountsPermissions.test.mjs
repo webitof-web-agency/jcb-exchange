@@ -12,7 +12,7 @@ import {
 } from './accountsPermissions.js';
 
 test('accounts permission catalog exposes separate read, create, update, delete, and export permissions', () => {
-  assert.deepEqual(accountAnyPermissions, ['accounts.rto.read', 'accounts.rto.crud', 'accounts.sell.read', 'accounts.sell.crud']);
+  assert.deepEqual(accountAnyPermissions, ['accounts.rto.read', 'accounts.rto.crud', 'accounts.sell.read', 'accounts.sell.crud', 'accounts.transport.read', 'accounts.transport.crud']);
 
   assert.deepEqual(
     accountsNavItems.map((item) => ({
@@ -39,6 +39,14 @@ test('accounts permission catalog exposes separate read, create, update, delete,
         update: ['accounts.sell.update', 'accounts.sell.crud'],
         delete: ['accounts.sell.delete', 'accounts.sell.crud'],
         export: 'accounts.sell.export',
+      },
+      {
+        key: 'transport-delivery',
+        read: 'accounts.transport.read',
+        create: ['accounts.transport.create', 'accounts.transport.crud'],
+        update: ['accounts.transport.update', 'accounts.transport.crud'],
+        delete: ['accounts.transport.delete', 'accounts.transport.crud'],
+        export: 'accounts.transport.export',
       },
     ]
   );

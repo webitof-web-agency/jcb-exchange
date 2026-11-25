@@ -126,6 +126,7 @@ const notifyOwner = async (listing: any, title: string, message: string, status:
       relatedEntityId: listing.id,
       recipientType: 'PARTNER',
       recipientPhone: owner.whatsappNumber || owner.mobile,
+      recipientEmail: owner.email,
       payloadSnapshot: { listingId: listing.id, listingTitle: listing.title, listingStatus: status },
     });
   }

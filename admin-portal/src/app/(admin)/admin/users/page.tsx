@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, KeyRound, Pencil, Plus, Search, Trash2, X, MoreVertical, Check, Ban } from 'lucide-react';
+import { AlertCircle, KeyRound, Pencil, Plus, Search, Trash2, X, Check, Ban, Eye, EyeOff, Sparkles } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
 import DeleteImpactDialog from '@/components/portal/DeleteImpactDialog';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import PortalActionDropdown, { type DropdownItem } from '@/components/ui/PortalActionDropdown';
+import { generateTemporaryPassword } from '@/lib/hrmOnboarding';
+import { canAssignRole, serverErrorMessage } from '@/lib/roleEditorCatalog';
 
 interface ManagedUser {
   id: string;
@@ -94,6 +96,7 @@ export default function SuperAdminUsersPage() {
   const [passwordForm, setPasswordForm] = useState(initialPasswordForm);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createForm, setCreateForm] = useState(initialCreateForm);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [deleteUserTarget, setDeleteUserTarget] = useState<ManagedUser | null>(null);
@@ -117,6 +120,13 @@ export default function SuperAdminUsersPage() {
   const canUpdateUsers = isCurrentSuperAdmin || currentUserPermissions.includes('ALL_ACCESS') || currentUserPermissions.includes('users.update');
   const canDeleteUsers = isCurrentSuperAdmin || currentUserPermissions.includes('ALL_ACCESS') || currentUserPermissions.includes('users.delete');
   const isProtectedUser = (user: ManagedUser) => user.role === 'SUPER_ADMIN' || user.isRootAdmin;
+  // Server rules for anybody but a Super Admin: administrator accounts (ADMIN / SUPER_ADMIN) are edited and their
+  // passwords reset only by a Super Admin; nobody changes their own role; a role is given only by somebody who
+  // holds every permission in it.
+  const isAdministratorAccount = (user: ManagedUser) => user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
+  const canManageAccount = (user: ManagedUser) => isCurrentSuperAdmin || !isAdministratorAccount(user);
+  const isOwnAccount = (user: ManagedUser) => Boolean(currentUser?.id) && user.id === currentUser?.id;
+  const canGiveRole = (role: EmployeeRole) => isCurrentSuperAdmin || canAssignRole(currentUser, role.permissions);
 
   useEffect(() => {
     let cancelled = false;
@@ -229,14 +239,16 @@ export default function SuperAdminUsersPage() {
         mobile: editForm.mobile || undefined,
         title: editForm.title || undefined,
         customRoleId: editForm.customRoleId || null,
-        permissions: editForm.permissions,
+        // With a role, the role is the only permission source (the server stores no direct grants), so send none:
+        // sending the role's list would read as "adding" direct permissions and be refused.
+        permissions: editForm.customRoleId ? [] : editForm.permissions,
       });
 
       setUsers((current) => current.map((user) => (user.id === editUser.id ? response.data.user : user)));
       closeEditModal();
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || t('userManagement.updateFailed'));
+        setError(serverErrorMessage(err, t('userManagement.updateFailed')));
       } else {
         setError(t('userManagement.updateFailed'));
       }
@@ -280,7 +292,7 @@ export default function SuperAdminUsersPage() {
       closePasswordModal();
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || t('userManagement.resetPasswordFailed'));
+        setError(serverErrorMessage(err, t('userManagement.resetPasswordFailed')));
       } else {
         setError(t('userManagement.resetPasswordFailed'));
       }
@@ -309,9 +321,10 @@ export default function SuperAdminUsersPage() {
       await refreshUsers();
       setIsCreateModalOpen(false);
       setCreateForm(initialCreateForm);
+      setShowCreatePassword(false);
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        setCreateError(err.response?.data?.error || t('userManagement.createFailed'));
+        setCreateError(serverErrorMessage(err, t('userManagement.createFailed')));
       } else {
         setCreateError(t('userManagement.unexpectedError'));
       }
@@ -332,7 +345,7 @@ export default function SuperAdminUsersPage() {
       setUsers((current) => current.map((user) => (user.id === id ? response.data.user : user)));
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || t('userManagement.statusUpdateFailed'));
+        setError(serverErrorMessage(err, t('userManagement.statusUpdateFailed')));
       } else {
         setError(t('userManagement.statusUpdateFailed'));
       }
@@ -420,6 +433,7 @@ export default function SuperAdminUsersPage() {
                     <label className="mb-1 block text-sm font-medium text-gray-700">{t('userManagement.permissionRole')}</label>
                     <select
                       value={editForm.customRoleId}
+                      disabled={!isCurrentSuperAdmin && isOwnAccount(editUser)}
                       onChange={(event) => {
                         const selectedRole = employeeRoles.find((role) => role.id === event.target.value);
                         setEditForm((current) => ({
@@ -428,17 +442,22 @@ export default function SuperAdminUsersPage() {
                           permissions: selectedRole?.permissions || [],
                         }));
                       }}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107]"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#FFC107] disabled:bg-gray-50 disabled:text-gray-500"
                     >
                       <option value="">{t('userManagement.noPermissionRoleAssigned')}</option>
-                      {employeeRoles.map((role) => (
-                        <option key={role.id} value={role.id}>
-                          {role.name} ({permissionCountLabel(role.permissions.length)})
-                        </option>
-                      ))}
+                      {employeeRoles.map((role) => {
+                        const giveable = canGiveRole(role) || role.id === editUser.customRoleId;
+                        return (
+                          <option key={role.id} value={role.id} disabled={!giveable}>
+                            {role.name} ({permissionCountLabel(role.permissions.length)}){giveable ? '' : ' - has permissions you do not hold'}
+                          </option>
+                        );
+                      })}
                     </select>
                     <p className="mt-1 text-xs text-gray-500">
-                      {t('userManagement.permissionRoleDescription')}
+                      {!isCurrentSuperAdmin && isOwnAccount(editUser)
+                        ? 'You cannot change your own role or permissions. Ask another administrator.'
+                        : t('userManagement.permissionRoleDescription')}
                     </p>
                   </div>
                 ) : null}
@@ -548,8 +567,11 @@ export default function SuperAdminUsersPage() {
             />
           </div>
           {canCreateUsers ? (
-            <button
-              onClick={() => setIsCreateModalOpen(true)}
+                <button
+                  onClick={() => {
+                    setShowCreatePassword(false);
+                    setIsCreateModalOpen(true);
+                  }}
               className="flex h-10 items-center justify-center gap-2 rounded-full bg-[#FFC107] px-5 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-[#E5AD06] focus:outline-none focus:ring-2 focus:ring-[#FFC107] focus:ring-offset-2"
             >
               <Plus size={16} />
@@ -614,7 +636,8 @@ export default function SuperAdminUsersPage() {
                             items={(() => {
                               const dropdownItems: DropdownItem[] = [];
 
-                              if (canUpdateUsers) {
+                              // Only a Super Admin edits or resets the password of an administrator account.
+                              if (canUpdateUsers && canManageAccount(user)) {
                                 dropdownItems.push({
                                   label: t('userManagement.editEmployee'),
                                   icon: <Pencil className="h-4 w-4 text-gray-400" />,
@@ -724,15 +747,39 @@ export default function SuperAdminUsersPage() {
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">{t('userManagement.temporaryPasswordRequired')}</label>
-                  <input
-                    type="text"
-                    required
-                    minLength={8}
-                    value={createForm.password}
-                    onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))}
-                    placeholder={t('userManagement.temporaryPasswordPlaceholder')}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none transition focus:border-gray-900"
-                  />
+                  <div className="flex gap-2">
+                    <div className="relative min-w-0 flex-1">
+                      <input
+                        id="create-employee-password"
+                        type={showCreatePassword ? 'text' : 'password'}
+                        required
+                        minLength={8}
+                        maxLength={72}
+                        value={createForm.password}
+                        onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))}
+                        placeholder={t('userManagement.temporaryPasswordPlaceholder')}
+                        className="h-10 w-full rounded-lg border border-gray-300 px-4 pr-10 text-sm text-gray-900 placeholder:text-gray-400 outline-none transition focus:border-gray-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCreatePassword((value) => !value)}
+                        aria-label={showCreatePassword ? 'Hide password' : 'Show password'}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700"
+                      >
+                        {showCreatePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateForm((current) => ({ ...current, password: generateTemporaryPassword() }));
+                        setShowCreatePassword(true);
+                      }}
+                      className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Generate
+                    </button>
+                  </div>
                   <p className="mt-1 text-xs text-gray-500">{t('userManagement.temporaryPasswordDescription')}</p>
                 </div>
 
@@ -751,11 +798,14 @@ export default function SuperAdminUsersPage() {
                     className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-900 outline-none transition focus:border-gray-900"
                   >
                     <option value="">{t('userManagement.noPermissionRoleAssigned')}</option>
-                    {employeeRoles.map((role) => (
-                      <option key={role.id} value={role.id}>
-                        {role.name} ({permissionCountLabel(role.permissions.length)})
-                      </option>
-                    ))}
+                    {employeeRoles.map((role) => {
+                      const giveable = canGiveRole(role);
+                      return (
+                        <option key={role.id} value={role.id} disabled={!giveable}>
+                          {role.name} ({permissionCountLabel(role.permissions.length)}){giveable ? '' : ' - has permissions you do not hold'}
+                        </option>
+                      );
+                    })}
                   </select>
                   <p className="mt-1 text-xs text-gray-500">
                     {t('userManagement.createRoleHelp')}
@@ -765,9 +815,13 @@ export default function SuperAdminUsersPage() {
               </div>
 
               <div className="mt-8 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreateModalOpen(false);
+                        setCreateForm(initialCreateForm);
+                        setShowCreatePassword(false);
+                      }}
                   className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
                 >
                   {t('common.cancel')}

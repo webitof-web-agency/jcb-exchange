@@ -15,7 +15,30 @@ import { canUseRecruitmentPermission, recruitmentPermissions } from '@/lib/recru
 import { useSiteLogo } from '@/hooks/useSiteLogo';
 import RatingDropdown from '@/components/recruitment/RatingDropdown';
 import OfferLetterPdfDocument from '@/components/recruitment/OfferLetterPdfDocument';
-import { emptyOfferLetterData, type OfferLetterFormData } from '@/lib/offerLetter';
+import OfferHrmFields, { useOfferHrmEditor } from '@/components/recruitment/OfferHrmFields';
+import OfferStatusActions from '@/components/recruitment/OfferStatusActions';
+import OfferAcceptanceSummary from '@/components/recruitment/OfferAcceptanceSummary';
+import OfferHrmStatus from '@/components/recruitment/OfferHrmStatus';
+import { defaultOfferValidUntil, emptyOfferLetterData, type OfferLetterFormData } from '@/lib/offerLetter';
+import {
+  EMPLOYMENT_TYPE_LABELS,
+  OFFER_STATUS_LABELS,
+  apiErrorMessage,
+  buildOfferMultipart,
+  canCreateAnotherOffer,
+  canDeleteOffer as offerCanBeDeleted,
+  canEditOffer as offerCanBeEdited,
+  describeOfferDispatch,
+  formatLakhsPerYear,
+  hasSalaryBreakup,
+  letterSalaryForPeriod,
+  salaryBreakupForPdf,
+  storedComponentsFrom,
+  storedPlacementFromOffer,
+  type OfferSendResponse,
+  type OfferStatus,
+  storedHrmFromOfferRow,
+} from '@/lib/offerHrm';
 import { toast } from 'react-toastify';
 import { isUuid } from '@/lib/routeSlug';
 import { fromInterviewDateTimeInput, toInterviewDateTimeInput } from '@/lib/interviewDateTime';
@@ -346,6 +369,28 @@ interface ApplicationWorkspaceData {
     offerLetterUrl?: string | null;
     offerLetterFileName?: string | null;
     offerLetterData?: Partial<OfferLetterFormData> | null;
+    offerValidUntil?: string | null;
+    reportingManager?: string | null;
+    hrmOrgUnitId?: string | null;
+    locationType?: string | null;
+    stateId?: number | null;
+    cityId?: number | null;
+    isOfficeManager?: boolean | null;
+    employmentType?: string | null;
+    reportingManagerEmployeeId?: string | null;
+    annualCtc?: string | number | null;
+    salaryComponents?: unknown;
+    acceptanceMethod?: string | null;
+    acceptedName?: string | null;
+    acceptedPlace?: string | null;
+    respondedAt?: string | null;
+    documentHash?: string | null;
+    acceptanceCertificateUrl?: string | null;
+    signatureFileUrl?: string | null;
+    hrmHandoffStatus?: string | null;
+    hrmHandoffError?: string | null;
+    hrmHandoffAttempts?: number | null;
+    hrmEmployeeId?: string | null;
   }>;
   activityLogs: Array<{
     id: string;
@@ -446,12 +491,24 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
   const canCreateOffer = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersCreate);
   const canUpdateOffer = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersUpdate);
   const canDeleteOffer = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersDelete);
+  // The acceptance downloads (/offers/:id/acceptance/:kind) need offers.read, which an application reviewer may lack.
+  const canReadOffers = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersRead);
+  // GET /recruitment/admin/settings?section=pipeline needs pipeline.read: without it the configured stages cannot be loaded.
+  const canReadPipeline = canUseRecruitmentPermission(currentUser, recruitmentPermissions.pipelineRead);
   const { darkLogoUrl } = useSiteLogo();
 
   const [data, setData] = useState<ApplicationWorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stages, setStages] = useState<RecruitmentStage[]>(DEFAULT_RECRUITMENT_STAGES);
+  const [loadedStages, setStages] = useState<RecruitmentStage[]>(DEFAULT_RECRUITMENT_STAGES);
+  const [stagesFailed, setStagesFailed] = useState(false);
+  const stages = canReadPipeline ? loadedStages : DEFAULT_RECRUITMENT_STAGES;
+  // Say so when the stage menu is not the configured pipeline, instead of silently offering the defaults.
+  const stageListNote = !canReadPipeline
+    ? 'Showing the default stages: the configured pipeline needs the recruitment.pipeline.read permission.'
+    : stagesFailed
+      ? 'The configured pipeline could not be loaded, so the default stages are shown.'
+      : '';
 
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
   const [isSnapshotOpen, setIsSnapshotOpen] = useState(true);
@@ -499,6 +556,11 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
   const [offerForm, setOfferForm] = useState<OfferLetterFormData>(emptyOfferLetterData);
   const [creatingOffer, setCreatingOffer] = useState(false);
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
+  const [offerSubmitError, setOfferSubmitError] = useState('');
+  // The HRM form options need offers.create / .update: do not request them for people who cannot make offers.
+  const offerHrmEditor = useOfferHrmEditor(canCreateOffer || canUpdateOffer);
+  const { reset: resetOfferHrm } = offerHrmEditor;
+  const canChangeOfferStatus = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersChangeStatus);
   const [downloadingResume, setDownloadingResume] = useState(false);
   const applicationId = data?.id || id;
 
@@ -512,11 +574,15 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
       employeeName: data?.candidate.fullName || '',
       employeeAddress: [data?.candidate.address, data?.candidate.currentCity, data?.candidate.state].filter(Boolean).join(', '),
       companyAddress: data?.job.locationAddress || location,
-      designation: data?.job.title || '',
-      department: data?.job.department?.name || '',
+      // Department and designation come from the HRM lists chosen in the form.
+      designation: '',
+      department: '',
       placeOfPosting: location,
       joiningDate: data?.job.startDate ? new Date(data.job.startDate).toISOString().slice(0, 10) : '',
+      offerValidUntil: defaultOfferValidUntil(today),
+      employmentType: EMPLOYMENT_TYPE_LABELS.FULL_TIME,
       signatoryName: currentUser?.name || '',
+      signatoryDesignation: 'Authorized Signatory',
       signatoryDate: today,
       signatoryPlace: data?.job.locationCity || '',
     };
@@ -543,11 +609,13 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
   }, [id, recruitmentBasePath, router]);
 
   const fetchPipelineStages = useCallback(async () => {
+    if (!canReadPipeline) return;
     try {
       const res = await api.get('/recruitment/admin/settings', { params: { section: 'pipeline' } });
       if (res.data?.success) {
         const nextStages = normalizeRecruitmentStages(res.data.data?.stages || res.data.stages || []);
         setStages(nextStages);
+        setStagesFailed(false);
         return;
       }
     } catch (error) {
@@ -555,7 +623,8 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
     }
 
     setStages(DEFAULT_RECRUITMENT_STAGES);
-  }, []);
+    setStagesFailed(true);
+  }, [canReadPipeline]);
 
   useEffect(() => {
     fetchApplicationDetails(false);
@@ -801,48 +870,67 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
 
   const handleCreateOffer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (creatingOffer) return;
     if (editingOfferId ? !canUpdateOffer : !canCreateOffer) return;
-    if (!offerForm.employeeName.trim() || !offerForm.designation.trim() || !offerForm.department.trim() || !offerForm.salaryAmount.trim() || !offerForm.joiningDate) {
-      alert('Employee name, designation, department, salary and joining date are required.');
+    setOfferSubmitError('');
+    if (!offerHrmEditor.validate(offerForm.designation)) {
+      setOfferSubmitError('Check the HRM placement and salary fields marked above.');
+      return;
+    }
+    if (!offerForm.employeeName.trim() || !offerForm.department.trim() || !offerForm.salaryAmount.trim() || Number(offerForm.salaryAmount.replace(/,/g, '')) <= 0 || !offerForm.joiningDate) {
+      setOfferSubmitError('Employee name, department, a salary amount and the joining date are required.');
       return;
     }
     const wasEditingOffer = Boolean(editingOfferId);
 
     try {
       setCreatingOffer(true);
-      const pdfBlob = await pdf(<OfferLetterPdfDocument data={offerForm} logoUrl={darkLogoUrl} />).toBlob();
-      const payload = new FormData();
-      payload.append('applicationId', applicationId);
-      payload.append('designation', offerForm.designation.trim());
-      payload.append('department', offerForm.department.trim());
-      payload.append('joiningLocation', offerForm.placeOfPosting.trim());
-      payload.append('ctc', offerForm.salaryAmount.replace(/,/g, '').trim());
-      payload.append('joiningDate', offerForm.joiningDate);
-      payload.append('probationPeriod', offerForm.probationPeriod.trim());
-      payload.append('additionalTerms', offerForm.additionalTerms.trim());
-      payload.append('offerData', JSON.stringify(offerForm));
-      payload.append('offerPdf', pdfBlob, `${offerForm.offerLetterNo || 'offer-letter'}.pdf`);
-      if (editingOfferId) {
-        await api.patch(`/recruitment/admin/offers/${editingOfferId}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
-      } else {
-        await api.post('/recruitment/admin/offers', payload, { headers: { 'Content-Type': 'multipart/form-data' } });
-      }
+      const pdfBlob = await pdf(<OfferLetterPdfDocument data={offerForm} logoUrl={darkLogoUrl} salaryBreakup={salaryBreakupForPdf(offerHrmEditor.form.salaryComponents)} />).toBlob();
+      const payload = buildOfferMultipart({ applicationId, letter: offerForm, hrm: offerHrmEditor.form, pdfBlob });
+      const response = editingOfferId
+        ? await api.patch<OfferSendResponse>(`/recruitment/admin/offers/${editingOfferId}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } })
+        : await api.post<OfferSendResponse>('/recruitment/admin/offers', payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       setShowOfferModal(false);
       setOfferForm(emptyOfferLetterData);
       setEditingOfferId(null);
       void fetchApplicationDetails(true);
       window.dispatchEvent(new Event('recruitment_offers_updated'));
-      toast.success(wasEditingOffer ? 'Offer updated successfully.' : 'Offer sent successfully.');
+      // Saved and sent: what each channel did (never an error from here on, a retry would close the link just sent).
+      const dispatch = describeOfferDispatch(response.data?.communications);
+      if (dispatch.tone === 'success') toast.success(`${wasEditingOffer ? 'Offer updated and resent.' : 'Offer sent.'} ${dispatch.summary}`);
+      else toast.warning(`Offer saved. ${dispatch.summary}`);
     } catch (error) {
-      console.error('Failed to save offer:', error);
-      toast.error('Failed to save offer letter. Please check the form and try again.');
+      setOfferSubmitError(apiErrorMessage(error, 'The offer could not be saved. Check the form and try again.'));
     } finally {
       setCreatingOffer(false);
     }
   };
 
   const updateOfferField = <K extends keyof OfferLetterFormData>(field: K, value: OfferLetterFormData[K]) => {
-    setOfferForm((previous) => ({ ...previous, [field]: value }));
+    setOfferForm((previous) => {
+      const next = { ...previous, [field]: value };
+      // The letter amount follows the breakup when the period changes; the validity follows the letter date.
+      if (field === 'salaryPeriod') {
+        const amount = letterSalaryForPeriod(offerHrmEditor.form.salaryComponents, String(value));
+        if (amount !== null) next.salaryAmount = amount;
+      }
+      if (field === 'letterDate' && (!previous.offerValidUntil || previous.offerValidUntil === defaultOfferValidUntil(previous.letterDate))) {
+        next.offerValidUntil = defaultOfferValidUntil(String(value));
+      }
+      return next;
+    });
+  };
+
+  const patchOfferForm = useCallback((patch: Partial<OfferLetterFormData>) => {
+    setOfferForm((previous) => ({ ...previous, ...patch }));
+  }, []);
+
+  const openNewOffer = () => {
+    setEditingOfferId(null);
+    setOfferSubmitError('');
+    setOfferForm(getOfferFormDefaults());
+    resetOfferHrm();
+    setShowOfferModal(true);
   };
 
   const openInterviewEditor = (iv: ApplicationWorkspaceData['interviews'][number]) => {
@@ -869,9 +957,11 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
   };
 
   const openOfferEditor = (offer: ApplicationWorkspaceData['offers'][number]) => {
-    if (!canUpdateOffer) return;
+    if (!canUpdateOffer || !offerCanBeEdited(offer.status as OfferStatus)) return;
     setEditingOfferId(offer.id);
+    setOfferSubmitError('');
     const defaults = getOfferFormDefaults();
+    const placement = storedPlacementFromOffer(offer);
     setOfferForm({
       ...defaults,
       ...(offer.offerLetterData || {}),
@@ -880,8 +970,20 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
       placeOfPosting: offer.offerLetterData?.placeOfPosting || offer.joiningLocation || defaults.placeOfPosting,
       salaryAmount: offer.offerLetterData?.salaryAmount || (offer.ctc ? String(offer.ctc) : defaults.salaryAmount),
       joiningDate: offer.offerLetterData?.joiningDate || (offer.joiningDate ? new Date(offer.joiningDate).toISOString().slice(0, 10) : defaults.joiningDate),
+      offerValidUntil: offer.offerValidUntil ? new Date(offer.offerValidUntil).toISOString().slice(0, 10) : defaults.offerValidUntil,
+      employmentType: placement?.employmentType && placement.employmentType in EMPLOYMENT_TYPE_LABELS
+        ? EMPLOYMENT_TYPE_LABELS[placement.employmentType as keyof typeof EMPLOYMENT_TYPE_LABELS]
+        : defaults.employmentType,
+      reportingManager: placement?.reportingManagerEmployeeId ? offer.reportingManager || '' : '',
     });
+    resetOfferHrm({ placement, components: storedComponentsFrom(offer.salaryComponents), reportingManagerName: offer.reportingManager ?? null });
     setShowOfferModal(true);
+  };
+
+  /** The yearly CTC of an offer (the letter may state a monthly amount). */
+  const offerAnnualCtc = (offer: ApplicationWorkspaceData['offers'][number]) => {
+    if (offer.annualCtc !== undefined && offer.annualCtc !== null && Number(offer.annualCtc) > 0) return Number(offer.annualCtc);
+    return offer.offerLetterData?.salaryPeriod === 'month' ? Number(offer.ctc) * 12 : Number(offer.ctc);
   };
 
   const handleDeleteOffer = async (offerId: string) => {
@@ -1019,19 +1121,24 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
             </div>
 
             {/* Quick Stage Action Selector */}
-            <div className="flex items-center gap-3 bg-gray-50 p-2 sm:p-2.5 rounded-2xl border border-gray-200 self-start">
-              <span className="text-xs font-bold text-gray-700">Stage:</span>
-              {canUpdateStage ? (
-                <StageSelectDropdown
-                  currentStage={data.currentStage}
-                  onStageChange={(newStage) => handleStageChange(newStage)}
-                  stages={stages}
-                />
-              ) : (
-                <span className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700">
-                  {formatRecruitmentStageLabel(data.currentStage)}
-                </span>
-              )}
+            <div className="self-start space-y-1">
+              <div className="flex items-center gap-3 bg-gray-50 p-2 sm:p-2.5 rounded-2xl border border-gray-200">
+                <span className="text-xs font-bold text-gray-700">Stage:</span>
+                {canUpdateStage ? (
+                  <StageSelectDropdown
+                    currentStage={data.currentStage}
+                    onStageChange={(newStage) => handleStageChange(newStage)}
+                    stages={stages}
+                  />
+                ) : (
+                  <span className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700">
+                    {formatRecruitmentStageLabel(data.currentStage)}
+                  </span>
+                )}
+              </div>
+              {canUpdateStage && stageListNote ? (
+                <p className="max-w-xs text-[10px] font-semibold leading-4 text-amber-700">{stageListNote}</p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1739,12 +1846,9 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
               <div className="bg-white rounded-2xl border border-gray-200/80 p-6 space-y-6 shadow-sm">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                   <h3 className="text-sm font-bold text-gray-900">Offer Management</h3>
-                  {canCreateOffer && <button
-                      onClick={() => {
-                        setEditingOfferId(null);
-                        setOfferForm(getOfferFormDefaults());
-                        setShowOfferModal(true);
-                      }}
+                  {/* Same "live offer" rule as the server: an accepted offer whose joining was cancelled / review dismissed no longer blocks a new one. */}
+                  {canCreateOffer && canCreateAnotherOffer(data.offers) && <button
+                      onClick={openNewOffer}
                       className="px-3.5 py-1.5 bg-[#FFC107] hover:bg-[#e5ad06] text-black font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition-all"
                     >
                       <PlusCircle size={14} />
@@ -1758,22 +1862,56 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-gray-900">{off.designation}</span>
                         <div className="flex items-center gap-2">
-                          <span className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-extrabold text-gray-700">{off.status.replaceAll('_', ' ')}</span>
-                          {canUpdateOffer && <button type="button" title="Edit offer" onClick={() => openOfferEditor(off)} className="text-gray-500 hover:text-blue-600"><Edit3 size={14} /></button>}
-                          {canDeleteOffer && <button type="button" title="Delete offer" onClick={() => handleDeleteOffer(off.id)} className="text-gray-500 hover:text-red-600"><Trash2 size={14} /></button>}
+                          <span className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-extrabold text-gray-700">{OFFER_STATUS_LABELS[off.status as OfferStatus] ?? off.status}</span>
+                          {canUpdateOffer && offerCanBeEdited(off.status as OfferStatus) && <button type="button" title="Edit offer" aria-label="Edit offer" onClick={() => openOfferEditor(off)} className="text-gray-500 hover:text-blue-600"><Edit3 size={14} /></button>}
+                          {canDeleteOffer && offerCanBeDeleted(off.status as OfferStatus) && <button type="button" title="Delete offer" aria-label="Delete offer" onClick={() => handleDeleteOffer(off.id)} className="text-gray-500 hover:text-red-600"><Trash2 size={14} /></button>}
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 text-gray-700">
                         <div>
                           <span className="text-gray-400 block text-[10px]">Offered CTC</span>
-                          <span className="font-bold text-gray-900">{formatLpa(off.ctc)}</span>
+                          <span className="font-bold text-gray-900">{formatLakhsPerYear(offerAnnualCtc(off))}</span>
                         </div>
                         <div>
                           <span className="text-gray-400 block text-[10px]">Joining Location</span>
                           <span className="font-bold text-gray-900">{off.joiningLocation}</span>
                         </div>
                       </div>
+                      {!off.hrmOrgUnitId && <p className="text-[10px] font-semibold text-amber-700">No HRM placement (offer made before it existed). Edit the offer to add it.</p>}
+                      {off.status === 'ACCEPTED' && off.acceptanceMethod ? (
+                        <OfferAcceptanceSummary
+                          offerId={off.id}
+                          applicationRef={data.applicationRef}
+                          canDownload={canReadOffers}
+                          acceptance={{
+                            method: off.acceptanceMethod,
+                            name: off.acceptedName ?? null,
+                            place: off.acceptedPlace ?? null,
+                            acceptedAt: off.respondedAt ?? null,
+                            documentHash: off.documentHash ?? null,
+                            hasCertificate: Boolean(off.acceptanceCertificateUrl),
+                            hasSignatureFile: Boolean(off.signatureFileUrl),
+                          }}
+                        />
+                      ) : null}
+                      {off.status === 'ACCEPTED' ? (
+                        <OfferHrmStatus
+                          offerId={off.id}
+                          hrm={storedHrmFromOfferRow(off)}
+                          canRun={canChangeOfferStatus}
+                          onChanged={async () => { await fetchApplicationDetails(true); window.dispatchEvent(new Event('recruitment_offers_updated')); }}
+                        />
+                      ) : null}
+                      <OfferStatusActions
+                        offerId={off.id}
+                        status={off.status as OfferStatus}
+                        candidateName={data.candidate.fullName}
+                        canChangeStatus={canChangeOfferStatus}
+                        onChanged={async () => { await fetchApplicationDetails(true); window.dispatchEvent(new Event('recruitment_offers_updated')); }}
+                        defaultPlace={off.joiningLocation}
+                        compact
+                      />
 
                     </div>
                   ))}
@@ -1900,7 +2038,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
                 <h3 className="text-base font-bold text-gray-900">{editingOfferId ? 'Edit Employment Offer' : 'Prepare Employment Offer'}</h3>
                 <p className="mt-1 text-xs text-gray-500">Complete the letter fields. The PDF preview updates instantly and is sent with the offer.</p>
               </div>
-              <button type="button" onClick={() => setShowOfferModal(false)} className="rounded-lg px-3 py-2 text-gray-500 hover:bg-gray-100" aria-label="Close offer letter">✕</button>
+              <button type="button" onClick={() => { if (!creatingOffer) setShowOfferModal(false); }} disabled={creatingOffer} className="rounded-lg px-3 py-2 text-gray-500 hover:bg-gray-100 disabled:opacity-50" aria-label="Close offer letter">✕</button>
             </div>
 
             <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
@@ -1917,15 +2055,25 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
                   <label className="font-semibold text-gray-700">Company address<textarea rows={2} value={offerForm.companyAddress} onChange={(e) => updateOfferField('companyAddress', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
                 </div>
 
+                <OfferHrmFields editor={offerHrmEditor} letter={offerForm} onLetterChange={patchOfferForm} disabled={creatingOffer} idPrefix="application-offer-hrm" />
+
                 <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
                   <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-amber-700">Employment details</p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="font-semibold text-gray-700">Designation *<input required value={offerForm.designation} onChange={(e) => updateOfferField('designation', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Department *<input required value={offerForm.department} onChange={(e) => updateOfferField('department', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Place of posting *<input required value={offerForm.placeOfPosting} onChange={(e) => updateOfferField('placeOfPosting', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Salary / CTC *<input required inputMode="decimal" placeholder="e.g. 850000" value={offerForm.salaryAmount} onChange={(e) => updateOfferField('salaryAmount', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">Department (on the letter)<input readOnly value={offerForm.department} placeholder="Chosen above" className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-100 p-2.5 text-gray-700" /></label>
+                    <label className="font-semibold text-gray-700">Place of posting *{/* With an HRM placement the letter states exactly that place. */}<input required readOnly={Boolean(offerHrmEditor.form.locationType)} value={offerForm.placeOfPosting} onChange={(e) => updateOfferField('placeOfPosting', e.target.value)} className={`mt-1 w-full rounded-xl border border-gray-200 p-2.5 text-gray-900 ${offerHrmEditor.form.locationType ? 'bg-gray-100' : 'bg-white'}`} /></label>
+                    <label className="font-semibold text-gray-700">
+                      Salary / CTC *
+                      <input required inputMode="decimal" placeholder="e.g. 850000" readOnly={hasSalaryBreakup(offerHrmEditor.form.salaryComponents)} value={offerForm.salaryAmount} onChange={(e) => updateOfferField('salaryAmount', e.target.value)} className={`mt-1 w-full rounded-xl border border-gray-200 p-2.5 text-gray-900 ${hasSalaryBreakup(offerHrmEditor.form.salaryComponents) ? 'bg-gray-100' : 'bg-white'}`} />
+                      {hasSalaryBreakup(offerHrmEditor.form.salaryComponents) && <span className="mt-1 block text-[11px] font-normal text-gray-500">Taken from the salary breakup total.</span>}
+                    </label>
                     <label className="font-semibold text-gray-700">Salary period<select value={offerForm.salaryPeriod} onChange={(e) => updateOfferField('salaryPeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900"><option value="month">Month</option><option value="annum">Annum</option></select></label>
                     <label className="font-semibold text-gray-700">Date of joining *<input required type="date" value={offerForm.joiningDate} onChange={(e) => updateOfferField('joiningDate', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                    <label className="font-semibold text-gray-700">
+                      Offer valid until
+                      <input type="date" value={offerForm.offerValidUntil} onChange={(e) => updateOfferField('offerValidUntil', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" />
+                      <span className="mt-1 block text-[11px] font-normal text-gray-500">Printed on the letter. The offer is closed only when you mark it expired.</span>
+                    </label>
                     <label className="font-semibold text-gray-700">Probation period (months) *<input required value={offerForm.probationPeriod} onChange={(e) => updateOfferField('probationPeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
                     <label className="font-semibold text-gray-700">Notice period (days) *<input required value={offerForm.noticePeriod} onChange={(e) => updateOfferField('noticePeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
                   </div>
@@ -1947,8 +2095,9 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
                 </div>
                 <label className="block font-semibold text-gray-700">Additional terms (one per line)<textarea rows={4} value={offerForm.additionalTerms} onChange={(e) => updateOfferField('additionalTerms', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
 
+                {offerSubmitError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700">{offerSubmitError}</p>}
                 <div className="flex justify-end gap-2 border-t border-gray-200 pt-4">
-                  <button type="button" onClick={() => setShowOfferModal(false)} className="rounded-xl bg-gray-100 px-4 py-2.5 font-bold text-gray-700 hover:bg-gray-200">Cancel</button>
+                  <button type="button" onClick={() => setShowOfferModal(false)} disabled={creatingOffer} className="rounded-xl bg-gray-100 px-4 py-2.5 font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-50">Cancel</button>
                   <button type="submit" disabled={creatingOffer} className="rounded-xl bg-[#FFC107] px-4 py-2.5 font-extrabold text-black shadow-md hover:bg-[#e5ad06] disabled:opacity-50">{creatingOffer ? 'Generating & sending...' : editingOfferId ? 'Save & resend offer' : 'Generate & send offer'}</button>
                 </div>
               </form>
@@ -1956,7 +2105,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
               <div className="min-h-0 border-t border-gray-200 bg-gray-100 p-3 lg:border-l lg:border-t-0 sm:p-5">
                 <div className="h-full overflow-hidden rounded-2xl border border-gray-300 bg-white shadow-inner">
                   <PDFViewer showToolbar={false} className="h-full w-full border-0">
-                    <OfferLetterPdfDocument data={offerForm} logoUrl={darkLogoUrl} />
+                    <OfferLetterPdfDocument data={offerForm} logoUrl={darkLogoUrl} salaryBreakup={salaryBreakupForPdf(offerHrmEditor.form.salaryComponents)} />
                   </PDFViewer>
                 </div>
               </div>

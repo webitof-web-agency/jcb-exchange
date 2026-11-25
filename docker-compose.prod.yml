@@ -1,0 +1,130 @@
+# Production / Dokploy Docker Compose blueprint for JCB Exchange.
+# Images are pre-built and pushed to GHCR by GitHub Actions (.github/workflows/docker-deploy.yml).
+# On the VPS / Dokploy, only pre-built images are pulled (~10-20s) — zero source builds on VPS.
+#
+# Note: If deploying each app as an independent Dokploy Application (recommended for per-service
+# zero-downtime restarts), use each service's image + port + healthcheck + volume settings directly
+# in Dokploy instead of running all three in one compose stack.
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/jcbexchange/jcbexchange-backend:latest}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5002
+      APP_STORAGE_DIR: /app/storage
+      ENABLE_BACKGROUND_JOBS: ${ENABLE_BACKGROUND_JOBS:-true}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://jcbexchange.com,https://admin.jcbexchange.com}
+      FRONTEND_URL: ${FRONTEND_URL:-https://jcbexchange.com}
+      ADMIN_PORTAL_URL: ${ADMIN_PORTAL_URL:-https://admin.jcbexchange.com}
+    expose:
+      - "5002"
+    ports:
+      - "${API_BIND_IP:-127.0.0.1}:${API_PORT:-5002}:5002"
+    volumes:
+      - backend_storage:/app/storage
+    networks:
+      - jcb_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5002/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      # Keep exactly 1 backend replica so node-cron jobs and in-memory rate limiters run once.
+      replicas: 1
+      update_config:
+        order: start-first
+        failure_action: rollback
+      resources:
+        limits:
+          memory: 3G
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/jcbexchange/jcbexchange-frontend:latest}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.jcbexchange.com/api}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://jcbexchange.com}
+        NEXT_PUBLIC_PARTNER_PORTAL_URL: ${NEXT_PUBLIC_PARTNER_PORTAL_URL:-https://admin.jcbexchange.com}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: "0.0.0.0"
+    expose:
+      - "3000"
+    ports:
+      - "${WEB_BIND_IP:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    networks:
+      - jcb_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      update_config:
+        order: start-first
+        failure_action: rollback
+      resources:
+        limits:
+          memory: 2G
+
+  admin-portal:
+    image: ${ADMIN_PORTAL_IMAGE:-ghcr.io/jcbexchange/jcbexchange-admin-portal:latest}
+    build:
+      context: ./admin-portal
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+        NEXT_PUBLIC_PUBLIC_SITE_URL: ${NEXT_PUBLIC_PUBLIC_SITE_URL:-https://jcbexchange.com}
+        NEXT_PUBLIC_FRONTEND_URL: ${NEXT_PUBLIC_FRONTEND_URL:-https://jcbexchange.com}
+        NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES: ${NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES:-15}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: "0.0.0.0"
+    expose:
+      - "3001"
+    ports:
+      - "${PORTAL_BIND_IP:-127.0.0.1}:${PORTAL_PORT:-3001}:3001"
+    networks:
+      - jcb_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3001/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      update_config:
+        order: start-first
+        failure_action: rollback
+      resources:
+        limits:
+          memory: 2G
+
+volumes:
+  backend_storage:
+
+networks:
+  jcb_net:
+    driver: bridge

@@ -6,12 +6,14 @@ export const buildCustomerPrimeWhatsAppDispatch = ({
   customerName,
   whatsappNumber,
   mobile,
+  email,
 }: {
   subscriptionId: string;
   status: string;
   customerName?: string | null | undefined;
   whatsappNumber?: string | null | undefined;
   mobile?: string | null | undefined;
+  email?: string | null | undefined;
 }) => {
   if (status !== 'ACTIVE') return null;
 
@@ -24,6 +26,7 @@ export const buildCustomerPrimeWhatsAppDispatch = ({
     relatedEntityId: subscriptionId,
     recipientType: 'CUSTOMER' as const,
     recipientPhone,
+    ...(email ? { recipientEmail: email } : {}),
     payloadSnapshot: {
       subscriptionId,
       status,

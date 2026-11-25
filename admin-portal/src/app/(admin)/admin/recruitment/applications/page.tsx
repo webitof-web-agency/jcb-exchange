@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-toastify';
 import api from '@/lib/api';
+import RemoteSearchPicker from '@/components/recruitment/RemoteSearchPicker';
 import { formatDate } from '@/lib/i18n/formatters';
 import { useAuthStore } from '@/store/authStore';
 import { canUseRecruitmentPermission, recruitmentPermissions } from '@/lib/recruitmentPermissions';
@@ -390,8 +391,8 @@ export default function AdminApplicationsPage() {
     };
   }, []);
 
-  const [jobsList, setJobsList] = useState<Array<{ id: string; title: string }>>([]);
-  const [hasLoadedJobOptions, setHasLoadedJobOptions] = useState(false);
+  // The chosen position's title, shown on the filter button (the list itself is searched on the server).
+  const [jobFilterLabel, setJobFilterLabel] = useState('');
   const [stages, setStages] = useState<RecruitmentStage[]>(DEFAULT_RECRUITMENT_STAGES);
 
   const fetchApplications = useCallback(async () => {
@@ -417,19 +418,11 @@ export default function AdminApplicationsPage() {
     }
   }, [jobFilter, jobSlugFilter, searchTerm, stageFilter]);
 
-  const fetchJobOptions = useCallback(async () => {
-    if (hasLoadedJobOptions) return;
-
-    try {
-      const res = await api.get('/recruitment/admin/jobs?limit=100&compact=true');
-      if (res.data?.success && res.data.jobs) {
-        setJobsList(res.data.jobs.map((j: JobOption) => ({ id: j.id, title: j.title })));
-        setHasLoadedJobOptions(true);
-      }
-    } catch (err) {
-      console.warn('Failed to load recruitment job options:', err);
-    }
-  }, [hasLoadedJobOptions]);
+  const searchJobOptions = useCallback(async (query: string): Promise<JobOption[]> => {
+    const res = await api.get('/recruitment/admin/jobs', { params: { compact: 'true', limit: 20, ...(query ? { q: query } : {}) } });
+    const list = res.data?.jobs;
+    return Array.isArray(list) ? (list as JobOption[]) : [];
+  }, []);
 
   const fetchPipelineStages = useCallback(async () => {
     try {
@@ -691,13 +684,19 @@ export default function AdminApplicationsPage() {
                 options={stageFilterOptions}
               />
 
-              <CustomFilterSelect
-                value={jobFilter}
-                onChange={(val) => setJobFilter(val)}
-                placeholder={t('recruitment.allPositions', 'All Positions')}
-                onOpen={() => void fetchJobOptions()}
-                options={jobsList.map((j) => ({ value: j.id, label: j.title }))}
-              />
+              <div className="w-full sm:w-56">
+                <RemoteSearchPicker<JobOption>
+                  selectedId={jobFilter}
+                  selectedLabel={jobFilter ? jobFilterLabel || t('recruitment.selectedPosition', 'Selected position') : ''}
+                  placeholder={t('recruitment.allPositions', 'All Positions')}
+                  searchPlaceholder="Search job title, code or city"
+                  search={searchJobOptions}
+                  itemId={(job) => job.id}
+                  itemLabel={(job) => job.title}
+                  onSelect={(job) => { setJobFilter(job.id); setJobFilterLabel(job.title); }}
+                  onClear={() => { setJobFilter(''); setJobFilterLabel(''); }}
+                />
+              </div>
 
               <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-2 rounded-xl border border-gray-200 shrink-0">
                 {t('recruitment.total', 'Total')}: {filteredApps.length}

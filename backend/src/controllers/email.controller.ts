@@ -7,6 +7,7 @@ import {
   updateTransactionalEmailSettings,
   verifyTransactionalEmailConnection,
 } from '../services/transactionalEmail.service';
+import { retryTransactionalEmailLog } from '../services/recruitmentEmail.service';
 
 const asOptionalString = (value: unknown, field: string, maxLength: number) => {
   if (value === undefined) return undefined;
@@ -87,5 +88,17 @@ export const sendEmailConfigurationTest = async (req: Request, res: Response) =>
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to send test email.';
     res.status(error instanceof TransactionalEmailSettingsError ? error.statusCode : 400).json({ error: message });
+  }
+};
+
+export const retryEmailDelivery = async (req: Request, res: Response) => {
+  try {
+    const logId = typeof req.params.id === 'string' ? req.params.id : '';
+    if (!logId) return res.status(400).json({ error: 'Email delivery log id is required.' });
+    const result = await retryTransactionalEmailLog(logId);
+    res.json({ message: 'Email queued again. It goes out with the next delivery run.', result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to retry email delivery.';
+    res.status(400).json({ error: message });
   }
 };

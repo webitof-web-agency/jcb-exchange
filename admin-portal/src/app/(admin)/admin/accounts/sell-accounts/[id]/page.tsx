@@ -181,7 +181,7 @@ export default function SellAccountDetailView() {
 
   const [record, setRecord] = useState<SellAccountRecord | null>(null);
   const [loading, setLoading] = useState(true);
-  const [invoiceBusy, setInvoiceBusy] = useState<'download' | 'resend' | null>(null);
+  const [invoiceBusy, setInvoiceBusy] = useState<'download' | 'download-profit' | 'resend' | null>(null);
   const [receiptBusyId, setReceiptBusyId] = useState('');
   const [latestInvoiceUrl, setLatestInvoiceUrl] = useState('');
 
@@ -263,6 +263,20 @@ export default function SellAccountDetailView() {
     }
   };
 
+  const downloadProfitInvoice = async () => {
+    setInvoiceBusy('download-profit');
+    try {
+      await downloadAuthedFile(
+        `/recruitment/admin/sell-accounts/${encodeURIComponent(record.id)}/profit-invoice`,
+        `Profit-Invoice-${record.profitInvoiceNumber || record.recordNumber || record.id}.pdf`,
+      );
+    } catch (error) {
+      toast.error(await readBlobErrorMessage(error, 'Unable to download the profit invoice.'));
+    } finally {
+      setInvoiceBusy(null);
+    }
+  };
+
   const downloadReceipt = async (payment: SellAccountPayment) => {
     if (!payment.id) return;
     setReceiptBusyId(payment.id);
@@ -279,14 +293,14 @@ export default function SellAccountDetailView() {
   };
 
   const resendInvoice = async () => {
-    if (!window.confirm('Send the invoice again to the customer on WhatsApp and SMS? A fresh link will be created and the old link will stop working.')) return;
+    if (!window.confirm('Send the invoice again to the customer on WhatsApp, SMS and Email? A fresh link will be created and the old link will stop working.')) return;
     setInvoiceBusy('resend');
     try {
       const response = await api.post<{ record?: SellAccountApiRecord; delivery?: { invoiceUrl?: string; anySent?: boolean } }>(`/recruitment/admin/sell-accounts/${encodeURIComponent(record.id)}/invoice/resend`);
       if (response.data?.record) setRecord(normalizeServerSellAccount(response.data.record));
       setLatestInvoiceUrl(response.data?.delivery?.invoiceUrl || '');
       if (response.data?.delivery?.anySent) toast.success('Invoice sent to the customer.');
-      else toast.warn('A new invoice link was created, but WhatsApp/SMS could not be sent. Check the automation settings.');
+      else toast.warn('A new invoice link was created, but notifications could not be sent. Check the automation settings.');
     } catch (error) {
       toast.error(await readBlobErrorMessage(error, 'Unable to resend the invoice.'));
     } finally {
@@ -492,8 +506,9 @@ export default function SellAccountDetailView() {
         <Card icon={<Receipt className="h-4 w-4" />} title="Customer Invoice">
           {record.invoiceNumber ? (
             <div className="space-y-2.5">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <Detail label="Invoice No." value={record.invoiceNumber} strong />
+                <Detail label="Profit Invoice" value={record.profitInvoiceNumber || 'Available'} strong />
                 <Detail label="Generated" value={formatDate(record.invoiceGeneratedAt || '')} />
                 <Detail label="Last sent" value={record.invoiceSentAt ? formatDate(record.invoiceSentAt) : 'Not sent'} />
               </div>
@@ -501,20 +516,30 @@ export default function SellAccountDetailView() {
                 <div className="flex flex-wrap gap-1.5">
                   {deliveryChannels.map((channel) => (
                     <span key={channel.channel} title={channel.detail || undefined} className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${channel.sent ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
-                      {channel.channel === 'WHATSAPP' ? 'WhatsApp' : 'SMS'}: {channel.sent ? 'Sent' : channel.status.replaceAll('_', ' ').toLowerCase()}
+                      {channel.channel === 'WHATSAPP' ? 'WhatsApp' : channel.channel === 'EMAIL' ? 'Email' : 'SMS'}: {channel.sent ? 'Sent' : channel.status.replaceAll('_', ' ').toLowerCase()}
                     </span>
                   ))}
                 </div>
               ) : null}
-              <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={invoiceBusy !== null} onClick={() => void downloadInvoice()} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-60">
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" disabled={invoiceBusy !== null} onClick={() => void downloadInvoice()} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-60 transition shadow-2xs">
                   {invoiceBusy === 'download' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}Download PDF
                 </button>
                 {canUpdate ? (
-                  <button type="button" disabled={invoiceBusy !== null} onClick={() => void resendInvoice()} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60">
+                  <button type="button" disabled={invoiceBusy !== null} onClick={() => void resendInvoice()} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60 transition shadow-2xs">
                     {invoiceBusy === 'resend' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}Resend to customer
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  disabled={invoiceBusy !== null}
+                  onClick={() => void downloadProfitInvoice()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-950 hover:bg-amber-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 transition shadow-2xs"
+                  title="Download Internal Margin Tax Invoice (18% inclusive GST on Profit Margin under Rule 32(5))"
+                >
+                  {invoiceBusy === 'download-profit' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5 text-amber-700" />}
+                  Profitable Invoice
+                </button>
               </div>
               {latestInvoiceUrl ? (
                 <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">

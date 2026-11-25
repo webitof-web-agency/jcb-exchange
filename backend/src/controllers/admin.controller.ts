@@ -2,6 +2,7 @@ import { ListingStatus, Role } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
+import { syncHrmEmployeeFromLogin } from '../modules/hrm/services/employeeLogin.service';
 import {
   checkGoogleDriveConnection,
   deleteFileFromDrive,
@@ -50,6 +51,7 @@ import {
 } from '../utils/customerPrimeSubscriptions';
 import { finalizeListingPaymentSale } from '../utils/listingPaymentFinalization';
 import { allowedAdminPermissions } from '../utils/adminPermissions';
+import { assertCanAssignCustomRole, assertCanGrantPermissions, PermissionGrantError } from '../utils/permissionGrant';
 import { normalizeListingMedia } from '../utils/mediaUrl';
 import { getAdminSecretValue, isAdminSecretKey } from '../utils/adminSecretReveal';
 import { resolveListingContactNumber } from '../utils/listingContact';
@@ -70,6 +72,7 @@ import { assertListingStatusChangeAllowed, buildAdminVehicleIdentitySummaries } 
 import { deleteAccountPermanently, getAccountDeletionImpact } from '../services/accountDeletion.service';
 import { isModeratedListingStatus } from '../services/listingModeration.service';
 import { initializeUserNotificationPreferences } from '../services/notificationPreference.service';
+import { insertManagedEmployeeUser, ManagedUserError, prepareManagedEmployeeUser, type ManagedEmployeeUserInput } from '../services/managedEmployeeUser.service';
 import {
   buildPartnerDirectoryOrderBy,
   buildPartnerDirectoryWhere,
@@ -1487,6 +1490,7 @@ export const updateCustomerPrimePaymentStatus = async (req: Request, res: Respon
         customerName: subscription.user?.name,
         whatsappNumber: subscription.user?.whatsappNumber,
         mobile: subscription.user?.mobile,
+        email: subscription.user?.email,
       })
       : null;
 
@@ -1496,6 +1500,7 @@ export const updateCustomerPrimePaymentStatus = async (req: Request, res: Respon
       relatedEntityId: subscription.id,
       recipientType: 'CUSTOMER',
       recipientPhone: getPreferredWhatsAppNumber(subscription.user?.whatsappNumber, subscription.user?.mobile),
+      recipientEmail: subscription.user?.email,
       payloadSnapshot: { subscriptionId: subscription.id, status, customerName: subscription.user?.name || null },
       ...(primeApprovalDispatch ? { templateComponents: primeApprovalDispatch.templateComponents } : {}),
     });
@@ -1696,6 +1701,7 @@ export const updateListingPaymentSubmissionStatus = async (req: Request, res: Re
           relatedEntityId: payment.id,
           recipientType: 'CUSTOMER',
           recipientPhone: payment.buyer?.mobile,
+          recipientEmail: payment.buyer?.email,
           payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: payment.listingId, listingTitle, status },
         });
       }
@@ -1719,6 +1725,7 @@ export const updateListingPaymentSubmissionStatus = async (req: Request, res: Re
           relatedEntityId: payment.id,
           recipientType: 'PARTNER',
           recipientPhone: payment.partner?.mobile,
+          recipientEmail: payment.partner?.email,
           payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: payment.listingId, listingTitle, status, recipientRole: 'PARTNER' },
         });
       }
@@ -2177,6 +2184,34 @@ export const updateManagedUserAccount = async (req: Request, res: Response, next
       normalizedEmail !== targetUser.email ||
       (normalizedMobile !== null && normalizedMobile !== targetUser.mobile);
 
+    // Only a Super Admin changes an administrator account (its email decides who can reset its password). Nobody
+    // changes their own role or permissions, and nobody gives a role or permission they do not hold themselves.
+    const operator = { userId: req.user!.id, role: req.user!.role };
+    if (operator.role !== 'SUPER_ADMIN') {
+      if (targetUser.role === 'SUPER_ADMIN' || targetUser.role === 'ADMIN') {
+        return res.status(403).json({ error: 'Only a Super Admin can change an administrator account.' });
+      }
+      if (targetUser.role === 'EMPLOYEE') {
+        const requestedRoleId = typeof customRoleId === 'string' && customRoleId.trim() ? customRoleId.trim() : null;
+        const currentDirect = ((targetUser.adminPermissions || []) as Array<{ permission: string }>).map((item) => item.permission);
+        const requestedDirect = Array.isArray(permissions)
+          ? permissions.filter((permission): permission is string => allowedAdminPermissions.has(permission))
+          : currentDirect;
+        const roleChanged = requestedRoleId !== ((targetUser as { customRoleId?: string | null }).customRoleId ?? null);
+        const addedDirect = requestedDirect.filter((permission) => !currentDirect.includes(permission));
+        if (targetUser.id === operator.userId && (roleChanged || addedDirect.length)) {
+          return res.status(403).json({ error: 'You cannot change your own role or permissions. Ask another administrator.' });
+        }
+        try {
+          if (roleChanged) await assertCanAssignCustomRole(operator, requestedRoleId);
+          await assertCanGrantPermissions(operator, addedDirect, 'These permissions');
+        } catch (error) {
+          if (error instanceof PermissionGrantError) return res.status(403).json({ error: error.message });
+          throw error;
+        }
+      }
+    }
+
     await prisma.user.update({
       where: { id },
       data: {
@@ -2187,6 +2222,13 @@ export const updateManagedUserAccount = async (req: Request, res: Response, next
         state: normalizedState,
         ...(credentialsChanged ? { authVersion: { increment: 1 } } : {}),
       },
+    });
+    // An employee who also has an HR record: copy the new name / email / mobile there (never fails this update).
+    await syncHrmEmployeeFromLogin({
+      userId: id,
+      actorUserId: req.user?.id,
+      previous: { name: targetUser.name, email: targetUser.email, mobile: targetUser.mobile },
+      next: { name: normalizedName, email: normalizedEmail, mobile: normalizedMobile || targetUser.mobile || null },
     });
 
     if (targetUser.role === 'ADMIN' || targetUser.role === 'EMPLOYEE') {
@@ -2298,6 +2340,10 @@ export const resetManagedUserPassword = async (req: Request, res: Response, next
     if (targetUser.role === 'SUPER_ADMIN' && (await prisma.adminProfile.findUnique({ where: { userId: id } }))?.isRootAdmin) {
       return res.status(400).json({ error: 'Protected root super admin passwords cannot be reset here.' });
     }
+    // Resetting a password is taking over the account: an administrator's only by a Super Admin.
+    if (req.user!.role !== 'SUPER_ADMIN' && (targetUser.role === 'SUPER_ADMIN' || targetUser.role === 'ADMIN')) {
+      return res.status(403).json({ error: 'Only a Super Admin can reset an administrator password.' });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -2375,135 +2421,28 @@ export const deleteManagedUser = async (req: Request, res: Response, next: NextF
 
 export const createManagedUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const {
-      name,
-      email,
-      mobile,
-      password,
-      role,
-      title,
-      permissions,
-      customRoleId,
-      businessName,
-      partnerType,
-    } = req.body as {
-      name?: string;
-      email?: string;
-      mobile?: string;
-      password?: string;
-      role?: Role;
-      title?: string;
-      permissions?: string[];
-      customRoleId?: string | null;
-      businessName?: string;
-      partnerType?: string;
-    };
-
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ error: 'Name, email, password, and role are required.' });
-    }
-
-    if (role !== 'EMPLOYEE') {
-      return res.status(400).json({ error: 'Only employee accounts can be created here.' });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
-    }
-
-    let normalizedEmail: string;
-    try {
-      normalizedEmail = normalizeProfileEmail(email) || '';
-    } catch (error) {
-      return res.status(400).json({ error: error instanceof Error ? error.message : 'Enter a valid email address.' });
-    }
-
-    const rawMobile = typeof mobile === 'string' ? mobile.trim() : '';
-    if (mobile !== undefined && typeof mobile !== 'string') {
-      return res.status(400).json({ error: 'Mobile number must be a string.' });
-    }
-
-    const normalizedMobile = normalizeProfileMobile(rawMobile);
-    if (rawMobile && !normalizedMobile) {
-      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
-    }
-
-    const duplicateEmailUser = await prisma.user.findFirst({
-      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
-      select: { id: true },
-    });
-
-    if (duplicateEmailUser) {
-      return res.status(409).json({ error: 'Email address is already in use.' });
-    }
-
-    if (normalizedMobile) {
-      const duplicateMobileUser = await prisma.user.findFirst({
-        where: { mobile: { in: getProfileMobileCandidates(normalizedMobile) } },
-        select: { id: true },
-      });
-
-      if (duplicateMobileUser) {
-        return res.status(409).json({ error: 'Mobile number is already in use.' });
-      }
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const normalizedCustomRoleId =
-      typeof customRoleId === 'string' && customRoleId.trim() ? customRoleId.trim() : null;
-
-    if (normalizedCustomRoleId) {
-      const customRole = await prisma.customRole.findUnique({
-        where: { id: normalizedCustomRoleId },
-        select: { id: true },
-      });
-
-      if (!customRole) {
-        return res.status(400).json({ error: 'Selected employee role was not found.' });
-      }
-    }
-
-    const normalizedPermissions = Array.isArray(permissions)
-      ? permissions.filter((permission) => allowedAdminPermissions.has(permission))
-      : [];
-
-    const createdUser = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          name: name.trim(),
-          email: normalizedEmail,
-          mobile: normalizedMobile || undefined,
-          password: hashedPassword,
-          role,
-          customRoleId: role === 'EMPLOYEE' ? normalizedCustomRoleId : null,
-          status: 'ACTIVE' as any,
-          authProvider: 'LOCAL',
-          createdById: req.user?.id,
-          adminProfile: {
-            create: {
-              title: title || 'Operations Employee',
-              isRootAdmin: false,
-            },
-          },
-          adminPermissions: normalizedCustomRoleId || normalizedPermissions.length === 0
-            ? undefined
-            : {
-              create: normalizedPermissions.map((permission) => ({ permission })),
-            },
-        } as any,
-        include: managedUserInclude as any,
-      });
-
-      await initializeUserNotificationPreferences(user, tx);
-      return user;
-    });
+    // Validation and creation live in the shared service, which the HRM "Add employee" flow also uses.
+    const prepared = await prepareManagedEmployeeUser(prisma, req.body as ManagedEmployeeUserInput);
+    // A new login gets no role or permission its creator does not hold.
+    const operator = { userId: req.user!.id, role: req.user!.role };
+    await assertCanAssignCustomRole(operator, prepared.customRoleId);
+    await assertCanGrantPermissions(operator, prepared.permissions, 'These permissions');
+    const createdUser = await prisma.$transaction((tx) =>
+      insertManagedEmployeeUser(tx, prepared, { createdById: req.user?.id, include: managedUserInclude as any }),
+    );
 
     res.status(201).json({
       message: 'Employee created successfully.',
       user: mapManagedUser(createdUser),
     });
   } catch (error) {
+    if (error instanceof ManagedUserError) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    if (error instanceof PermissionGrantError) {
+      return res.status(403).json({ error: error.message });
+    }
+
     const uniqueConstraintMessage = getAuthUniqueConstraintMessage(error, 'admin');
     if (uniqueConstraintMessage) {
       return res.status(409).json({ error: uniqueConstraintMessage });
@@ -3193,6 +3132,7 @@ export const updateVerificationStatus = async (req: Request, res: Response, next
       relatedEntityId: profile.id,
       recipientType: 'PARTNER',
       recipientPhone: existingPartner.whatsappNumber || existingPartner.mobile,
+      recipientEmail: existingPartner.email,
       payloadSnapshot: {
         partnerId: id,
         partnerDisplayName: partnerDisplayName({ businessName: existingProfile?.businessName, ownerName: existingProfile?.ownerName || existingPartner.name }) || undefined,

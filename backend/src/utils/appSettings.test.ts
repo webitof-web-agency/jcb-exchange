@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeCompanyInvoiceSettings } from './appSettings';
+import { normalizeCompanyInvoiceSettings, normalizeLegalPageContent } from './appSettings';
 
 test('normalizes the company CIN for invoice documents', () => {
   const settings = normalizeCompanyInvoiceSettings({
@@ -14,4 +14,11 @@ test('normalizes the company CIN for invoice documents', () => {
   assert.equal(settings.country, 'India');
   assert.equal(settings.authorisedSignatoryName, 'Mitali Sharma');
   assert.equal(settings.authorisedSignatoryDesignation, 'Director');
+});
+
+test('preserves an intentionally empty legal page instead of converting it to an unset page', () => {
+  assert.equal(normalizeLegalPageContent(null), null);
+  assert.equal(normalizeLegalPageContent(undefined), null);
+  assert.equal(normalizeLegalPageContent('   '), '');
+  assert.equal(normalizeLegalPageContent('<p>Custom policy</p>'), '<p>Custom policy</p>');
 });

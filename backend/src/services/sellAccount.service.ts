@@ -1,3 +1,4 @@
+import { ensureVehicleTransportRecord } from './vehicleTransport.service';
 import {
   Prisma,
   RtoHirePurchaseStatus,
@@ -28,7 +29,7 @@ import {
 import { normalizeRtoWorkStatus, statusForSellAccountHandoff } from './rtoStatus';
 import { assertDealDoneBeforeLock, assertRecordEditable } from './recordLock';
 import { ensureRtoTransferTasks, evaluateStoredRtoCompliance, recordRtoStatusChange } from './rtoTransferStore';
-import { issuePaymentReceiptToken, nextSellAccountCreditNoteNumberFor, nextVehicleSalePaymentReceiptNumberFor } from './vehicleSaleInvoice.service';
+import { issuePaymentReceiptToken, nextSellAccountCreditNoteNumberFor, nextVehicleSalePaymentReceiptNumberFor, nextVehicleSaleProfitInvoiceNumberFor } from './vehicleSaleInvoice.service';
 import { encryptDocumentLinkToken } from '../utils/documentLinkToken';
 import { linkSoldVehicleToWonLeads, releaseCancelledSaleLeads } from '../modules/crm/services/soldVehicleLink';
 import { buildSellAccountLookup } from './sellAccountLookup';
@@ -541,6 +542,21 @@ export const getSellAccount = async (id: string) => {
     }
   }
   if (!record) return null;
+  if (record.invoiceNumber && !record.profitInvoiceNumber) {
+    try {
+      const generatedProfitNo = await nextVehicleSaleProfitInvoiceNumberFor(prisma, record.invoiceGeneratedAt || record.createdAt || new Date());
+      await prisma.sellAccount.update({
+        where: { id: record.id },
+        data: {
+          profitInvoiceNumber: generatedProfitNo,
+          profitInvoiceGeneratedAt: record.invoiceGeneratedAt || new Date(),
+        },
+      });
+      record.profitInvoiceNumber = generatedProfitNo;
+    } catch (err) {
+      console.warn('Failed to auto-assign profitInvoiceNumber in getSellAccount:', err);
+    }
+  }
   const synced = await syncStatus(prisma, record);
   const refreshed = await prisma.sellAccount.findUnique({ where: { id: record.id }, include });
   return refreshed ? serialize(refreshed, synced.rtoState, synced.nextStatus) : null;
@@ -850,6 +866,9 @@ export const saveAndStartRtoWork = async (id: string | undefined, body: unknown,
     }
 
     const rtoRecord = await ensureRtoRecord(tx, current, actorId);
+    if (current.dealStatus === SellAccountDealStatus.DEAL_DONE || current.isLocked) {
+      await ensureVehicleTransportRecord(tx, current, actorId);
+    }
     const synced = await syncStatus(tx, current, actorId);
     const refreshed = await tx.sellAccount.findUnique({ where: { id: current.id }, include });
     return {

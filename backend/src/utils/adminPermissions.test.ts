@@ -26,6 +26,12 @@ test('allowedAdminPermissions includes accounts read, crud, and export permissio
     'accounts.sell.update',
     'accounts.sell.delete',
     'accounts.sell.export',
+    'accounts.transport.read',
+    'accounts.transport.crud',
+    'accounts.transport.create',
+    'accounts.transport.update',
+    'accounts.transport.delete',
+    'accounts.transport.export',
   ].forEach((permission) => {
     assert.equal(allowedAdminPermissions.has(permission), true, `${permission} should be allowed`);
   });
@@ -81,6 +87,11 @@ test('allowedAdminPermissions exposes one view permission per vehicle service', 
     assert.equal(allowedAdminPermissions.has(permission), false, `${permission} should not be exposed`);
   });
   assert.equal(allowedAdminPermissions.has('rc.mobile-number-check.read'), false);
+});
+
+test('allowedAdminPermissions exposes separate Email view and manage permissions', () => {
+  assert.equal(allowedAdminPermissions.has('email.read'), true);
+  assert.equal(allowedAdminPermissions.has('email.manage'), true);
 });
 
 test('allowedAdminPermissions does not expose the removed Mobile To PAN permission', () => {

@@ -198,6 +198,19 @@ enum AuditEntityType {
   MOBILE_TO_PAN_LOOKUP
   LISTING_VERIFICATION
   AI_ACTION_PROPOSAL
+  HRM_EMPLOYEE
+  HRM_ORG_UNIT
+  HRM_ASSIGNMENT
+  HRM_ACCESS_SCOPE
+  HRM_ONBOARDING
+  HRM_DOCUMENT
+  HRM_ATTENDANCE
+  HRM_LEAVE
+  HRM_COMPENSATION
+  HRM_PERFORMANCE
+  HRM_INCENTIVE
+  HRM_EXIT
+  HRM_APPROVAL
 }
 
 enum AiRunStatus {
@@ -643,6 +656,10 @@ model User {
   aiBudgetUsage                       AiBudgetUsage[]                      @relation("AiBudgetUsageActor")
   aiReliabilityEvents                 AiReliabilityEvent[]                 @relation("AiReliabilityActor")
   aiMemories                          AiMemory[]                            @relation("AiMemoryActor")
+  hrmEmployee                         HrmEmployee?                          @relation("HrmEmployeeUser")
+  hrmAccessScopes                     HrmAccessScope[]
+  hrmApprovalsRequested               HrmApproval[]                         @relation("HrmApprovalRequester")
+  hrmApprovalsDecided                 HrmApproval[]                         @relation("HrmApprovalDecider")
 
   @@index([role, status, archivedAt, updatedAt])
 }
@@ -1726,6 +1743,8 @@ model SellAccount {
   invoiceTokenExpiresAt   DateTime?
   invoiceSentAt           DateTime?
   invoiceDelivery         Json?
+  profitInvoiceNumber      String?                 @unique
+  profitInvoiceGeneratedAt DateTime?
   // Sale cancelled (customer backed out / vehicle returned). When a Bill of Supply was already
   // issued, a credit note number is assigned against it.
   cancelledAt             DateTime?
@@ -1744,6 +1763,7 @@ model SellAccount {
 
   listing       Listing?                   @relation(fields: [listingId], references: [id], onDelete: SetNull)
   rtoRecord     VehicleRtoRecord?
+  transport     VehicleTransport?
   payments      SellAccountPayment[]
   refunds       SellAccountRefund[]
   statusHistory SellAccountStatusHistory[]
@@ -3162,6 +3182,10 @@ model State {
   cities                 City[]
   partnerProfilesByState PartnerProfile[]               @relation("PartnerProfileState")
   signupGstVerifications PartnerSignupGstVerification[] @relation("PartnerSignupGstState")
+  hrmOrgUnits            HrmOrgUnit[]
+  hrmRegionStates        HrmOperationalRegionState[]
+  hrmAssignments         HrmEmploymentAssignment[]
+  hrmAccessScopes        HrmAccessScope[]
 
   @@index([countryId])
 }
@@ -3180,6 +3204,8 @@ model City {
   country                Country                        @relation(fields: [countryId], references: [id], onDelete: Cascade)
   partnerProfilesByCity  PartnerProfile[]               @relation("PartnerProfileCity")
   signupGstVerifications PartnerSignupGstVerification[] @relation("PartnerSignupGstCity")
+  hrmOrgUnits            HrmOrgUnit[]
+  hrmAssignments         HrmEmploymentAssignment[]
 
   @@index([stateId])
   @@index([countryId])
@@ -3240,6 +3266,10 @@ enum DocumentCategory {
   COVER_LETTER
   PORTFOLIO
   OFFER_LETTER
+  /// The offer letter signed by the candidate (a scan or photo of the signed paper copy).
+  OFFER_LETTER_SIGNED
+  /// The acceptance certificate: who accepted, how they signed, when, from where, and the hash of the letter.
+  OFFER_ACCEPTANCE_CERTIFICATE
   OTHER
 }
 
@@ -3269,6 +3299,8 @@ enum OfferStatus {
   ACCEPTED
   DECLINED
   EXPIRED
+  /// HR took the offer back; the link stops working.
+  WITHDRAWN
 }
 
 enum TalentPoolCategory {
@@ -3285,6 +3317,8 @@ model JobDepartment {
   name        String   @unique
   code        String   @unique
   description String?  @db.Text
+  /// The HRM department this recruitment department maps to (pre-fills offers).
+  hrmOrgUnitId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -3412,6 +3446,9 @@ model JobApplication {
   assignedRecruiterId String?
   overallRating       Float?
   isDuplicateOverride Boolean  @default(false)
+  /// What the applicant typed on this application (name, address, experience...). The shared Candidate row is not
+  /// overwritten by an anonymous public form, so this keeps what was submitted each time.
+  applicantSnapshot   Json?
   appliedAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -3605,7 +3642,43 @@ model Offer {
   createdById         String?
   sentAt              DateTime?
   respondedAt         DateTime?
+  declineReason       String?     @db.Text
   responseTokenVersion Int         @default(1)
+  /// HRM placement chosen on the offer (all optional: offers made before they existed keep working). They are
+  /// what the HRM pre-joining record is built from once the offer is accepted.
+  hrmOrgUnitId        String?
+  locationType        String?     @db.VarChar(20)
+  stateId             Int?
+  cityId              Int?
+  isOfficeManager     Boolean     @default(false)
+  employmentType      EmploymentType?
+  reportingManagerEmployeeId String?
+  /// Yearly cost to company (the letter may state a monthly amount; this is always per year).
+  annualCtc           Decimal?    @db.Decimal(14, 2)
+  /// Monthly salary breakup: [{ code, name, componentType, monthlyAmount }].
+  salaryComponents    Json?
+  /// Acceptance evidence. Method: TYPED, DRAWN, UPLOADED_SCAN (the candidate) or OFFLINE_HR (HR recorded a paper copy).
+  acceptanceMethod    String?     @db.VarChar(20)
+  acceptedName        String?     @db.VarChar(160)
+  acceptedPlace       String?     @db.VarChar(120)
+  acceptedIp          String?     @db.VarChar(64)
+  acceptedUserAgent   String?     @db.VarChar(500)
+  /// The drawn signature (PNG) or the signed scan, in private storage.
+  signatureFileUrl    String?
+  /// SHA-256 of the signature image / scan.
+  signatureHash       String?     @db.VarChar(64)
+  /// SHA-256 of the offer letter PDF that was accepted (proves which letter was signed).
+  documentHash        String?     @db.VarChar(64)
+  acceptanceCertificateUrl String?
+  /// HR's note when the acceptance was recorded from a paper copy.
+  acceptanceNote      String?     @db.Text
+  acceptedById        String?
+  /// Turning the accepted offer into an HRM pre-joining record: PENDING, DONE, NEEDS_REVIEW or FAILED (retried).
+  hrmHandoffStatus    String?     @db.VarChar(20)
+  hrmHandoffError     String?     @db.Text
+  hrmHandoffAttempts  Int         @default(0)
+  hrmHandoffAt        DateTime?
+  hrmEmployeeId       String?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
@@ -3613,26 +3686,62 @@ model Offer {
   candidate   Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   job         Job            @relation(fields: [jobId], references: [id])
   createdBy   User?          @relation("OfferCreator", fields: [createdById], references: [id])
+  shortLinks  OfferShortLink[]
 
   @@index([applicationId])
   @@index([candidateId])
   @@index([status])
+  @@index([status, hrmHandoffStatus])
+}
+
+/// A short offer link (https://<site>/o/<code>) for one link version of an offer. It stores no token: the signed
+/// link is rebuilt from (offerId, tokenVersion, expiresAt). A resend makes a new version, which closes the old link.
+model OfferShortLink {
+  id           String    @id @default(uuid())
+  code         String    @unique @db.VarChar(16)
+  offerId      String
+  tokenVersion Int
+  expiresAt    DateTime
+  openCount    Int       @default(0)
+  lastOpenedAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, tokenVersion])
 }
 
 model RecruitmentEmailTemplate {
   id             String                  @id @default(uuid())
   name           String
   code           String                  @unique
+  eventCode      String
   subject        String
   bodyHtml       String                  @db.Text
   variables      String[]
   enabled        Boolean                 @default(true)
   attachmentMode String                  @default("NONE")
   isSystem       Boolean                 @default(false)
+  archived       Boolean                 @default(false)
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
 
   emailLogs TransactionalEmailLog[]
+  automationRules EmailAutomationRule[]
+
+  @@index([eventCode, archived])
+}
+
+model EmailAutomationRule {
+  id         String                  @id @default(uuid())
+  eventCode  String                  @unique
+  enabled    Boolean                 @default(true)
+  templateId String?
+  template   RecruitmentEmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  @@index([enabled])
 }
 
 model TransactionalEmailLog {
@@ -5854,4 +5963,823 @@ enum JtVoucherType {
   CREDIT_NOTE
   OPENING
   REVERSAL
+}
+
+// ---------------------------------------------------------------------------
+// HRM foundation: authoritative employee lifecycle and organizational records
+// ---------------------------------------------------------------------------
+
+enum HrmEmployeeSource {
+  RECRUITMENT
+  DIRECT_HR
+}
+
+enum HrmEmployeeStatus {
+  DRAFT
+  PRE_ONBOARDING
+  ONBOARDING
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  NOTICE_PERIOD
+  EXITED
+  TERMINATED
+}
+
+enum HrmOrgUnitType {
+  COMPANY
+  HEAD_OFFICE
+  REGION
+  BRANCH
+  DEPARTMENT
+  TEAM
+}
+
+enum HrmAssignmentStatus {
+  PLANNED
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum HrmScopeType {
+  OWN
+  DIRECT_REPORTS
+  TEAM
+  DEPARTMENT
+  REGION
+  STATE
+  HEAD_OFFICE
+  ALL_INDIA
+}
+
+enum HrmOnboardingStatus {
+  PENDING
+  /// The accepted offer matches somebody who already has an HR record: HR decides before anything is created.
+  NEEDS_REVIEW
+  IN_PROGRESS
+  READY_FOR_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum HrmDocumentCategory {
+  IDENTITY
+  ADDRESS
+  EDUCATION
+  EXPERIENCE
+  OFFER
+  ACCEPTANCE
+  BANK
+  TAX
+  EMPLOYMENT
+  /// Passport-size photo.
+  PHOTO
+  OTHER
+}
+
+enum HrmDocumentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+  ARCHIVED
+}
+
+enum HrmDocumentProvider {
+  MANUAL
+  SUREPASS
+  GOOGLE_DRIVE
+  OTHER
+}
+
+enum HrmAttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+  HOLIDAY
+  WEEK_OFF
+  WORK_FROM_HOME
+}
+
+enum HrmLeaveRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum HrmLeaveUnit {
+  DAYS
+  HOURS
+}
+
+enum HrmCompensationStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+enum HrmPerformanceStatus {
+  DRAFT
+  OPEN
+  SUBMITTED
+  REVIEWED
+  ACKNOWLEDGED
+  CLOSED
+}
+
+enum HrmIncentiveStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PAID
+  CANCELLED
+}
+
+enum HrmExitStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  NOTICE_PERIOD
+  CLEARANCE_PENDING
+  READY_FOR_SETTLEMENT
+  SETTLED
+  COMPLETED
+  CANCELLED
+}
+
+enum HrmApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model HrmEmployee {
+  id                    String            @id @default(uuid())
+  employeeCode          String            @unique @db.VarChar(30)
+  userId                String?           @unique
+  source                HrmEmployeeSource
+  status                HrmEmployeeStatus @default(DRAFT)
+  legalName             String            @db.VarChar(160)
+  preferredName         String?           @db.VarChar(160)
+  workEmail             String?           @db.VarChar(254)
+  personalEmail         String?           @db.VarChar(254)
+  mobile                String?           @db.VarChar(15)
+  dateOfBirth           DateTime?         @db.Date
+  joinedOn              DateTime?         @db.Date
+  exitDate              DateTime?         @db.Date
+  /// Personal details HR completes during onboarding (all optional).
+  gender                String?           @db.VarChar(20)
+  fatherOrSpouseName    String?           @db.VarChar(160)
+  maritalStatus         String?           @db.VarChar(20)
+  bloodGroup            String?           @db.VarChar(5)
+  /// { line1, line2, city, state, pincode }
+  currentAddress        Json?
+  permanentAddress      Json?
+  /// { name, relation, mobile }
+  emergencyContact      Json?
+  candidateId           String?
+  applicationId         String?
+  offerId               String?
+  archivedAt            DateTime?
+  archivedById          String?
+  createdById           String?
+  version               Int               @default(1)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  user                  User?                       @relation("HrmEmployeeUser", fields: [userId], references: [id], onDelete: SetNull)
+  assignments           HrmEmploymentAssignment[]
+  managedOrgUnits       HrmOrgUnit[]                @relation("HrmOrgUnitManager")
+  managedAssignments    HrmEmploymentAssignment[]   @relation("HrmAssignmentManager")
+  approvalAssignments   HrmEmploymentAssignment[]   @relation("HrmAssignmentApprovalManager")
+  onboardingCases       HrmOnboardingCase[]
+  documents             HrmEmployeeDocument[]
+  bankAccounts          HrmEmployeeBankAccount[]
+  attendanceRecords     HrmAttendanceRecord[]
+  leaveRequests         HrmLeaveRequest[]
+  leaveApprovals        HrmLeaveRequest[]           @relation("HrmLeaveApprover")
+  compensationHistory   HrmCompensationRevision[]
+  performanceReviews    HrmPerformanceReview[]
+  incentives            HrmIncentive[]
+  exitCases             HrmExitCase[]
+  shiftAssignments      HrmShiftAssignment[]
+
+  @@index([status, updatedAt])
+  @@index([mobile])
+  @@index([workEmail])
+  @@index([candidateId])
+  @@index([applicationId])
+  @@index([offerId])
+}
+
+model HrmOrgUnit {
+  id                String          @id @default(uuid())
+  code              String          @unique @db.VarChar(40)
+  name              String          @db.VarChar(160)
+  type              HrmOrgUnitType
+  parentId          String?
+  stateId           Int?
+  cityId            Int?
+  managerEmployeeId String?
+  isActive          Boolean         @default(true)
+  createdById       String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  parent            HrmOrgUnit?              @relation("HrmOrgUnitTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children          HrmOrgUnit[]             @relation("HrmOrgUnitTree")
+  state             State?                   @relation(fields: [stateId], references: [id], onDelete: Restrict)
+  city              City?                    @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  managerEmployee   HrmEmployee?             @relation("HrmOrgUnitManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
+  assignments       HrmEmploymentAssignment[] @relation("HrmAssignmentDepartment")
+  officeAssignments HrmEmploymentAssignment[] @relation("HrmAssignmentOffice")
+  accessScopes      HrmAccessScope[]
+
+  @@index([parentId, isActive])
+  @@index([type, isActive])
+  @@index([stateId, isActive])
+}
+
+model HrmOperationalRegion {
+  id                String                         @id @default(uuid())
+  code              String                         @unique @db.VarChar(40)
+  name              String                         @db.VarChar(160)
+  description       String?                        @db.Text
+  isActive          Boolean                        @default(true)
+  createdById       String?
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+
+  stateLinks        HrmOperationalRegionState[]
+  assignments       HrmEmploymentAssignment[]
+  accessScopes      HrmAccessScope[]
+
+  @@index([isActive, name])
+}
+
+model HrmOperationalRegionState {
+  id                String                @id @default(uuid())
+  regionId          String
+  stateId           Int
+  createdAt         DateTime              @default(now())
+
+  region            HrmOperationalRegion @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  state             State                 @relation(fields: [stateId], references: [id], onDelete: Restrict)
+
+  @@unique([regionId, stateId])
+  @@index([stateId])
+}
+
+/// The list of designations HR picks from. Assignments keep the designation as text (history stays readable),
+/// this table is what the screens offer, rename and switch off.
+model HrmDesignation {
+  id          String   @id @default(uuid())
+  name        String   @db.VarChar(120)
+  /// Lower-case, single-spaced name: the case-insensitive uniqueness key.
+  nameKey     String   @unique @db.VarChar(120)
+  isActive    Boolean  @default(true)
+  /// Built in and relied on by the HRM rules (State Manager, National Operations Manager): never renamed or deleted.
+  isSystem    Boolean  @default(false)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, name])
+}
+
+model HrmEmploymentAssignment {
+  id                    String            @id @default(uuid())
+  employeeId            String
+  orgUnitId             String
+  /// The office the person works from: the head office unit or a state office unit. orgUnitId stays the department.
+  officeUnitId          String?
+  /// True while the person is a manager of that office (a State Manager); an office can have more than one.
+  isOfficeManager       Boolean           @default(false)
+  operationalRegionId   String?
+  designation           String            @db.VarChar(120)
+  employmentType        EmploymentType?
+  workMode              WorkMode?
+  stateId               Int?
+  cityId                Int?
+  managerEmployeeId     String?
+  approvalManagerId     String?
+  status                HrmAssignmentStatus @default(PLANNED)
+  effectiveFrom         DateTime          @db.Date
+  effectiveTo           DateTime?         @db.Date
+  reason                String?           @db.Text
+  createdById           String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  employee              HrmEmployee       @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  orgUnit               HrmOrgUnit        @relation("HrmAssignmentDepartment", fields: [orgUnitId], references: [id], onDelete: Restrict)
+  officeUnit            HrmOrgUnit?       @relation("HrmAssignmentOffice", fields: [officeUnitId], references: [id], onDelete: Restrict)
+  operationalRegion     HrmOperationalRegion? @relation(fields: [operationalRegionId], references: [id], onDelete: Restrict)
+  state                 State?            @relation(fields: [stateId], references: [id], onDelete: Restrict)
+  city                  City?             @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  managerEmployee       HrmEmployee?      @relation("HrmAssignmentManager", fields: [managerEmployeeId], references: [id], onDelete: Restrict)
+  approvalManager       HrmEmployee?      @relation("HrmAssignmentApprovalManager", fields: [approvalManagerId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, effectiveFrom, effectiveTo])
+  @@index([orgUnitId, status, effectiveFrom])
+  @@index([managerEmployeeId, status])
+  @@index([operationalRegionId, status])
+  @@index([stateId, status])
+  @@index([officeUnitId, status, effectiveFrom])
+}
+
+model HrmAccessScope {
+  id                  String         @id @default(uuid())
+  userId              String
+  scopeType           HrmScopeType
+  orgUnitId           String?
+  operationalRegionId String?
+  stateId             Int?
+  includeChildren     Boolean        @default(true)
+  activeFrom          DateTime       @db.Date
+  activeTo            DateTime?      @db.Date
+  /// MANUAL (given by HR) or PLACEMENT (follows the person's office: a State Manager's own state; moved / ended
+  /// automatically on transfer, replacement or exit).
+  source              String         @default("MANUAL") @db.VarChar(20)
+  createdById         String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orgUnit             HrmOrgUnit?            @relation(fields: [orgUnitId], references: [id], onDelete: Cascade)
+  operationalRegion   HrmOperationalRegion?  @relation(fields: [operationalRegionId], references: [id], onDelete: Cascade)
+  state               State?                 @relation(fields: [stateId], references: [id], onDelete: Restrict)
+
+  @@index([userId, activeFrom, activeTo])
+  @@index([scopeType, orgUnitId])
+  @@index([scopeType, operationalRegionId])
+  @@index([scopeType, stateId])
+}
+
+model HrmOnboardingCase {
+  id                  String             @id @default(uuid())
+  candidateId         String?
+  applicationId       String?
+  offerId             String?
+  /// Not unique: a person who left and is hired again gets a new case on the same HR record.
+  employeeId          String?
+  status              HrmOnboardingStatus @default(PENDING)
+  source              HrmEmployeeSource
+  targetJoiningDate   DateTime?          @db.Date
+  initiatedById       String?
+  approvedById        String?
+  approvedAt          DateTime?
+  rejectionReason     String?            @db.Text
+  /// What HR has to look at (a possible duplicate person, a placement that could not be applied).
+  reviewNote          String?            @db.Text
+  /// For a re-hire: the record's previous state and what the handoff closed, restored if the joining is cancelled.
+  rehireSnapshot      Json?
+  idempotencyKey      String             @unique @db.VarChar(120)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  employee            HrmEmployee?                  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  acceptanceEvidence HrmOfferAcceptanceEvidence?
+
+  @@index([candidateId])
+  @@index([applicationId])
+  @@index([offerId])
+  @@index([employeeId])
+  @@index([status, updatedAt])
+}
+
+model HrmOfferAcceptanceEvidence {
+  id                 String             @id @default(uuid())
+  onboardingCaseId   String             @unique
+  offerId            String
+  responseAction     String             @db.VarChar(20)
+  acceptedAt         DateTime?
+  signatureCaptured  Boolean            @default(false)
+  signatureFileRef   String?
+  signatureHash      String?            @db.VarChar(128)
+  ipAddress          String?
+  userAgent          String?            @db.Text
+  legalDisclaimer    String?            @db.Text
+  createdAt          DateTime           @default(now())
+
+  onboardingCase     HrmOnboardingCase @relation(fields: [onboardingCaseId], references: [id], onDelete: Cascade)
+
+  @@index([offerId])
+  @@index([acceptedAt])
+}
+
+model HrmEmployeeDocument {
+  id                  String             @id @default(uuid())
+  employeeId          String
+  category            HrmDocumentCategory
+  title               String             @db.VarChar(160)
+  fileRef             String             @db.VarChar(500)
+  driveFileId         String?            @db.VarChar(200)
+  mimeType            String?            @db.VarChar(120)
+  fileSize            Int?
+  provider            HrmDocumentProvider @default(MANUAL)
+  providerReference   String?            @db.VarChar(200)
+  status              HrmDocumentStatus  @default(PENDING)
+  expiresAt           DateTime?          @db.Date
+  verifiedById        String?
+  verifiedAt          DateTime?
+  rejectionReason     String?            @db.Text
+  metadata            Json?
+  uploadedById        String?
+  version             Int                @default(1)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  employee            HrmEmployee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, category, status])
+  @@index([employeeId, expiresAt])
+  @@index([provider, providerReference])
+}
+
+model HrmEmployeeBankAccount {
+  id                  String       @id @default(uuid())
+  employeeId          String
+  bankName            String?      @db.VarChar(120)
+  accountHolderName   String?      @db.VarChar(160)
+  encryptedAccountNumber String?   @db.Text
+  maskedAccountNumber    String?   @db.VarChar(20)
+  ifsc                String?      @db.VarChar(11)
+  isPrimary           Boolean      @default(false)
+  isVerified          Boolean      @default(false)
+  verifiedById        String?
+  verifiedAt          DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  employee            HrmEmployee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, isPrimary])
+}
+
+model HrmAttendanceRecord {
+  id                  String               @id @default(uuid())
+  employeeId          String
+  attendanceDate      DateTime             @db.Date
+  status              HrmAttendanceStatus
+  checkIn             DateTime?
+  checkOut            DateTime?
+  source              String?              @db.VarChar(40)
+  notes               String?              @db.Text
+  approvedById        String?
+  approvedAt          DateTime?
+  createdById         String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  employee            HrmEmployee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, attendanceDate])
+  @@index([attendanceDate, status])
+}
+
+model HrmLeaveType {
+  id                  String           @id @default(uuid())
+  code                String           @unique @db.VarChar(40)
+  name                String           @db.VarChar(100)
+  unit                HrmLeaveUnit     @default(DAYS)
+  isPaid              Boolean          @default(true)
+  annualQuota         Decimal?         @db.Decimal(8, 2)
+  requiresDocument    Boolean          @default(false)
+  isActive             Boolean          @default(true)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  requests            HrmLeaveRequest[]
+}
+
+model HrmLeaveRequest {
+  id                  String                @id @default(uuid())
+  employeeId          String
+  leaveTypeId         String
+  startDate           DateTime              @db.Date
+  endDate             DateTime              @db.Date
+  units               Decimal               @db.Decimal(8, 2)
+  reason              String?               @db.Text
+  status              HrmLeaveRequestStatus @default(DRAFT)
+  approverEmployeeId  String?
+  approvedAt          DateTime?
+  decisionReason      String?               @db.Text
+  idempotencyKey      String                @unique @db.VarChar(120)
+  version             Int                   @default(1)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  employee            HrmEmployee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType           HrmLeaveType          @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  approver            HrmEmployee?          @relation("HrmLeaveApprover", fields: [approverEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, startDate, endDate])
+  @@index([approverEmployeeId, status])
+  @@index([status, startDate])
+}
+
+model HrmCompensationRevision {
+  id                  String                @id @default(uuid())
+  employeeId          String
+  effectiveFrom       DateTime              @db.Date
+  effectiveTo         DateTime?             @db.Date
+  currency            String                @default("INR") @db.VarChar(3)
+  baseSalary          Decimal               @default(0) @db.Decimal(14, 2)
+  grossSalary         Decimal               @default(0) @db.Decimal(14, 2)
+  annualCtc           Decimal?              @db.Decimal(14, 2)
+  status              HrmCompensationStatus @default(DRAFT)
+  reason              String?               @db.Text
+  approvedById        String?
+  approvedAt          DateTime?
+  financeSyncStatus   String?               @db.VarChar(40)
+  createdById         String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  employee            HrmEmployee           @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  components          HrmCompensationComponent[]
+
+  @@index([employeeId, effectiveFrom, effectiveTo])
+  @@index([status, effectiveFrom])
+}
+
+model HrmCompensationComponent {
+  id                  String                 @id @default(uuid())
+  revisionId          String
+  code                String                 @db.VarChar(40)
+  name                String                 @db.VarChar(100)
+  componentType       String                 @db.VarChar(30)
+  amount              Decimal                @db.Decimal(14, 2)
+  isRecurring         Boolean                @default(true)
+  isTaxable           Boolean                @default(true)
+  createdAt           DateTime               @default(now())
+
+  revision            HrmCompensationRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@unique([revisionId, code])
+  @@index([code])
+}
+
+model HrmPerformanceCycle {
+  id                  String               @id @default(uuid())
+  name                String               @db.VarChar(120)
+  startsOn            DateTime             @db.Date
+  endsOn              DateTime             @db.Date
+  status              HrmPerformanceStatus @default(DRAFT)
+  createdById         String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  reviews             HrmPerformanceReview[]
+
+  @@index([startsOn, endsOn, status])
+}
+
+model HrmPerformanceReview {
+  id                  String               @id @default(uuid())
+  employeeId          String
+  cycleId             String
+  reviewerEmployeeId  String?
+  status              HrmPerformanceStatus @default(DRAFT)
+  rating              Decimal?             @db.Decimal(5, 2)
+  goals               Json?
+  strengths           String?              @db.Text
+  improvementAreas    String?              @db.Text
+  employeeComment     String?              @db.Text
+  submittedAt         DateTime?
+  reviewedAt          DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  employee            HrmEmployee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  cycle               HrmPerformanceCycle @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, cycleId])
+  @@index([reviewerEmployeeId, status])
+  @@index([cycleId, status])
+}
+
+model HrmIncentive {
+  id                  String            @id @default(uuid())
+  employeeId          String
+  incentiveType       String            @db.VarChar(60)
+  periodStart         DateTime          @db.Date
+  periodEnd           DateTime          @db.Date
+  amount              Decimal           @db.Decimal(14, 2)
+  status              HrmIncentiveStatus @default(DRAFT)
+  reason              String?           @db.Text
+  approvedById        String?
+  approvedAt          DateTime?
+  paidAt              DateTime?
+  financeReference    String?           @db.VarChar(120)
+  createdById         String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  employee            HrmEmployee       @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, periodStart, periodEnd])
+  @@index([status, periodStart])
+}
+
+model HrmExitCase {
+  id                  String        @id @default(uuid())
+  employeeId          String
+  status              HrmExitStatus @default(DRAFT)
+  exitType            String        @db.VarChar(40)
+  resignationDate     DateTime?     @db.Date
+  requestedLastDay    DateTime?     @db.Date
+  approvedLastDay     DateTime?     @db.Date
+  reason              String?       @db.Text
+  clearanceChecklist  Json?
+  approvedById        String?
+  approvedAt          DateTime?
+  financeSettlementId String?
+  completedAt         DateTime?
+  createdById         String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  employee            HrmEmployee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, status])
+  @@index([status, approvedLastDay])
+}
+
+model HrmApproval {
+  id                  String             @id @default(uuid())
+  entityType          String             @db.VarChar(60)
+  entityId            String             @db.VarChar(100)
+  action              String             @db.VarChar(60)
+  status              HrmApprovalStatus  @default(PENDING)
+  requestedByUserId   String
+  decidedByUserId     String?
+  decisionReason      String?            @db.Text
+  decidedAt           DateTime?
+  idempotencyKey      String             @unique @db.VarChar(120)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  requestedBy         User               @relation("HrmApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  decidedBy           User?              @relation("HrmApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, action, status])
+  @@index([requestedByUserId, status])
+  @@index([decidedByUserId, status])
+}
+
+enum VehicleTransportStatus {
+  BOOKED
+  VEHICLE_ASSIGNED
+  DISPATCHED
+  ON_THE_WAY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+model VehicleTransport {
+  id                    String                   @id @default(uuid())
+  sellAccountId         String                   @unique
+  sellAccount           SellAccount              @relation(fields: [sellAccountId], references: [id], onDelete: Cascade)
+
+  challanNumber         String                   @unique
+  challanDate           DateTime                 @default(now())
+  hsnCode               String                   @default("84295900")
+  declaredValue         Decimal                  @default(0) @db.Decimal(14, 2)
+
+  // Carrier / Truck & Driver Details
+  carrierVehicleNumber  String?                  // e.g. "HR74C8493"
+  transporterName       String?
+  driverName            String?
+  driverPhone           String?
+  lrNumber              String?                  // Lorry Receipt / Bilty No.
+  ewayBillNumber        String?
+
+  // Consignor / Dispatch From (Origin)
+  dispatchName          String                   @default("")
+  dispatchGstin         String                   @default("URP")
+  dispatchAddress       String                   @default("")
+  dispatchCity          String                   @default("")
+  dispatchState         String                   @default("")
+  dispatchPincode       String?
+
+  // Consignee / Ship To (Destination)
+  deliveryName          String                   @default("")
+  deliveryGstin         String                   @default("URP")
+  deliveryAddress       String                   @default("")
+  deliveryCity          String                   @default("")
+  deliveryState         String                   @default("")
+  deliveryPincode       String?
+  customerPhone         String                   @default("")
+
+  // Status & Tracking
+  status                VehicleTransportStatus   @default(BOOKED)
+  currentLocation       String?
+  lastRemark            String?
+  dispatchedAt          DateTime?
+  deliveredAt           DateTime?
+
+  // Audit & Timeline
+  timeline              VehicleTransportTimeline[]
+  createdById           String?
+  updatedById           String?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([carrierVehicleNumber])
+  @@index([customerPhone])
+}
+
+model VehicleTransportTimeline {
+  id            String                 @id @default(uuid())
+  transportId   String
+  transport     VehicleTransport       @relation(fields: [transportId], references: [id], onDelete: Cascade)
+  status        VehicleTransportStatus
+  location      String?
+  notes         String?
+  actorId       String?
+  actorName     String?
+  notifiedPhone String?
+  createdAt     DateTime               @default(now())
+
+  @@index([transportId, createdAt])
+}
+
+/// A working shift (timings and day rules). Attendance is judged against the shift an employee has on that day.
+model HrmShift {
+  id              String   @id @default(uuid())
+  code            String   @unique @db.VarChar(30)
+  name            String   @db.VarChar(80)
+  /// "HH:MM" in Indian time.
+  startTime       String   @db.VarChar(5)
+  endTime         String   @db.VarChar(5)
+  breakMinutes    Int      @default(0)
+  /// Minutes after the start time still counted as on time.
+  graceMinutes    Int      @default(0)
+  /// Worked minutes needed for a half day / a full day (null = the rule is not used).
+  halfDayMinutes  Int?
+  fullDayMinutes  Int?
+  /// Ends on the next calendar day.
+  isNightShift    Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  assignments     HrmShiftAssignment[]
+
+  @@index([isActive, name])
+}
+
+/// Which shift and weekly offs an employee has from a date (effective-dated history, never deleted).
+model HrmShiftAssignment {
+  id             String              @id @default(uuid())
+  employeeId     String
+  shiftId        String
+  /// { days: ["SUN"], saturdays: [2, 4] } = every Sunday, 2nd and 4th Saturday off.
+  weeklyOffs     Json
+  effectiveFrom  DateTime            @db.Date
+  effectiveTo    DateTime?           @db.Date
+  status         HrmAssignmentStatus @default(ACTIVE)
+  reason         String?             @db.Text
+  createdById    String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  employee       HrmEmployee         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  shift          HrmShift            @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, status, effectiveFrom])
+  @@index([shiftId])
+}
+
+/// A holiday for all of India or for one state.
+model HrmHoliday {
+  id           String   @id @default(uuid())
+  date         DateTime @db.Date
+  name         String   @db.VarChar(120)
+  /// ALL_INDIA or STATE
+  scope        String   @db.VarChar(12)
+  stateId      Int?
+  /// Optional / restricted holiday (an employee may choose it), not a day off for everyone.
+  isOptional   Boolean  @default(false)
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([date])
+  @@index([scope, stateId, date])
 }

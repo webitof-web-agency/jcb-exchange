@@ -119,6 +119,34 @@ const getMetaTemplateBody = (components: unknown) => {
   return typeof body?.text === 'string' ? body.text : '';
 };
 
+type MetaTemplateButtonPreview = { type: string; text: string; url: string };
+
+// The synced Meta definition: header format and buttons, matched case-insensitively (Meta returns upper case).
+const findMetaComponent = (components: unknown, type: string) => (
+  Array.isArray(components)
+    ? components.find((component) => typeof component === 'object' && component !== null
+      && String((component as { type?: unknown }).type ?? '').toUpperCase() === type) as { format?: unknown; buttons?: unknown } | undefined
+    : undefined
+);
+
+const getMetaTemplateHeaderFormat = (components: unknown) => {
+  const header = findMetaComponent(components, 'HEADER');
+  return header ? String(header.format ?? 'TEXT').toUpperCase() : '';
+};
+
+const getMetaTemplateButtons = (components: unknown): MetaTemplateButtonPreview[] => {
+  const buttons = findMetaComponent(components, 'BUTTONS')?.buttons;
+  if (!Array.isArray(buttons)) return [];
+  return buttons.map((button) => {
+    const item = (typeof button === 'object' && button !== null ? button : {}) as { type?: unknown; text?: unknown; url?: unknown };
+    return {
+      type: String(item.type ?? '').toUpperCase(),
+      text: typeof item.text === 'string' ? item.text : '',
+      url: typeof item.url === 'string' ? item.url : '',
+    };
+  }).filter((button) => button.text);
+};
+
 type MarketplaceRule = {
   id: string | null;
   eventCode: string;
@@ -201,9 +229,16 @@ const marketplaceEventDetails: Record<string, { title: string; recipient: string
   MARKETPLACE_KYC_SUBMITTED_SUPERADMIN: { title: 'KYC submitted for review (Admin)', recipient: 'Superadmin', preview: 'Alerts admin when a partner submits KYC documents for verification.' },
   VEHICLE_SALE_INVOICE: { title: 'Vehicle sale invoice', recipient: 'Customer (vehicle buyer)', preview: 'Sent when a sale is completed. Template needs a DOCUMENT header (invoice PDF) and 6 body variables: {{1}} customer name, {{2}} vehicle, {{3}} registration no., {{4}} invoice no., {{5}} amount, {{6}} invoice link.' },
   VEHICLE_SALE_PAYMENT_RECEIPT: { title: 'Vehicle payment receipt', recipient: 'Customer (vehicle buyer)', preview: 'Sent after each customer payment. Template needs a DOCUMENT header (money receipt PDF) and 7 body variables: {{1}} customer, {{2}} vehicle, {{3}} amount, {{4}} receipt no., {{5}} balance, {{6}} payment method, {{7}} receipt link.' },
+  VEHICLE_TRANSPORT_DISPATCHED: { title: 'Vehicle transport dispatched', recipient: 'Customer (vehicle buyer)', preview: 'Sent when the shipment moves from Pending Dispatch to Out For Delivery. Template needs a DOCUMENT header (Delivery Challan PDF) and 5 body variables: {{1}} customer name, {{2}} machine title, {{3}} registration no., {{4}} challan no., {{5}} stage (Out For Delivery).' },
+  VEHICLE_TRANSPORT_STATUS_UPDATE: { title: 'Transport tracking status update', recipient: 'Customer (vehicle buyer)', preview: 'Sent when the shipment reaches On The Way or Delivered, and for manual resends. Template needs a DOCUMENT header (Delivery Challan PDF) and 5 body variables: {{1}} customer name, {{2}} machine title, {{3}} registration no., {{4}} challan no., {{5}} stage.' },
 };
 
-const recruitmentEventDetails: Record<string, { title: string; recipient: string; preview: string }> = {
+// The offer URL button opens the short link; the backend fills {{1}} with the offer's 8-character code.
+const offerShortLinkButtonUrl = `${(process.env.NEXT_PUBLIC_PUBLIC_SITE_URL || 'https://<public site>').replace(/\/+$/, '')}/o/{{1}}`;
+
+type RecruitmentEventDetails = { title: string; recipient: string; preview: string; requirements?: string };
+
+const recruitmentEventDetails: Record<string, RecruitmentEventDetails> = {
   RECRUITMENT_APPLICATION_RECEIVED: { title: 'Application acknowledgement', recipient: 'Candidate', preview: 'Confirms the submitted job application.' },
   RECRUITMENT_NEW_APPLICATION_SUPERADMIN: { title: 'New application audit copy', recipient: 'Superadmin', preview: 'Every application is visible to Superadmin.' },
   RECRUITMENT_NEW_APPLICATION_RECRUITER: { title: 'New application alert', recipient: 'Job recruiter', preview: 'Notifies the job creator when applicable.' },
@@ -211,8 +246,34 @@ const recruitmentEventDetails: Record<string, { title: string; recipient: string
   RECRUITMENT_INTERVIEW_SCHEDULED: { title: 'Interview scheduled', recipient: 'Candidate', preview: 'Includes schedule and interview type.' },
   RECRUITMENT_INTERVIEW_RESCHEDULED: { title: 'Interview rescheduled', recipient: 'Candidate', preview: 'Shares the revised schedule.' },
   RECRUITMENT_INTERVIEW_CANCELLED: { title: 'Interview cancelled', recipient: 'Candidate', preview: 'Confirms interview cancellation.' },
-  RECRUITMENT_OFFER_SENT: { title: 'Offer sent', recipient: 'Candidate', preview: 'Confirms an employment offer is available.' },
+  RECRUITMENT_OFFER_SENT: {
+    title: 'Offer sent',
+    recipient: 'Candidate',
+    preview: 'Sends the offer letter PDF and the secure link to review and accept the offer.',
+    requirements: `Template needs a DOCUMENT header (offer letter PDF) and the offer link: a URL button ${offerShortLinkButtonUrl}, or body variable {{6}}. Body: {{1}} candidate name, {{2}} application ID, {{3}} application ref, {{4}} job title, {{5}} designation, {{6}} offer link, {{7}} reply-before date (optional). Approved 5-variable templates still work, without the link.`,
+  },
   RECRUITMENT_OFFER_STATUS_UPDATED: { title: 'Offer status update', recipient: 'Candidate', preview: 'Shares the candidate-safe offer status.' },
+  RECRUITMENT_OFFER_ACCEPTED: {
+    title: 'Offer accepted (candidate)',
+    recipient: 'Candidate',
+    preview: 'Confirms the acceptance, with the acceptance certificate PDF when the template has a document header.',
+    requirements: 'Template may have a DOCUMENT header (the acceptance certificate is attached) or no header; no URL button with {{1}}. Body: {{1}} candidate name, {{2}} job title, {{3}} designation, {{4}} application ref, {{5}} accepted on, {{6}} joining date.',
+  },
+  RECRUITMENT_OFFER_ACCEPTED_HR: {
+    title: 'Offer accepted (HR alert)',
+    recipient: 'Superadmin + offer creator',
+    preview: 'Tells HR a candidate accepted. Body: {{1}} candidate name, {{2}} job title, {{3}} designation, {{4}} application ref, {{5}} accepted on, {{6}} joining date.',
+  },
+  RECRUITMENT_JOINING_REMINDER: {
+    title: 'Joining reminder (checklist incomplete)',
+    recipient: 'HR + State Manager',
+    preview: 'Sent one day before joining when the onboarding checklist is incomplete. Body: {{1}} employee name, {{2}} employee code, {{3}} designation, {{4}} joining date, {{5}} office, {{6}} state, {{7}} missing items, {{8}} onboarding page link.',
+  },
+  RECRUITMENT_JOINING_WELCOME: {
+    title: 'Joining welcome',
+    recipient: 'New employee',
+    preview: 'Sent after Confirm joining when HR ticks "send welcome". Body: {{1}} employee name, {{2}} employee code, {{3}} designation, {{4}} joining date, {{5}} office, {{6}} login email.',
+  },
   RECRUITMENT_NEW_JOB_PUBLISHED: { title: 'New job published', recipient: 'Opted-in candidates', preview: 'Notifies opted-in candidates when a job is published.' },
 };
 
@@ -259,6 +320,8 @@ function WhatsAppPhonePreview({
   const { logoUrl, darkLogoUrl } = useSiteLogo();
   const displayLogo = logoUrl || darkLogoUrl || '/Favicon.png';
   const metaBodyText = getMetaTemplateBody(components);
+  const headerFormat = getMetaTemplateHeaderFormat(components);
+  const templateButtons = getMetaTemplateButtons(components);
 
   const getSampleBody = () => {
     if (bodyText && bodyText.trim()) return bodyText;
@@ -351,6 +414,14 @@ function WhatsAppPhonePreview({
               {templateNameDisplay}
             </p>
 
+            {/* DOCUMENT header: the PDF the sender attaches (offer letter, certificate, invoice...) */}
+            {headerFormat === 'DOCUMENT' ? (
+              <div className="flex items-center gap-1.5 rounded-lg bg-white/70 border border-emerald-200/70 px-2 py-1.5">
+                <FileText className="h-4 w-4 text-red-600 shrink-0" />
+                <span className="text-[10px] font-semibold text-slate-700 truncate">{wt('preview.documentHeader', 'PDF document')}</span>
+              </div>
+            ) : null}
+
             {/* Dynamic Body Text */}
             <p className="text-[11px] text-slate-900 whitespace-pre-line leading-relaxed font-normal">
               {getSampleBody()}
@@ -367,13 +438,21 @@ function WhatsAppPhonePreview({
               </span>
             </div>
 
-            {/* Quick Action Button Mockup */}
-            <div className="mt-1 pt-1.5 border-t border-emerald-200/70 text-center">
-              <span className="text-[10px] font-bold text-slate-900 flex items-center justify-center gap-1 hover:underline cursor-pointer">
-                <span>{wt('preview.viewDetails', 'View Details')}</span>
-                <span className="text-[9px]">➔</span>
-              </span>
-            </div>
+            {/* Buttons of the synced Meta template (a URL ending in {{1}} gets its value when sent) */}
+            {templateButtons.map((button, index) => (
+              <div key={`${button.type}-${index}`} className="mt-1 pt-1.5 border-t border-emerald-200/70 text-center">
+                <span
+                  className="text-[10px] font-bold text-[#027eb5] flex items-center justify-center gap-1"
+                  title={button.url || undefined}
+                >
+                  <span className="truncate">{button.text}</span>
+                  {button.type === 'URL' ? <span className="text-[9px]">↗</span> : null}
+                </span>
+                {button.type === 'URL' && button.url ? (
+                  <span className="block text-[8px] font-mono text-slate-500 truncate">{button.url}</span>
+                ) : null}
+              </div>
+            ))}
           </div>
         </div>
 
@@ -1098,6 +1177,7 @@ export default function SuperAdminWhatsAppPage() {
             title: wt(`events.recruitment.${code}.title`, details.title),
             recipient: wt(`events.recruitment.${code}.recipient`, details.recipient),
             preview: wt(`events.recruitment.${code}.preview`, details.preview),
+            ...(details.requirements ? { requirements: wt(`events.recruitment.${code}.requirements`, details.requirements) } : {}),
           },
         ])
       ) as typeof recruitmentEventDetails,
@@ -1561,6 +1641,11 @@ export default function SuperAdminWhatsAppPage() {
                         <p className="mt-1 text-xs font-medium text-gray-500">
                           {wt('rules.to', 'To')}: <span className="font-semibold text-gray-700">{details?.recipient || wt('rules.configuredRecipient', 'Configured recipient')}</span> - {wt('common.preview', 'Preview')}: {details?.preview || wt('rules.recruitmentUpdate', 'Recruitment update.')}
                         </p>
+                        {details?.requirements ? (
+                          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-relaxed text-amber-900 break-words">
+                            {details.requirements}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-2 w-full lg:w-auto">
                         <CustomSelect

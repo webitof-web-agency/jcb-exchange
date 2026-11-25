@@ -2,16 +2,40 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PDFViewer, pdf } from '@react-pdf/renderer';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
 import OfferLetterPdfDocument from '@/components/recruitment/OfferLetterPdfDocument';
-import { emptyOfferLetterData, type OfferLetterFormData } from '@/lib/offerLetter';
+import OfferHrmFields, { useOfferHrmEditor, type OfferHrmEditor } from '@/components/recruitment/OfferHrmFields';
+import OfferStatusActions from '@/components/recruitment/OfferStatusActions';
+import { defaultOfferValidUntil, emptyOfferLetterData, type OfferLetterFormData } from '@/lib/offerLetter';
+import {
+  EMPLOYMENT_TYPE_LABELS,
+  OFFER_STATUS_LABELS,
+  apiErrorMessage,
+  buildOfferMultipart,
+  canDeleteOffer as offerCanBeDeleted,
+  canEditOffer as offerCanBeEdited,
+  describeOfferDispatch,
+  formatInr,
+  formatLakhsPerYear,
+  hasSalaryBreakup,
+  letterSalaryForPeriod,
+  salaryBreakupForPdf,
+  type OfferSendResponse,
+  type OfferStatus,
+  type StoredOfferPlacement,
+  type StoredSalaryComponent,
+} from '@/lib/offerHrm';
+import type { StoredOfferAcceptance, StoredOfferHrm } from '@/lib/offerHrm';
+import OfferAcceptanceSummary from '@/components/recruitment/OfferAcceptanceSummary';
+import OfferHrmStatus, { OfferHrmBadge } from '@/components/recruitment/OfferHrmStatus';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuthStore } from '@/store/authStore';
 import { canUseRecruitmentPermission, recruitmentPermissions } from '@/lib/recruitmentPermissions';
 import { useSiteLogo } from '@/hooks/useSiteLogo';
+import { toast } from 'react-toastify';
 import {
   Award,
   CheckCircle2,
@@ -21,25 +45,43 @@ import {
   ChevronRight,
   ChevronLeft,
   ChevronDown,
-  Check,
+  Download,
+  Loader2,
 } from 'lucide-react';
 import { buildPaginationItems } from '@/lib/paginationUtils';
-import type { OfferStatus } from '@/components/recruitment/OfferStatusDropdown';
 import { confirmDelete } from '@/store/confirmDeleteStore';
 
 interface OfferItem {
   id: string;
   offerRef: string;
   designation: string;
+  department?: string | null;
+  /** Always per year. */
   annualCtc: number;
+  /** The amount printed on the letter, and its period. */
+  salaryAmount?: number;
+  salaryPeriod?: 'month' | 'annum';
   workLocation: string;
   joiningDate?: string | null;
   expiryDate?: string | null;
+  offerLetterUrl?: string | null;
+  offerLetterFileName?: string | null;
+  offerLetterData?: Partial<OfferLetterFormData> | null;
+  probationPeriod?: string | null;
+  reportingManager?: string | null;
+  additionalTerms?: string | null;
+  placement?: StoredOfferPlacement | null;
+  salaryComponents?: StoredSalaryComponent[];
+  /** How the offer was accepted (only for accepted offers). */
+  acceptance?: StoredOfferAcceptance | null;
+  /** Where the accepted offer stands in HRM (only for accepted offers). */
+  hrm?: StoredOfferHrm | null;
   status: OfferStatus;
   createdAt: string;
   application: {
     id: string;
     applicationRef: string;
+    currentStage?: string;
     candidate: {
       fullName: string;
       email: string;
@@ -86,16 +128,28 @@ function formatDateDDMMYYYY(dateStr?: string | null): string {
   return `${day}/${month}/${year}`;
 }
 
+const STATUS_BADGE: Record<OfferStatus, string> = {
+  DRAFT: 'border-amber-200 bg-amber-50 text-amber-800',
+  SENT: 'border-blue-200 bg-blue-50 text-blue-800',
+  ACCEPTED: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  DECLINED: 'border-rose-200 bg-rose-50 text-rose-800',
+  EXPIRED: 'border-gray-200 bg-gray-100 text-gray-700',
+  WITHDRAWN: 'border-orange-200 bg-orange-50 text-orange-800',
+};
+
 interface OfferLetterEditorModalProps {
   open: boolean;
   editingOfferId: string | null;
-  applications: ApplicationOption[];
-  selectedApplicationId: string;
-  onApplicationChange: (applicationId: string) => void;
+  selectedApplication: ApplicationOption | undefined;
+  onApplicationChange: (application: ApplicationOption) => void;
   loadingOfferDetails: boolean;
+  saving: boolean;
   offerForm: OfferLetterFormData;
   updateOfferField: (field: keyof OfferLetterFormData, value: string) => void;
-  designationOptions: string[];
+  patchOfferForm: (patch: Partial<OfferLetterFormData>) => void;
+  hrmEditor: OfferHrmEditor;
+  logoUrl: string | null;
+  submitError: string;
   onClose: () => void;
   onSubmit: React.FormEventHandler<HTMLFormElement>;
   canSubmit: boolean;
@@ -104,19 +158,24 @@ interface OfferLetterEditorModalProps {
 function OfferLetterEditorModal({
   open,
   editingOfferId,
-  applications,
-  selectedApplicationId,
+  selectedApplication,
   onApplicationChange,
   loadingOfferDetails,
+  saving,
   offerForm,
   updateOfferField,
-  designationOptions,
+  patchOfferForm,
+  hrmEditor,
+  logoUrl,
+  submitError,
   onClose,
   onSubmit,
   canSubmit,
 }: OfferLetterEditorModalProps) {
   if (!open) return null;
   const field = (name: keyof OfferLetterFormData) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => updateOfferField(name, event.target.value);
+  const breakupUsed = hasSalaryBreakup(hrmEditor.form.salaryComponents);
+  const salaryBreakup = salaryBreakupForPdf(hrmEditor.form.salaryComponents);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/60 p-3 backdrop-blur-sm sm:p-5">
@@ -126,13 +185,13 @@ function OfferLetterEditorModal({
             <h3 className="text-base font-bold text-gray-900">{editingOfferId ? 'Edit Employment Offer' : 'Generate Employment Offer'}</h3>
             <p className="mt-1 text-xs text-gray-500">The preview is the exact PDF that will be saved to Drive and sent to the selected candidate.</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-xl text-gray-500 hover:bg-gray-100" aria-label="Close offer editor">X</button>
+          <button type="button" onClick={onClose} disabled={saving} className="rounded-lg px-3 py-2 text-xl text-gray-500 hover:bg-gray-100 disabled:opacity-50" aria-label="Close offer editor">X</button>
         </div>
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
-          <form onSubmit={onSubmit} className="min-h-0 space-y-4 overflow-y-auto p-5 text-xs sm:p-7 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <form onSubmit={onSubmit} noValidate={false} className="min-h-0 space-y-4 overflow-y-auto p-5 text-xs sm:p-7 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <label className="block font-semibold text-gray-700">
               Candidate application *
-              <span className="mt-1 block"><ApplicationSelectDropdown applications={applications} value={selectedApplicationId} disabled={Boolean(editingOfferId)} onChange={onApplicationChange} /></span>
+              <span className="mt-1 block"><ApplicationSelectDropdown selected={selectedApplication} disabled={Boolean(editingOfferId)} onChange={onApplicationChange} /></span>
             </label>
             {loadingOfferDetails && <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">Loading candidate details...</p>}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -143,15 +202,24 @@ function OfferLetterEditorModal({
               <label className="font-semibold text-gray-700">Employee address<textarea rows={2} value={offerForm.employeeAddress} onChange={field('employeeAddress')} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
               <label className="font-semibold text-gray-700">Company address<textarea rows={2} value={offerForm.companyAddress} onChange={field('companyAddress')} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
             </div>
+            <OfferHrmFields editor={hrmEditor} letter={offerForm} onLetterChange={patchOfferForm} disabled={saving} idPrefix="offers-page-hrm" />
             <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
               <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-amber-700">Employment details</p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="font-semibold text-gray-700">Designation *<span className="mt-1 block"><DesignationSelectDropdown options={designationOptions} value={offerForm.designation} onChange={(value) => updateOfferField('designation', value)} /></span></label>
-                <label className="font-semibold text-gray-700">Department *<input required value={offerForm.department} onChange={field('department')} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                <label className="font-semibold text-gray-700">Place of posting *<input required value={offerForm.placeOfPosting} onChange={field('placeOfPosting')} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                <label className="font-semibold text-gray-700">Salary / CTC *<input required inputMode="decimal" placeholder="e.g. 850000" value={offerForm.salaryAmount} onChange={field('salaryAmount')} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                <label className="font-semibold text-gray-700">Department (on the letter)<input readOnly value={offerForm.department} placeholder="Chosen above" className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-100 p-2.5 text-gray-700" /></label>
+                <label className="font-semibold text-gray-700">Place of posting *{/* With an HRM placement the letter states exactly that place. */}<input required readOnly={Boolean(hrmEditor.form.locationType)} value={offerForm.placeOfPosting} onChange={field('placeOfPosting')} className={`mt-1 w-full rounded-xl border border-gray-200 p-2.5 text-gray-900 ${hrmEditor.form.locationType ? 'bg-gray-100' : 'bg-white'}`} /></label>
+                <label className="font-semibold text-gray-700">
+                  Salary / CTC *
+                  <input required inputMode="decimal" placeholder="e.g. 850000" readOnly={breakupUsed} value={offerForm.salaryAmount} onChange={field('salaryAmount')} className={`mt-1 w-full rounded-xl border border-gray-200 p-2.5 text-gray-900 ${breakupUsed ? 'bg-gray-100' : 'bg-white'}`} />
+                  {breakupUsed && <span className="mt-1 block text-[11px] font-normal text-gray-500">Taken from the salary breakup total.</span>}
+                </label>
                 <label className="font-semibold text-gray-700">Salary period<select value={offerForm.salaryPeriod} onChange={field('salaryPeriod')} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900"><option value="month">Month</option><option value="annum">Annum</option></select></label>
                 <label className="font-semibold text-gray-700">Date of joining *<input required type="date" value={offerForm.joiningDate} onChange={field('joiningDate')} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
+                <label className="font-semibold text-gray-700">
+                  Offer valid until
+                  <input type="date" value={offerForm.offerValidUntil} onChange={field('offerValidUntil')} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" />
+                  <span className="mt-1 block text-[11px] font-normal text-gray-500">Printed on the letter. The offer is closed only when you mark it expired.</span>
+                </label>
                 <label className="font-semibold text-gray-700">Probation (months) *<input required value={offerForm.probationPeriod} onChange={field('probationPeriod')} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
                 <label className="font-semibold text-gray-700">Notice period (days) *<input required value={offerForm.noticePeriod} onChange={field('noticePeriod')} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
               </div>
@@ -167,31 +235,39 @@ function OfferLetterEditorModal({
               <label className="font-semibold text-gray-700">Acceptance place<textarea rows={1} value={offerForm.acceptancePlace} onChange={field('acceptancePlace')} placeholder="Leave blank for candidate" className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
             </div>
             <label className="block font-semibold text-gray-700">Additional terms (one per line)<textarea rows={4} value={offerForm.additionalTerms} onChange={field('additionalTerms')} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
+            {submitError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700">{submitError}</p>}
             <div className="flex justify-end gap-2 border-t border-gray-200 pt-4">
-              <button type="button" onClick={onClose} className="rounded-xl bg-gray-100 px-4 py-2.5 font-bold text-gray-700 hover:bg-gray-200">Cancel</button>
-              <button type="submit" disabled={loadingOfferDetails || !canSubmit} className="rounded-xl bg-[#FFC107] px-4 py-2.5 font-extrabold text-black shadow-md hover:bg-[#e5ad06] disabled:opacity-50">{loadingOfferDetails ? 'Loading...' : editingOfferId ? 'Save & resend offer' : 'Generate & send offer'}</button>
+              <button type="button" onClick={onClose} disabled={saving} className="rounded-xl bg-gray-100 px-4 py-2.5 font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-50">Cancel</button>
+              <button type="submit" disabled={loadingOfferDetails || saving || !canSubmit} className="rounded-xl bg-[#FFC107] px-4 py-2.5 font-extrabold text-black shadow-md hover:bg-[#e5ad06] disabled:opacity-50">{saving ? 'Saving…' : loadingOfferDetails ? 'Loading...' : editingOfferId ? 'Save & resend offer' : 'Generate & send offer'}</button>
             </div>
           </form>
-          <div className="min-h-0 border-t border-gray-200 bg-gray-100 p-3 lg:border-l lg:border-t-0 sm:p-5"><div className="h-full overflow-hidden rounded-2xl border border-gray-300 bg-white shadow-inner"><PDFViewer showToolbar={false} className="h-full w-full border-0"><OfferLetterPdfDocument data={offerForm} /></PDFViewer></div></div>
+          <div className="min-h-0 border-t border-gray-200 bg-gray-100 p-3 lg:border-l lg:border-t-0 sm:p-5"><div className="h-full overflow-hidden rounded-2xl border border-gray-300 bg-white shadow-inner"><PDFViewer showToolbar={false} className="h-full w-full border-0"><OfferLetterPdfDocument data={offerForm} logoUrl={logoUrl} salaryBreakup={salaryBreakup} /></PDFViewer></div></div>
         </div>
       </div>
     </div>
   );
 }
 
+const applicationLabel = (app: ApplicationOption) => `${app.candidate?.fullName || 'Candidate'} - ${app.job?.title || 'Job'} (${app.applicationRef})`;
+
+/** Search-as-you-type over all applications (server side), so any number of applications can be chosen. */
 function ApplicationSelectDropdown({
-  applications,
-  value,
+  selected,
   onChange,
   disabled = false,
 }: {
-  applications: ApplicationOption[];
-  value: string;
-  onChange: (val: string) => void;
+  selected: ApplicationOption | undefined;
+  onChange: (application: ApplicationOption) => void;
   disabled?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<ApplicationOption[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const latest = useRef(0);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent | TouchEvent) {
@@ -207,11 +283,26 @@ function ApplicationSelectDropdown({
     };
   }, [isOpen]);
 
-  const selectedApp = applications.find((a) => a.id === value);
-  const { t } = useTranslation();
-  const displayLabel = selectedApp
-    ? `${selectedApp.candidate?.fullName || 'Candidate'} - ${selectedApp.job?.title || 'Job'} (${selectedApp.applicationRef})`
-    : t('recruitment.selectCandidateApp', 'Select candidate application...');
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const ticket = latest.current + 1;
+    latest.current = ticket;
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      api.get('/recruitment/admin/applications', { params: { compact: 'true', limit: 20, ...(query.trim() ? { q: query.trim() } : {}) } })
+        .then((response) => {
+          if (latest.current !== ticket) return;
+          const list = response.data?.applications || response.data?.data;
+          setResults(Array.isArray(list) ? list as ApplicationOption[] : []);
+          setFailed(false);
+        })
+        .catch(() => { if (latest.current === ticket) setFailed(true); })
+        .finally(() => { if (latest.current === ticket) setSearching(false); });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, query]);
+
+  const displayLabel = selected ? applicationLabel(selected) : t('recruitment.selectCandidateApp', 'Select candidate application...');
 
   return (
     <div className="relative inline-block w-full text-left" ref={dropdownRef} onClick={(e) => e.stopPropagation()}>
@@ -219,9 +310,10 @@ function ApplicationSelectDropdown({
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setIsOpen((prev) => !prev)}
+        aria-expanded={isOpen}
         className={`flex w-full items-center justify-between gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-semibold text-gray-900 hover:border-gray-300 focus:outline-none transition-all cursor-pointer shadow-sm ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
       >
-        <span className={selectedApp ? 'text-gray-900 font-semibold truncate' : 'text-gray-400 font-medium truncate'}>
+        <span className={selected ? 'text-gray-900 font-semibold truncate' : 'text-gray-400 font-medium truncate'}>
           {displayLabel}
         </span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
@@ -229,19 +321,33 @@ function ApplicationSelectDropdown({
 
       {isOpen && !disabled && (
         <div className="absolute left-0 top-full z-[100] mt-2 w-full min-w-[220px] overflow-hidden rounded-3xl border border-gray-200/90 bg-white p-3 shadow-[0_16px_50px_-10px_rgba(0,0,0,0.18)] animate-in fade-in zoom-in-95 duration-100">
+          <div className="mb-2 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3">
+            <Search size={14} className="shrink-0 text-gray-400" />
+            <input
+              type="search"
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setIsOpen(false); } }}
+              placeholder="Search candidate name, email, mobile or ref"
+              className="w-full bg-transparent py-2 text-xs text-gray-900 outline-none"
+            />
+            {searching && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-gray-400" />}
+          </div>
           <div className="max-h-60 overflow-y-auto space-y-1 p-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            {applications.length === 0 ? (
-              <div className="py-3 px-4 text-xs text-gray-400 italic">No applications found</div>
+            {failed ? (
+              <div className="py-3 px-4 text-xs text-rose-600">The applications could not be loaded. Type again to retry.</div>
+            ) : results.length === 0 ? (
+              <div className="py-3 px-4 text-xs text-gray-400 italic">{searching ? 'Searching…' : 'No applications found'}</div>
             ) : (
-              applications.map((app) => {
-                const isSelected = app.id === value;
-                const label = `${app.candidate?.fullName || 'Candidate'} - ${app.job?.title || 'Job'} (${app.applicationRef})`;
+              results.map((app) => {
+                const isSelected = app.id === selected?.id;
                 return (
                   <button
                     key={app.id}
                     type="button"
                     onClick={() => {
-                      onChange(app.id);
+                      onChange(app);
                       setIsOpen(false);
                     }}
                     className={`flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-xs transition-all duration-150 cursor-pointer ${
@@ -250,310 +356,16 @@ function ApplicationSelectDropdown({
                         : 'text-gray-700 font-medium hover:bg-gray-50 hover:text-gray-950'
                     }`}
                   >
-                    <span className="leading-relaxed text-[13px] text-gray-800">{label}</span>
+                    <span className="leading-relaxed text-[13px] text-gray-800">{applicationLabel(app)}</span>
                     {isSelected && <CheckCircle2 className="h-4 w-4 shrink-0 text-[#E5A700] stroke-[2.5]" />}
                   </button>
                 );
               })
             )}
           </div>
+          {results.length >= 20 && <p className="px-3 pt-2 text-[11px] text-gray-400">Showing the first 20 matches. Type to narrow the list.</p>}
         </div>
       )}
-
-      {/* stale misplaced editor block disabled during root-level editor integration
-              <button type="button" onClick={() => setShowCreateModal(false)} className="rounded-lg px-3 py-2 text-gray-500 hover:bg-gray-100" aria-label="Close offer editor">✕</button>
-            </div>
-            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
-              <form onSubmit={handleCreateOffer} className="min-h-0 space-y-4 overflow-y-auto p-5 text-xs sm:p-7 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                <label className="block font-semibold text-gray-700">Candidate application *<ApplicationSelectDropdown applications={applications} value={selectedApplicationId} disabled={Boolean(editingOfferId)} onChange={(nextId) => void loadOfferApplication(nextId)} /></label>
-                {loadingOfferDetails && <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">Loading candidate details…</p>}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="font-semibold text-gray-700">Letter date *<input required type="date" value={offerForm.letterDate} onChange={(e) => updateOfferField('letterDate', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Offer letter no. *<input required value={offerForm.offerLetterNo} onChange={(e) => updateOfferField('offerLetterNo', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Employee name *<input required value={offerForm.employeeName} onChange={(e) => updateOfferField('employeeName', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Company name *<input required value={offerForm.companyName} onChange={(e) => updateOfferField('companyName', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Employee address<textarea rows={2} value={offerForm.employeeAddress} onChange={(e) => updateOfferField('employeeAddress', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Company address<textarea rows={2} value={offerForm.companyAddress} onChange={(e) => updateOfferField('companyAddress', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                </div>
-                <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
-                  <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-amber-700">Employment details</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="font-semibold text-gray-700">Designation *<DesignationSelectDropdown options={designationOptions} value={offerForm.designation} onChange={(value) => updateOfferField('designation', value)} /></label>
-                    <label className="font-semibold text-gray-700">Department *<input required value={offerForm.department} onChange={(e) => updateOfferField('department', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Place of posting *<input required value={offerForm.placeOfPosting} onChange={(e) => updateOfferField('placeOfPosting', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Salary / CTC *<input required inputMode="decimal" placeholder="e.g. 850000" value={offerForm.salaryAmount} onChange={(e) => updateOfferField('salaryAmount', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Salary period<select value={offerForm.salaryPeriod} onChange={(e) => updateOfferField('salaryPeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900"><option value="month">Month</option><option value="annum">Annum</option></select></label>
-                    <label className="font-semibold text-gray-700">Date of joining *<input required type="date" value={offerForm.joiningDate} onChange={(e) => updateOfferField('joiningDate', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Probation (months) *<input required value={offerForm.probationPeriod} onChange={(e) => updateOfferField('probationPeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Notice period (days) *<input required value={offerForm.noticePeriod} onChange={(e) => updateOfferField('noticePeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="font-semibold text-gray-700">Signatory name *<input required value={offerForm.signatoryName} onChange={(e) => updateOfferField('signatoryName', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Signatory designation *<input required value={offerForm.signatoryDesignation} onChange={(e) => updateOfferField('signatoryDesignation', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Signatory date<input type="date" value={offerForm.signatoryDate} onChange={(e) => updateOfferField('signatoryDate', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Signatory place<input value={offerForm.signatoryPlace} onChange={(e) => updateOfferField('signatoryPlace', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><label className="font-semibold text-gray-700">Acceptance date<textarea rows={1} value={offerForm.acceptanceDate} onChange={(e) => updateOfferField('acceptanceDate', e.target.value)} placeholder="Leave blank for candidate" className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label><label className="font-semibold text-gray-700">Acceptance place<textarea rows={1} value={offerForm.acceptancePlace} onChange={(e) => updateOfferField('acceptancePlace', e.target.value)} placeholder="Leave blank for candidate" className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label></div>
-                <label className="block font-semibold text-gray-700">Additional terms (one per line)<textarea rows={4} value={offerForm.additionalTerms} onChange={(e) => updateOfferField('additionalTerms', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                <div className="flex justify-end gap-2 border-t border-gray-200 pt-4"><button type="button" onClick={() => setShowCreateModal(false)} className="rounded-xl bg-gray-100 px-4 py-2.5 font-bold text-gray-700 hover:bg-gray-200">Cancel</button><button type="submit" disabled={loadingOfferDetails || (editingOfferId ? !canUpdateOffer : !canCreateOffer)} className="rounded-xl bg-[#FFC107] px-4 py-2.5 font-extrabold text-black shadow-md hover:bg-[#e5ad06] disabled:opacity-50">{loadingOfferDetails ? 'Loading…' : editingOfferId ? 'Save & resend offer' : 'Generate & send offer'}</button></div>
-              </form>
-              <div className="min-h-0 border-t border-gray-200 bg-gray-100 p-3 lg:border-l lg:border-t-0 sm:p-5"><div className="h-full overflow-hidden rounded-2xl border border-gray-300 bg-white shadow-inner"><PDFViewer showToolbar={false} className="h-full w-full border-0"><OfferLetterPdfDocument data={offerForm} /></PDFViewer></div></div>
-            </div>
-          </div>
-        </div>
-      )}
-      */}
-    </div>
-  );
-}
-
-function DesignationSelectDropdown({
-  options,
-  value,
-  onChange,
-  disabled = false,
-}: {
-  options: string[];
-  value: string;
-  onChange: (val: string) => void;
-  disabled?: boolean;
-}) {
-  const { t } = useTranslation();
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent | TouchEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsOpen(false);
-    }
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('touchstart', handleClickOutside, { passive: true });
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, [isOpen]);
-
-  const displayLabel = value || t('recruitment.selectDesignation', 'Select designation...');
-
-  return (
-    <div className="relative inline-block w-full text-left" ref={dropdownRef} onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => !disabled && setIsOpen((prev) => !prev)}
-        className={`flex w-full items-center justify-between gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-semibold text-gray-900 hover:border-gray-300 focus:outline-none transition-all cursor-pointer shadow-sm ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
-      >
-        <span className={value ? 'text-gray-900 font-semibold truncate' : 'text-gray-400 font-medium truncate'}>
-          {displayLabel}
-        </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-
-      {isOpen && !disabled && (
-        <div className="absolute left-0 top-full z-[100] mt-2 w-full min-w-[200px] overflow-hidden rounded-3xl border border-gray-200/90 bg-white p-3 shadow-[0_16px_50px_-10px_rgba(0,0,0,0.18)] animate-in fade-in zoom-in-95 duration-100">
-          <div className="max-h-60 overflow-y-auto space-y-1 p-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            {options.length === 0 ? (
-              <div className="py-3 px-4 text-xs text-gray-400 italic">No designations available</div>
-            ) : (
-              options.map((opt) => {
-                const isSelected = opt === value;
-                return (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => {
-                      onChange(opt);
-                      setIsOpen(false);
-                    }}
-                    className={`flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-xs transition-all duration-150 cursor-pointer ${
-                      isSelected
-                        ? 'bg-amber-50/90 font-bold text-gray-950 shadow-2xs'
-                        : 'text-gray-700 font-medium hover:bg-gray-50 hover:text-gray-950'
-                    }`}
-                  >
-                    <span className="leading-relaxed text-[13px] text-gray-800">{opt}</span>
-                    {isSelected && <CheckCircle2 className="h-4 w-4 shrink-0 text-[#E5A700] stroke-[2.5]" />}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-      {/* stale root editor copy; the live editor is mounted by AdminOffersPage
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/60 p-3 backdrop-blur-sm sm:p-5">
-          <div className="flex h-[94vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4 sm:px-7">
-              <div>
-                <h3 className="text-base font-bold text-gray-900">{editingOfferId ? 'Edit Employment Offer' : 'Generate Employment Offer'}</h3>
-                <p className="mt-1 text-xs text-gray-500">The preview is the exact PDF that will be saved to Drive and sent to the selected candidate.</p>
-              </div>
-              <button type="button" onClick={() => setShowCreateModal(false)} className="rounded-lg px-3 py-2 text-xl text-gray-500 hover:bg-gray-100" aria-label="Close offer editor">X</button>
-            </div>
-            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
-              <form onSubmit={handleCreateOffer} className="min-h-0 space-y-4 overflow-y-auto p-5 text-xs sm:p-7 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                <label className="block font-semibold text-gray-700">
-                  Candidate application *
-                  <span className="mt-1 block"><ApplicationSelectDropdown applications={applications} value={selectedApplicationId} disabled={Boolean(editingOfferId)} onChange={(nextId) => void loadOfferApplication(nextId)} /></span>
-                </label>
-                {loadingOfferDetails && <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">Loading candidate details...</p>}
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="font-semibold text-gray-700">Letter date *<input required type="date" value={offerForm.letterDate} onChange={(e) => updateOfferField('letterDate', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Offer letter no. *<input required value={offerForm.offerLetterNo} onChange={(e) => updateOfferField('offerLetterNo', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Employee name *<input required value={offerForm.employeeName} onChange={(e) => updateOfferField('employeeName', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Company name *<input required value={offerForm.companyName} onChange={(e) => updateOfferField('companyName', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Employee address<textarea rows={2} value={offerForm.employeeAddress} onChange={(e) => updateOfferField('employeeAddress', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Company address<textarea rows={2} value={offerForm.companyAddress} onChange={(e) => updateOfferField('companyAddress', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                </div>
-
-                <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
-                  <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-amber-700">Employment details</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="font-semibold text-gray-700">Designation *<span className="mt-1 block"><DesignationSelectDropdown options={designationOptions} value={offerForm.designation} onChange={(value) => updateOfferField('designation', value)} /></span></label>
-                    <label className="font-semibold text-gray-700">Department *<input required value={offerForm.department} onChange={(e) => updateOfferField('department', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Place of posting *<input required value={offerForm.placeOfPosting} onChange={(e) => updateOfferField('placeOfPosting', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Salary / CTC *<input required inputMode="decimal" placeholder="e.g. 850000" value={offerForm.salaryAmount} onChange={(e) => updateOfferField('salaryAmount', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Salary period<select value={offerForm.salaryPeriod} onChange={(e) => updateOfferField('salaryPeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900"><option value="month">Month</option><option value="annum">Annum</option></select></label>
-                    <label className="font-semibold text-gray-700">Date of joining *<input required type="date" value={offerForm.joiningDate} onChange={(e) => updateOfferField('joiningDate', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Probation (months) *<input required value={offerForm.probationPeriod} onChange={(e) => updateOfferField('probationPeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                    <label className="font-semibold text-gray-700">Notice period (days) *<input required value={offerForm.noticePeriod} onChange={(e) => updateOfferField('noticePeriod', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900" /></label>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="font-semibold text-gray-700">Signatory name *<input required value={offerForm.signatoryName} onChange={(e) => updateOfferField('signatoryName', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Signatory designation *<input required value={offerForm.signatoryDesignation} onChange={(e) => updateOfferField('signatoryDesignation', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Signatory date<input type="date" value={offerForm.signatoryDate} onChange={(e) => updateOfferField('signatoryDate', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Signatory place<input value={offerForm.signatoryPlace} onChange={(e) => updateOfferField('signatoryPlace', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="font-semibold text-gray-700">Acceptance date<textarea rows={1} value={offerForm.acceptanceDate} onChange={(e) => updateOfferField('acceptanceDate', e.target.value)} placeholder="Leave blank for candidate" className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                  <label className="font-semibold text-gray-700">Acceptance place<textarea rows={1} value={offerForm.acceptancePlace} onChange={(e) => updateOfferField('acceptancePlace', e.target.value)} placeholder="Leave blank for candidate" className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                </div>
-                <label className="block font-semibold text-gray-700">Additional terms (one per line)<textarea rows={4} value={offerForm.additionalTerms} onChange={(e) => updateOfferField('additionalTerms', e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-gray-900" /></label>
-                <div className="flex justify-end gap-2 border-t border-gray-200 pt-4">
-                  <button type="button" onClick={() => setShowCreateModal(false)} className="rounded-xl bg-gray-100 px-4 py-2.5 font-bold text-gray-700 hover:bg-gray-200">Cancel</button>
-                  <button type="submit" disabled={loadingOfferDetails || (editingOfferId ? !canUpdateOffer : !canCreateOffer)} className="rounded-xl bg-[#FFC107] px-4 py-2.5 font-extrabold text-black shadow-md hover:bg-[#e5ad06] disabled:opacity-50">{loadingOfferDetails ? 'Loading...' : editingOfferId ? 'Save & resend offer' : 'Generate & send offer'}</button>
-                </div>
-              </form>
-              <div className="min-h-0 border-t border-gray-200 bg-gray-100 p-3 lg:border-l lg:border-t-0 sm:p-5">
-                <div className="h-full overflow-hidden rounded-2xl border border-gray-300 bg-white shadow-inner">
-                  <PDFViewer showToolbar={false} className="h-full w-full border-0"><OfferLetterPdfDocument data={offerForm} /></PDFViewer>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      */}
-    </div>
-  );
-}
-
-interface CustomFilterSelectProps {
-  value: string;
-  onChange: (val: string) => void;
-  options: Array<{ value: string; label: string }>;
-  placeholder: string;
-}
-
-function CustomFilterSelect({ value, onChange, options, placeholder }: CustomFilterSelectProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const filterRef = React.useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent | TouchEvent) {
-      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('touchstart', handleClickOutside, { passive: true });
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, [isOpen]);
-
-  const selectedOption = options.find((o) => o.value === value);
-
-  return (
-    <div className="relative inline-block text-left" ref={filterRef}>
-      <button
-        type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200/90 bg-white px-4 py-2.5 text-xs font-semibold text-gray-800 shadow-2xs hover:bg-gray-50/80 hover:border-gray-300 focus:outline-none transition-all cursor-pointer min-w-[140px]"
-      >
-        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-
-      {isOpen && (
-        <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 z-50 w-[220px] origin-top-left sm:origin-top-right rounded-3xl border border-gray-100 bg-white p-2 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.18)] animate-in fade-in zoom-in-95 duration-100">
-          <div className="max-h-60 overflow-y-auto space-y-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <button
-              type="button"
-              onClick={() => {
-                onChange('');
-                setIsOpen(false);
-              }}
-              className={`flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-xs transition-colors duration-150 ${
-                !value
-                  ? 'bg-[#FFF9E6] font-bold text-gray-900'
-                  : 'text-gray-700 font-medium hover:bg-gray-50'
-              }`}
-            >
-              <span>{placeholder}</span>
-              {!value && <Check className="h-4 w-4 shrink-0 text-[#E5A700] stroke-[2.5]" />}
-            </button>
-            {options.map((opt) => {
-              const isSelected = opt.value === value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    onChange(opt.value);
-                    setIsOpen(false);
-                  }}
-                  className={`flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-xs transition-colors duration-150 ${
-                    isSelected
-                      ? 'bg-[#FFF9E6] font-bold text-gray-900'
-                      : 'text-gray-700 font-medium hover:bg-gray-50'
-                  }`}
-                >
-                  <span>{opt.label}</span>
-                  {isSelected && <Check className="h-4 w-4 shrink-0 text-[#E5A700] stroke-[2.5]" />}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {/* misplaced root editor invocation; AdminOffersPage owns this instance
-      <OfferLetterEditorModal
-        open={showCreateModal}
-        editingOfferId={editingOfferId}
-        applications={applications}
-        selectedApplicationId={selectedApplicationId}
-        onApplicationChange={(nextId) => void loadOfferApplication(nextId)}
-        loadingOfferDetails={loadingOfferDetails}
-        offerForm={offerForm}
-        updateOfferField={updateOfferField}
-        designationOptions={designationOptions}
-        onClose={() => setShowCreateModal(false)}
-        onSubmit={handleCreateOffer}
-        canSubmit={editingOfferId ? canUpdateOffer : canCreateOffer}
-      />
-      */}
     </div>
   );
 }
@@ -564,82 +376,127 @@ export default function AdminOffersPage() {
   const canCreateOffer = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersCreate);
   const canUpdateOffer = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersUpdate);
   const canDeleteOffer = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersDelete);
+  const canChangeOfferStatus = canUseRecruitmentPermission(currentUser, recruitmentPermissions.offersChangeStatus);
   const { darkLogoUrl } = useSiteLogo();
   const [offers, setOffers] = useState<OfferItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  // The list is paged, filtered and searched by the server: any number of offers.
   const [searchTerm, setSearchTerm] = useState('');
-  const deferredSearchTerm = useDeferredValue(searchTerm);
-  const [designationFilter, setDesignationFilter] = useState('');
-  const [ctcFilter, setCtcFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<OfferStatus | ''>('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
+  const [statusCounts, setStatusCounts] = useState<Partial<Record<OfferStatus, number>>>({});
+  const offersRequest = useRef(0);
   const [selectedOffer, setSelectedOffer] = useState<OfferItem | null>(null);
+  const [downloadingOfferId, setDownloadingOfferId] = useState<string | null>(null);
+  const [deletingOfferId, setDeletingOfferId] = useState<string | null>(null);
 
-  // Create Offer Modal
+  const handleDownloadOfferPdf = async (offer: OfferItem) => {
+    try {
+      setDownloadingOfferId(offer.id);
+      toast.info(t('recruitment.downloadingOffer', 'Downloading offer letter PDF...'));
+
+      const response = await api.get(`/recruitment/admin/offers/${offer.id}/pdf`, {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      const candidateName = offer.application?.candidate?.fullName?.replace(/[^a-z0-9]+/gi, '_') || 'Candidate';
+      link.download = offer.offerLetterFileName || `Offer_Letter_${offer.offerRef}_${candidateName}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      toast.success(t('recruitment.downloadSuccess', 'Offer letter downloaded successfully.'));
+    } catch {
+      toast.error(t('recruitment.downloadFailed', 'Unable to download offer letter PDF.'));
+    } finally {
+      setDownloadingOfferId(null);
+    }
+  };
+
+  // Create / edit offer
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [applications, setApplications] = useState<ApplicationOption[]>([]);
   const [selectedApplicationId, setSelectedApplicationId] = useState('');
-  const [offerDesignation, setOfferDesignation] = useState('');
-  const [annualCtc, setAnnualCtc] = useState('');
-  const [joiningDate, setJoiningDate] = useState('');
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
   const [offerForm, setOfferForm] = useState<OfferLetterFormData>(emptyOfferLetterData);
   const [loadingOfferDetails, setLoadingOfferDetails] = useState(false);
+  const [savingOffer, setSavingOffer] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  // The HRM form options need offers.create / .update: a read-only viewer does not request them.
+  const hrmEditor = useOfferHrmEditor(canCreateOffer || canUpdateOffer);
+  const { reset: resetHrm } = hrmEditor;
 
-  const fetchOffers = async () => {
+  const fetchOffers = useCallback(async () => {
+    const request = ++offersRequest.current;
     try {
       setLoading(true);
-      const res = await api.get('/recruitment/admin/offers');
+      setLoadError('');
+      const res = await api.get('/recruitment/admin/offers', {
+        params: { page: currentPage, limit: pageSize, ...(statusFilter ? { status: statusFilter } : {}), ...(search ? { search } : {}) },
+      });
+      if (request !== offersRequest.current) return;
       const offerList = res.data?.offers || res.data?.data;
       if (res.data?.success && Array.isArray(offerList)) {
+        const total = Number(res.data?.pagination?.total ?? offerList.length);
+        const totalPages = Math.max(1, Number(res.data?.pagination?.totalPages ?? 1));
+        // The page shrank under us (an offer was deleted elsewhere): go to the last page that exists.
+        if (currentPage > totalPages) {
+          setCurrentPage(totalPages);
+          return;
+        }
         setOffers(offerList);
+        setPagination({ total, totalPages });
+        setStatusCounts((res.data?.statusCounts ?? {}) as Partial<Record<OfferStatus, number>>);
       } else {
-        setOffers(getMockOffers());
+        setLoadError('The offers could not be loaded.');
       }
     } catch (err: unknown) {
-      console.warn('Backend offers fetch failed, using fallback mock data:', err);
-      setOffers(getMockOffers());
+      if (request === offersRequest.current) setLoadError(apiErrorMessage(err, 'The offers could not be loaded.'));
     } finally {
-      setLoading(false);
+      if (request === offersRequest.current) setLoading(false);
     }
-  };
-
-  const [jobs, setJobs] = useState<Array<{ id: string; title: string }>>([]);
-
-  const fetchApplicationsList = async () => {
-    try {
-      const [appRes, jobRes] = await Promise.all([
-        api.get('/recruitment/admin/applications?limit=50&compact=true'),
-        api.get('/recruitment/admin/jobs?limit=100'),
-      ]);
-      const appList = appRes.data?.applications || appRes.data?.data;
-      if (Array.isArray(appList)) {
-        setApplications(appList);
-      }
-      const jobList = jobRes.data?.jobs || jobRes.data?.data;
-      if (Array.isArray(jobList)) {
-        setJobs(jobList);
-      }
-    } catch (err) {
-      console.warn('Failed to fetch applications or jobs list for offer creation', err);
-    }
-  };
-
-  const designationOptions = useMemo(() => {
-    const set = new Set<string>();
-    (applications || []).forEach((app) => {
-      if (app.job?.title) set.add(app.job.title);
-    });
-    (jobs || []).forEach((j) => {
-      if (j.title) set.add(j.title);
-    });
-    return Array.from(set);
-  }, [applications, jobs]);
+  }, [currentPage, pageSize, statusFilter, search]);
 
   useEffect(() => {
-    fetchOffers();
+    void fetchOffers();
+  }, [fetchOffers]);
+
+  // Search is sent to the server after a short pause in typing, and starts again at page 1.
+  useEffect(() => {
+    const next = searchTerm.trim();
+    if (next === search) return undefined;
+    const timer = window.setTimeout(() => {
+      setSearch(next);
+      setCurrentPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm, search]);
+
+  const patchOfferForm = useCallback((patch: Partial<OfferLetterFormData>) => {
+    setOfferForm((previous) => ({ ...previous, ...patch }));
   }, []);
 
-  const updateOfferField = <K extends keyof OfferLetterFormData>(field: K, value: OfferLetterFormData[K]) => {
-    setOfferForm((previous) => ({ ...previous, [field]: value }));
+  const updateOfferField = (field: keyof OfferLetterFormData, value: string) => {
+    setOfferForm((previous) => {
+      const next = { ...previous, [field]: value };
+      // The letter amount follows the breakup when the period changes.
+      if (field === 'salaryPeriod') {
+        const amount = letterSalaryForPeriod(hrmEditor.form.salaryComponents, value);
+        if (amount !== null) next.salaryAmount = amount;
+      }
+      if (field === 'letterDate' && (!previous.offerValidUntil || previous.offerValidUntil === defaultOfferValidUntil(previous.letterDate))) {
+        next.offerValidUntil = defaultOfferValidUntil(value);
+      }
+      return next;
+    });
   };
 
   const getOfferDefaults = (application?: ApplicationOption | OfferApplicationDetails | null): OfferLetterFormData => {
@@ -654,24 +511,42 @@ export default function AdminOffersPage() {
       employeeName: candidate?.fullName || '',
       employeeAddress: [candidate?.address, candidate?.currentCity, candidate?.state].filter(Boolean).join(', '),
       companyAddress: job?.locationAddress || location,
-      designation: job?.title || '',
-      department: job?.department?.name || '',
+      // Department and designation come from the HRM lists chosen in the form.
+      designation: '',
+      department: '',
       placeOfPosting: location,
       joiningDate: '',
+      offerValidUntil: defaultOfferValidUntil(today),
+      employmentType: EMPLOYMENT_TYPE_LABELS.FULL_TIME,
+      signatoryName: currentUser?.name || '',
+      signatoryDesignation: 'Authorized Signatory',
       signatoryDate: today,
       signatoryPlace: job?.locationCity || '',
     };
   };
 
-  const loadOfferApplication = async (applicationId: string, baseApplication?: ApplicationOption) => {
+  /** A new offer: the letter starts from the application's candidate and job. */
+  const loadOfferApplication = async (applicationId: string, chosen?: ApplicationOption) => {
     setSelectedApplicationId(applicationId);
-    setOfferForm(getOfferDefaults(baseApplication || applications.find((application) => application.id === applicationId)));
+    setSubmitError('');
+    setOfferForm(getOfferDefaults(chosen ?? applications.find((application) => application.id === applicationId)));
     if (!applicationId) return;
     try {
       setLoadingOfferDetails(true);
       const response = await api.get(`/recruitment/admin/applications/${applicationId}`);
       const details = response.data?.application as OfferApplicationDetails | undefined;
-      if (details) setOfferForm(getOfferDefaults(details));
+      // Only fill what the person has not typed yet: candidate / company details from the full record.
+      if (details) {
+        const defaults = getOfferDefaults(details);
+        setOfferForm((current) => ({
+          ...current,
+          employeeName: current.employeeName || defaults.employeeName,
+          employeeAddress: current.employeeAddress || defaults.employeeAddress,
+          companyAddress: current.companyAddress || defaults.companyAddress,
+          offerLetterNo: defaults.offerLetterNo,
+          signatoryPlace: current.signatoryPlace || defaults.signatoryPlace,
+        }));
+      }
     } catch (error) {
       console.warn('Unable to load complete application details for offer preview:', error);
     } finally {
@@ -683,46 +558,47 @@ export default function AdminOffersPage() {
     const refreshOffers = () => void fetchOffers();
     window.addEventListener('recruitment_offers_updated', refreshOffers);
     return () => window.removeEventListener('recruitment_offers_updated', refreshOffers);
-  }, []);
+  }, [fetchOffers]);
 
   const handleCreateOffer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingOffer) return;
     if (editingOfferId ? !canUpdateOffer : !canCreateOffer) return;
+    setSubmitError('');
     const targetApplicationId = selectedApplicationId || offers.find((offer) => offer.id === editingOfferId)?.application?.id;
-    if (!targetApplicationId || !offerForm.employeeName.trim() || !offerForm.designation.trim() || !offerForm.department.trim() || !offerForm.salaryAmount.trim() || !offerForm.joiningDate) {
-      alert('Application, employee, designation, department, salary and joining date are required.');
+    if (!targetApplicationId) {
+      setSubmitError('Choose the candidate application.');
+      return;
+    }
+    const hrmOk = hrmEditor.validate(offerForm.designation);
+    if (!hrmOk) {
+      setSubmitError('Check the HRM placement and salary fields marked above.');
+      return;
+    }
+    if (!offerForm.employeeName.trim() || !offerForm.department.trim() || !offerForm.salaryAmount.trim() || Number(offerForm.salaryAmount.replace(/,/g, '')) <= 0 || !offerForm.joiningDate) {
+      setSubmitError('Employee name, department, a salary amount and the joining date are required.');
       return;
     }
 
     try {
-      setLoadingOfferDetails(true);
-      const pdfBlob = await pdf(<OfferLetterPdfDocument data={offerForm} logoUrl={darkLogoUrl} />).toBlob();
-      const payload = new FormData();
-      payload.append('applicationId', targetApplicationId);
-      payload.append('designation', offerForm.designation);
-      payload.append('department', offerForm.department);
-      payload.append('joiningLocation', offerForm.placeOfPosting);
-      payload.append('ctc', offerForm.salaryAmount.replace(/,/g, ''));
-      payload.append('joiningDate', offerForm.joiningDate);
-      payload.append('probationPeriod', offerForm.probationPeriod);
-      payload.append('additionalTerms', offerForm.additionalTerms);
-      payload.append('offerData', JSON.stringify(offerForm));
-      payload.append('offerPdf', pdfBlob, `${offerForm.offerLetterNo || 'offer-letter'}.pdf`);
-      if (editingOfferId) {
-        await api.patch(`/recruitment/admin/offers/${editingOfferId}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
-      } else {
-        await api.post('/recruitment/admin/offers', payload, { headers: { 'Content-Type': 'multipart/form-data' } });
-      }
+      setSavingOffer(true);
+      const pdfBlob = await pdf(<OfferLetterPdfDocument data={offerForm} logoUrl={darkLogoUrl} salaryBreakup={salaryBreakupForPdf(hrmEditor.form.salaryComponents)} />).toBlob();
+      const payload = buildOfferMultipart({ applicationId: targetApplicationId, letter: offerForm, hrm: hrmEditor.form, pdfBlob });
+      const response = editingOfferId
+        ? await api.patch<OfferSendResponse>(`/recruitment/admin/offers/${editingOfferId}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } })
+        : await api.post<OfferSendResponse>('/recruitment/admin/offers', payload, { headers: { 'Content-Type': 'multipart/form-data' } });
+      // Saved and sent: what each channel did (never an error from here on, a retry would close the link just sent).
+      const dispatch = describeOfferDispatch(response.data?.communications);
+      if (dispatch.tone === 'success') toast.success(`${editingOfferId ? 'Offer updated and resent.' : 'Offer sent.'} ${dispatch.summary}`);
+      else toast.warning(`Offer saved. ${dispatch.summary}`);
       setShowCreateModal(false);
       setEditingOfferId(null);
       await fetchOffers();
-      window.dispatchEvent(new Event('recruitment_offers_updated'));
       window.dispatchEvent(new Event('recruitment_applications_updated'));
     } catch (error) {
-      console.error('Failed to create offer:', error);
-      alert('Failed to create offer letter. Please check the form and try again.');
+      setSubmitError(apiErrorMessage(error, 'The offer could not be saved. Check the form and try again.'));
     } finally {
-      setLoadingOfferDetails(false);
+      setSavingOffer(false);
     }
   };
 
@@ -730,24 +606,37 @@ export default function AdminOffersPage() {
     if (!canCreateOffer) return;
     setEditingOfferId(null);
     setSelectedApplicationId('');
+    setSubmitError('');
     setOfferForm(getOfferDefaults());
+    resetHrm();
     setShowCreateModal(true);
-    void fetchApplicationsList();
   };
 
+  /** Edit starts from what was saved: the letter data, the HRM placement and the breakup. */
   const openEditOffer = (offer: OfferItem) => {
-    if (!canUpdateOffer) return;
+    if (!canUpdateOffer || !offerCanBeEdited(offer.status)) return;
     setEditingOfferId(offer.id);
     setSelectedApplicationId(offer.application?.id || '');
+    setSubmitError('');
+    const defaults = getOfferDefaults({ id: offer.application.id, applicationRef: offer.application.applicationRef, candidate: offer.application.candidate, job: offer.application.job });
+    const saved = offer.offerLetterData || {};
     setOfferForm({
-      ...getOfferDefaults(offer.application),
-      designation: offer.designation || '',
-      salaryAmount: offer.annualCtc ? String(offer.annualCtc) : '',
-      placeOfPosting: offer.workLocation || '',
-      joiningDate: offer.joiningDate ? new Date(offer.joiningDate).toISOString().slice(0, 10) : '',
+      ...defaults,
+      ...saved,
+      designation: saved.designation || offer.designation || '',
+      department: saved.department || offer.department || '',
+      placeOfPosting: saved.placeOfPosting || offer.workLocation || '',
+      salaryAmount: saved.salaryAmount || (offer.salaryAmount ? String(offer.salaryAmount) : ''),
+      salaryPeriod: saved.salaryPeriod || offer.salaryPeriod || 'annum',
+      joiningDate: saved.joiningDate || (offer.joiningDate ? new Date(offer.joiningDate).toISOString().slice(0, 10) : ''),
+      offerValidUntil: offer.expiryDate ? new Date(offer.expiryDate).toISOString().slice(0, 10) : defaults.offerValidUntil,
+      employmentType: offer.placement?.employmentType && offer.placement.employmentType in EMPLOYMENT_TYPE_LABELS
+        ? EMPLOYMENT_TYPE_LABELS[offer.placement.employmentType as keyof typeof EMPLOYMENT_TYPE_LABELS]
+        : defaults.employmentType,
+      reportingManager: offer.placement?.reportingManagerEmployeeId ? offer.reportingManager || '' : '',
     });
+    resetHrm({ placement: offer.placement ?? null, components: offer.salaryComponents ?? [], reportingManagerName: offer.reportingManager ?? null });
 
-    // Ensure candidate application exists in applications option list
     if (offer.application && !applications.some((a) => a.id === offer.application.id)) {
       setApplications((prev) => [
         ...prev,
@@ -759,86 +648,39 @@ export default function AdminOffersPage() {
         },
       ]);
     }
-
     setShowCreateModal(true);
-    void fetchApplicationsList();
-    void loadOfferApplication(offer.application?.id || '', offer.application);
   };
 
-  const handleDeleteOffer = async (offerId: string) => {
-    if (!canDeleteOffer) return;
+  const handleDeleteOffer = async (offer: OfferItem) => {
+    if (!canDeleteOffer || !offerCanBeDeleted(offer.status) || deletingOfferId) return;
     if (!(await confirmDelete({ title: 'Delete this offer?' }))) return;
-    setOffers((prev) => (prev || []).filter((o) => o.id !== offerId));
     try {
-      await api.delete(`/recruitment/admin/offers/${offerId}`);
-    } catch {
-      console.warn('API offer delete failed, keeping local deletion');
-    } finally {
-      window.dispatchEvent(new Event('recruitment_offers_updated'));
+      setDeletingOfferId(offer.id);
+      await api.delete(`/recruitment/admin/offers/${offer.id}`);
+      toast.success('Offer deleted.');
+      await fetchOffers();
       window.dispatchEvent(new Event('recruitment_applications_updated'));
+    } catch (error) {
+      toast.error(apiErrorMessage(error, 'The offer could not be deleted.'));
+    } finally {
+      setDeletingOfferId(null);
     }
+  };
+
+  const onStatusChanged = async () => {
+    setSelectedOffer(null);
+    await fetchOffers();
+    window.dispatchEvent(new Event('recruitment_applications_updated'));
   };
 
   const safeOffers = useMemo(() => (Array.isArray(offers) ? offers : []), [offers]);
 
-  // Dynamic Designation & CTC filter options derived from current page items
-  const dynamicDesignationOptions = useMemo(() => {
-    const uniqueDesignations = Array.from(
-      new Set(safeOffers.map((o) => o.designation).filter(Boolean))
-    );
-    if (uniqueDesignations.length === 0) {
-      return [
-        { value: 'Senior Excavator Service Engineer', label: 'Senior Excavator Service Engineer' },
-        { value: 'Territory Sales Executive - Heavy Equipment', label: 'Territory Sales Executive - Heavy Equipment' },
-      ];
-    }
-    return uniqueDesignations.map((d) => ({
-      value: d,
-      label: d,
-    }));
-  }, [safeOffers]);
+  const statusChips = useMemo(() => {
+    const statuses = (Object.keys(OFFER_STATUS_LABELS) as OfferStatus[]).filter((status) => status !== 'DRAFT' || (statusCounts.DRAFT ?? 0) > 0);
+    const all = statuses.reduce((sum, status) => sum + (statusCounts[status] ?? 0), 0);
+    return [{ value: '' as const, label: 'All', count: all }, ...statuses.map((status) => ({ value: status, label: OFFER_STATUS_LABELS[status], count: statusCounts[status] ?? 0 }))];
+  }, [statusCounts]);
 
-  const dynamicCtcOptions = useMemo(() => {
-    const uniqueCtcs = Array.from(
-      new Set(safeOffers.map((o) => o.annualCtc).filter((val) => typeof val === 'number' && val > 0))
-    ).sort((a, b) => a - b);
-
-    if (uniqueCtcs.length === 0) {
-      return [
-        { value: '600000', label: '₹6.0 LPA' },
-        { value: '1200000', label: '₹12.0 LPA' },
-      ];
-    }
-
-    return uniqueCtcs.map((ctc) => {
-      const lpa = (ctc / 100000).toFixed(1);
-      return {
-        value: String(ctc),
-        label: `₹${lpa} LPA`,
-      };
-    });
-  }, [safeOffers]);
-
-  const filteredOffers = useMemo(() => {
-    const searchLower = deferredSearchTerm.trim().toLowerCase();
-
-    return safeOffers.filter((item) => {
-      const matchesSearch =
-        !searchLower ||
-        item.application?.candidate?.fullName?.toLowerCase().includes(searchLower) ||
-        item.application?.job?.title?.toLowerCase().includes(searchLower) ||
-        item.designation?.toLowerCase().includes(searchLower) ||
-        item.offerRef?.toLowerCase().includes(searchLower);
-
-      const matchesDesignation = !designationFilter || item.designation === designationFilter;
-      const matchesCtc = !ctcFilter || String(item.annualCtc) === ctcFilter;
-
-      return matchesSearch && matchesDesignation && matchesCtc;
-    });
-  }, [ctcFilter, deferredSearchTerm, designationFilter, safeOffers]);
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [openPageSizeDropdown, setOpenPageSizeDropdown] = useState(false);
 
   useEffect(() => {
@@ -856,19 +698,15 @@ export default function AdminOffersPage() {
     };
   }, []);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [deferredSearchTerm, designationFilter, ctcFilter, pageSize]);
+  const totalPages = pagination.totalPages;
+  const paginatedOffers = safeOffers;
+  const startItemIndex = pagination.total > 0 && safeOffers.length > 0 ? (currentPage - 1) * pageSize + 1 : 0;
+  const endItemIndex = pagination.total > 0 ? Math.min(startItemIndex + safeOffers.length - 1, pagination.total) : 0;
 
-  const totalPages = Math.ceil(filteredOffers.length / pageSize) || 1;
-  const paginatedOffers = useMemo(
-    () => filteredOffers.slice((currentPage - 1) * pageSize, currentPage * pageSize),
-    [currentPage, filteredOffers, pageSize]
-  );
-  const startItemIndex = filteredOffers.length > 0 ? (currentPage - 1) * pageSize + 1 : 0;
-  const endItemIndex = Math.min(currentPage * pageSize, filteredOffers.length);
+  const salaryLine = (offer: OfferItem) => offer.salaryAmount && offer.salaryPeriod === 'month'
+    ? `₹${formatInr(offer.salaryAmount)} / month on the letter`
+    : null;
 
-  // KPI Metrics
   return (
     <div className="min-h-screen bg-gray-50/50 flex flex-col">
       <main className="max-w-7xl mx-auto px-0 pt-0 pb-6 w-full space-y-4 flex-grow">
@@ -886,18 +724,20 @@ export default function AdminOffersPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <CustomFilterSelect
-              value={designationFilter}
-              onChange={setDesignationFilter}
-              placeholder={t('recruitment.allDesignations', 'All Designations')}
-              options={dynamicDesignationOptions}
-            />
-            <CustomFilterSelect
-              value={ctcFilter}
-              onChange={setCtcFilter}
-              placeholder={t('recruitment.allCtcs', 'All CTCs')}
-              options={dynamicCtcOptions}
-            />
+            <div role="group" aria-label="Filter by status" className="flex flex-wrap items-center gap-1.5">
+              {statusChips.map((chip) => (
+                <button
+                  key={chip.value || 'ALL'}
+                  type="button"
+                  aria-pressed={statusFilter === chip.value}
+                  onClick={() => { setStatusFilter(chip.value); setCurrentPage(1); }}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${statusFilter === chip.value ? 'border-[#FFC107] bg-[#FFC107]/20 text-gray-900' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                >
+                  {chip.label}
+                  <span className="rounded-full bg-white/80 px-1.5 text-[10px] text-gray-500 ring-1 ring-gray-200">{chip.count}</span>
+                </button>
+              ))}
+            </div>
 
             {canCreateOffer && <button
                 onClick={() => {
@@ -914,7 +754,13 @@ export default function AdminOffersPage() {
         {/* Offers Table Container */}
         {loading ? (
           <BrandLoader variant="section" size="sm" bg="light" text={t('recruitment.analyticsLoading', 'Loading candidate offer records...')} className="rounded-2xl border border-gray-200 bg-white p-12 text-center" />
-        ) : filteredOffers.length === 0 ? (
+        ) : loadError ? (
+          <div role="alert" className="bg-white rounded-2xl border border-rose-200 p-12 text-center">
+            <h4 className="text-lg font-bold text-gray-900">The offers could not be loaded</h4>
+            <p className="text-sm text-rose-700 mt-1">{loadError}</p>
+            <button type="button" onClick={() => void fetchOffers()} className="mt-4 rounded-xl bg-[#FFC107] px-4 py-2 text-xs font-extrabold text-black hover:bg-[#e5ad06]">Try again</button>
+          </div>
+        ) : safeOffers.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
             <Award className="mx-auto text-gray-300 mb-3" size={48} />
             <h4 className="text-lg font-bold text-gray-900">{t('recruitment.noOffersFound', 'No offers found')}</h4>
@@ -923,7 +769,7 @@ export default function AdminOffersPage() {
         ) : (
           <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden flex flex-col">
             <div className="overflow-x-auto max-h-[calc(100vh-320px)] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <table className="w-full text-left border-collapse" style={{minWidth: '640px'}}>
+              <table className="w-full text-left border-collapse" style={{minWidth: '760px'}}>
                 <thead className="sticky top-0 bg-gray-50 z-10">
                   <tr className="border-b border-gray-200 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                     <th className="py-3.5 px-4 whitespace-nowrap">{t('recruitment.offerDetails', 'Offer Details')}</th>
@@ -936,7 +782,7 @@ export default function AdminOffersPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm">
                   {paginatedOffers.map((item) => (
-                    <tr key={item.id} className="hover:bg-amber-50/20 transition">
+                    <tr key={item.id} className="hover:bg-amber-50/20 transition align-top">
                       <td className="py-4 px-4">
                         <div>
                           <p className="font-extrabold text-gray-900 text-xs">{item.application?.candidate?.fullName || 'N/A'}</p>
@@ -947,12 +793,14 @@ export default function AdminOffersPage() {
                       <td className="py-4 px-4">
                         <div>
                           <p className="font-extrabold text-gray-900 text-xs">{item.designation}</p>
-                          <p className="text-xs text-gray-500">{item.application?.job?.title}</p>
+                          <p className="text-xs text-gray-500">{item.department || item.application?.job?.title}</p>
+                          {!item.placement && <p className="mt-0.5 text-[10px] font-semibold text-amber-700">No HRM placement (older offer)</p>}
                         </div>
                       </td>
 
-                      <td className="py-4 px-4 font-black text-gray-900 text-xs">
-                        ₹{(item.annualCtc / 100000).toFixed(2)} Lakhs / yr
+                      <td className="py-4 px-4 text-xs">
+                        <p className="font-black text-gray-900">{formatLakhsPerYear(item.annualCtc)}</p>
+                        {salaryLine(item) && <p className="text-[11px] text-gray-500">{salaryLine(item)}</p>}
                       </td>
 
                       <td className="py-4 px-4">
@@ -962,16 +810,42 @@ export default function AdminOffersPage() {
                       </td>
 
                       <td className="py-4 px-4">
-                        <span className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-extrabold text-gray-700">
-                          {item.status.replaceAll('_', ' ')}
+                        <span className={`rounded-xl border px-3 py-1.5 text-xs font-extrabold ${STATUS_BADGE[item.status] ?? STATUS_BADGE.EXPIRED}`}>
+                          {OFFER_STATUS_LABELS[item.status] ?? item.status}
                         </span>
+                        {item.application?.currentStage === 'HIRED' && <p className="mt-1 text-[10px] font-bold text-emerald-700">Hired</p>}
+                        {item.status === 'ACCEPTED' ? <div><OfferHrmBadge hrm={item.hrm} /></div> : null}
                       </td>
 
                       <td className="py-4 px-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button type="button" onClick={() => setSelectedOffer(item)} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs rounded-xl transition"><Eye size={14} /></button>
-                          {canUpdateOffer && <button type="button" onClick={() => openEditOffer(item)} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition">{t('roleManagement.edit', 'Edit')}</button>}
-                          {canDeleteOffer && <button type="button" onClick={() => void handleDeleteOffer(item.id)} className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition">{t('recruitment.deleteOffer', 'Delete')}</button>}
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              disabled={downloadingOfferId === item.id}
+                              onClick={() => void handleDownloadOfferPdf(item)}
+                              title={t('recruitment.downloadOfferLetter', 'Download Offer Letter PDF')}
+                              aria-label="Download offer letter PDF"
+                              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 font-bold text-xs rounded-xl transition flex items-center gap-1 shadow-2xs disabled:opacity-50"
+                            >
+                              {downloadingOfferId === item.id ? (
+                                <Loader2 size={14} className="animate-spin text-amber-700" />
+                              ) : (
+                                <Download size={14} className="text-amber-700" />
+                              )}
+                            </button>
+                            <button type="button" aria-label="View offer" onClick={() => setSelectedOffer(item)} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs rounded-xl transition"><Eye size={14} /></button>
+                            {canUpdateOffer && offerCanBeEdited(item.status) && <button type="button" onClick={() => openEditOffer(item)} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition">{t('roleManagement.edit', 'Edit')}</button>}
+                            {canDeleteOffer && offerCanBeDeleted(item.status) && <button type="button" disabled={deletingOfferId === item.id} onClick={() => void handleDeleteOffer(item)} className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition disabled:opacity-50">{t('recruitment.deleteOffer', 'Delete')}</button>}
+                          </div>
+                          <OfferStatusActions
+                            offerId={item.id}
+                            status={item.status}
+                            candidateName={item.application?.candidate?.fullName || ''}
+                            canChangeStatus={canChangeOfferStatus}
+                            onChanged={onStatusChanged}
+                            defaultPlace={item.workLocation}
+                          />
                         </div>
                       </td>
                     </tr>
@@ -981,13 +855,13 @@ export default function AdminOffersPage() {
             </div>
 
             {/* Pagination Footer - Matches Jobs/Listings module */}
-            {filteredOffers.length > 0 && (
+            {safeOffers.length > 0 && (
               <div className="flex flex-col gap-4 border-t border-gray-100 bg-white px-6 py-3.5 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-medium text-gray-500 sm:justify-start">
                   <div>
                     Showing <span className="font-bold text-gray-900">{startItemIndex}</span> to{' '}
                     <span className="font-bold text-gray-900">{endItemIndex}</span> of{' '}
-                    <span className="font-bold text-gray-900">{filteredOffers.length}</span> entries
+                    <span className="font-bold text-gray-900">{pagination.total}</span> entries
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1008,7 +882,7 @@ export default function AdminOffersPage() {
 
                       {openPageSizeDropdown && (
                         <div className="absolute bottom-full left-0 z-50 mb-1.5 w-20 origin-bottom-left rounded-xl border border-gray-100 bg-white p-1 shadow-lg">
-                          {[5, 10, 25, 50].map((size) => (
+                          {[10, 20, 50, 100].map((size) => (
                             <button
                               key={size}
                               type="button"
@@ -1091,6 +965,7 @@ export default function AdminOffersPage() {
               </div>
               <button
                 onClick={() => setSelectedOffer(null)}
+                aria-label="Close"
                 className="text-gray-400 hover:text-gray-600 font-bold text-lg"
               >
                 ✕
@@ -1106,19 +981,75 @@ export default function AdminOffersPage() {
                 <span className="text-gray-500">{t('recruitment.offeredPosition', 'Offered Position:')}</span>
                 <span className="font-bold text-gray-900">{selectedOffer.designation}</span>
               </div>
+              {selectedOffer.department && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                  <span className="text-gray-500">Department:</span>
+                  <span className="font-bold text-gray-900">{selectedOffer.department}</span>
+                </div>
+              )}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                 <span className="text-gray-500">{t('recruitment.workLocation', 'Work Location:')}</span>
                 <span className="font-bold text-gray-900">{selectedOffer.workLocation}</span>
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                 <span className="text-gray-500">{t('recruitment.annualCtc', 'Annual CTC:')}</span>
-                <span className="font-black text-gray-900 text-sm">
-                  ₹{(selectedOffer.annualCtc / 100000).toFixed(2)} Lakhs
-                </span>
+                <span className="font-black text-gray-900 text-sm">₹{formatInr(selectedOffer.annualCtc)} / year</span>
+              </div>
+              {selectedOffer.reportingManager && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                  <span className="text-gray-500">Reporting to:</span>
+                  <span className="font-bold text-gray-900">{selectedOffer.reportingManager}</span>
+                </div>
+              )}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <span className="text-gray-500">Status:</span>
+                <span className="font-bold text-gray-900">{OFFER_STATUS_LABELS[selectedOffer.status] ?? selectedOffer.status}</span>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">
+            {(selectedOffer.salaryComponents?.length ?? 0) > 0 && (
+              <div className="rounded-2xl border border-gray-200 p-4 text-xs">
+                <p className="mb-2 font-bold text-gray-900">Salary breakup (monthly)</p>
+                <ul className="space-y-1">
+                  {selectedOffer.salaryComponents!.map((component) => (
+                    <li key={component.code} className="flex justify-between gap-2"><span className="text-gray-600">{component.name}</span><span className="font-semibold text-gray-900">₹{formatInr(component.monthlyAmount)}</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {selectedOffer.status === 'ACCEPTED' && selectedOffer.acceptance ? (
+              <OfferAcceptanceSummary offerId={selectedOffer.id} applicationRef={selectedOffer.application.applicationRef} acceptance={selectedOffer.acceptance} />
+            ) : null}
+
+            {selectedOffer.status === 'ACCEPTED' ? (
+              <OfferHrmStatus offerId={selectedOffer.id} hrm={selectedOffer.hrm} canRun={canChangeOfferStatus} onChanged={onStatusChanged} />
+            ) : null}
+
+            <OfferStatusActions
+              offerId={selectedOffer.id}
+              status={selectedOffer.status}
+              candidateName={selectedOffer.application.candidate.fullName}
+              canChangeStatus={canChangeOfferStatus}
+              onChanged={onStatusChanged}
+              defaultPlace={selectedOffer.workLocation}
+              compact
+            />
+
+            <div className="pt-4 border-t border-gray-200 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                disabled={downloadingOfferId === selectedOffer.id}
+                onClick={() => void handleDownloadOfferPdf(selectedOffer)}
+                className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-black font-extrabold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+              >
+                {downloadingOfferId === selectedOffer.id ? (
+                  <Loader2 size={14} className="animate-spin text-black" />
+                ) : (
+                  <Download size={14} className="text-black" />
+                )}
+                <span>{t('recruitment.downloadOfferPdf', 'Download Offer Letter')}</span>
+              </button>
               <button
                 onClick={() => setSelectedOffer(null)}
                 className="px-4 py-2 bg-gray-100 text-gray-700 font-bold text-xs rounded-xl hover:bg-gray-200 transition"
@@ -1130,132 +1061,26 @@ export default function AdminOffersPage() {
         </div>
       )}
 
-      {/* Generate Offer Modal */}
-      {false && showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-7 shadow-2xl my-4 max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <div className="flex items-center justify-between border-b border-gray-200 pb-3 mb-4">
-              <h3 className="text-base font-bold text-gray-950 flex items-center gap-2">
-                {editingOfferId ? t('recruitment.editOfferTitle', 'Edit Employment Offer') : t('recruitment.generateOffer', 'Generate Employment Offer')}
-              </h3>
-              <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 font-bold text-lg">
-                ✕
-              </button>
-            </div>
-
-              <form onSubmit={handleCreateOffer} className="space-y-4 text-xs text-gray-950">
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">{t('recruitment.selectApplication', 'Select Application')} *</label>
-                <ApplicationSelectDropdown
-                  applications={applications}
-                  value={selectedApplicationId}
-                  disabled={Boolean(editingOfferId)}
-                  onChange={(nextId) => {
-                    const selected = applications.find((app) => app.id === nextId);
-                    setSelectedApplicationId(nextId);
-                    setOfferDesignation(selected?.job?.title || '');
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">{t('recruitment.offeredDesignation', 'Offered Designation')}</label>
-                <DesignationSelectDropdown
-                  options={designationOptions}
-                  value={offerDesignation}
-                  onChange={setOfferDesignation}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">{t('recruitment.offeredCtcLakhs', 'Offered CTC (Rs. Lakhs)')} *</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  placeholder="e.g. 12.0"
-                  value={annualCtc}
-                  onChange={(e) => setAnnualCtc(e.target.value)}
-                  required
-                  className="w-full py-2.5 px-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FFC107]/50 focus:border-[#FFC107]"
-                />
-              </div>
-
-              <div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">{t('recruitment.joiningDate', 'Joining Date')} *</label>
-                  <input
-                    type="date"
-                    value={joiningDate}
-                    onChange={(e) => setJoiningDate(e.target.value)}
-                    className="w-full py-2.5 px-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FFC107]/50 focus:border-[#FFC107]"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2.5 bg-gray-100 text-gray-700 font-bold text-xs rounded-xl hover:bg-gray-200 transition"
-                >
-                  {t('roleManagement.cancel', 'Cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={editingOfferId ? !canUpdateOffer : !canCreateOffer}
-                  className="px-5 py-2.5 bg-[#FFC107] hover:bg-[#e5ad06] text-black font-extrabold text-xs rounded-xl shadow-md transition-all disabled:opacity-50"
-                >
-                  Open offer workspace
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
       <OfferLetterEditorModal
         open={showCreateModal}
         editingOfferId={editingOfferId}
-        applications={applications}
-        selectedApplicationId={selectedApplicationId}
-        onApplicationChange={(nextId) => void loadOfferApplication(nextId)}
+        selectedApplication={applications.find((application) => application.id === selectedApplicationId)}
+        onApplicationChange={(application) => {
+          setApplications((previous) => (previous.some((item) => item.id === application.id) ? previous : [...previous, application]));
+          void loadOfferApplication(application.id, application);
+        }}
         loadingOfferDetails={loadingOfferDetails}
+        saving={savingOffer}
         offerForm={offerForm}
         updateOfferField={updateOfferField}
-        designationOptions={designationOptions}
-        onClose={() => setShowCreateModal(false)}
+        patchOfferForm={patchOfferForm}
+        hrmEditor={hrmEditor}
+        logoUrl={darkLogoUrl}
+        submitError={submitError}
+        onClose={() => { if (!savingOffer) setShowCreateModal(false); }}
         onSubmit={handleCreateOffer}
         canSubmit={editingOfferId ? canUpdateOffer : canCreateOffer}
       />
     </div>
   );
-}
-
-// Fallback Mock Data
-function getMockOffers(): OfferItem[] {
-  return [
-    {
-      id: 'off-001',
-      offerRef: 'OFFER-2026-0001',
-      designation: 'Territory Sales Executive - Heavy Equipment',
-      annualCtc: 950000,
-      workLocation: 'Ahmedabad Branch',
-      joiningDate: '2026-09-15T00:00:00Z',
-      expiryDate: '2026-09-10T00:00:00Z',
-      status: 'SENT',
-      createdAt: '2026-08-28T12:00:00Z',
-      application: {
-        id: 'app-102',
-        applicationRef: 'JCB-JOB-2026-000102',
-        candidate: {
-          fullName: 'Priya Patel',
-          email: 'priya.patel@example.com',
-          mobile: '+91 98123 45678',
-        },
-        job: {
-          title: 'Territory Sales Executive - Heavy Equipment',
-          jobCode: 'SALES-TE-002',
-        },
-      },
-    },
-  ];
 }

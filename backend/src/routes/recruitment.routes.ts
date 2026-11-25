@@ -1,3 +1,12 @@
+import {
+  downloadDeliveryChallan,
+  getVehicleTransportDetail,
+  listVehicleTransports,
+  resendTransportWhatsApp,
+  updateCarrierInfo,
+  updateTransportStage,
+  deleteVehicleTransport,
+} from '../controllers/vehicleTransport.controller';
 import { NextFunction, Request, Response, Router } from 'express';
 import {
   getPublicJobs,
@@ -34,18 +43,31 @@ import {
   deleteInterview,
   submitInterviewFeedback,
   getAdminOffers,
+  acceptOfferOffline,
+  retryOfferHrmHandoff,
+  downloadOfferAcceptanceFile,
+  getPublicOfferCertificate,
+  getOfferFormOptions,
+  getOfferManagerOptions,
+  downloadAdminOfferPdf,
   createOffer,
   updateOffer,
   updateOfferStatus,
+  resendOffer,
+  getPublicOfferShortLink,
   deleteOffer,
   getPublicOfferResponse,
+  getPublicOfferPdf,
   respondToPublicOffer,
   getRecruitmentSettings,
   createPipelineStage,
   updatePipelineStage,
   deletePipelineStage,
   updateDepartment,
+  createEmailTemplate,
   updateEmailTemplate,
+  deleteEmailTemplate,
+  updateEmailAutomationRule,
   getAdminDepartments,
   createAdminDepartment,
   updateAdminDepartment,
@@ -88,6 +110,7 @@ import {
   resendSellAccountInvoice,
   resendSellAccountPaymentReceipt,
   downloadSellAccountInvoice,
+  downloadSellAccountProfitInvoice,
   downloadSellAccountDeliveryChallan,
   issueSellAccountReceiptRecord,
   cancelSellAccountReceiptRecord,
@@ -101,10 +124,12 @@ import {
   downloadSellAccountRefundAdvice,
 } from '../controllers/sellAccount.controller';
 
-import { jobApplicationRateLimit } from '../middlewares/rateLimit.middleware';
+import { jobApplicationRateLimit, offerLinkRespondRateLimit, offerLinkViewRateLimit, offerShortLinkRateLimit } from '../middlewares/rateLimit.middleware';
 const router = Router();
 const resumeUpload = getDocumentUploadMiddleware('secure', 'resume');
 const offerLetterUpload = getDocumentUploadMiddleware('secure', 'offer-letter');
+// A signed offer letter: PDF, JPG, PNG or WEBP (a scan or a phone photo), content-checked.
+const signedOfferUpload = getDocumentUploadMiddleware('secure', 'document');
 
 const canViewRecruitmentDashboard = requireSuperAdminOrEmployeePermissions(['recruitment.dashboard.read']);
 const canViewDepartments = requireSuperAdminOrEmployeePermissions(['recruitment.departments.read']);
@@ -154,8 +179,14 @@ const canViewPipeline = requireSuperAdminOrEmployeePermissions(['recruitment.pip
 const canCreatePipeline = requireSuperAdminOrEmployeePermissions(['recruitment.pipeline.create']);
 const canUpdatePipeline = requireSuperAdminOrEmployeePermissions(['recruitment.pipeline.update']);
 const canDeletePipeline = requireSuperAdminOrEmployeePermissions(['recruitment.pipeline.delete']);
+const canViewEmailTemplates = requireAdminOrEmployeePermissions(['email.read', 'email.manage']);
+const canUpdateEmailTemplate = requireAdminOrEmployeePermissions(['email.manage']);
 const canViewRecruitmentSettings = (req: Request, res: Response, next: NextFunction) => {
   const section = typeof req.query.section === 'string' ? req.query.section : '';
+  if (section === 'templates') {
+    return canViewEmailTemplates(req, res, next);
+  }
+
   const permissions = section === 'pipeline'
     ? ['recruitment.pipeline.read']
     : section === 'departments'
@@ -170,8 +201,11 @@ const canUpdateRecruitmentSettings = requireSuperAdminOrEmployeePermissions(['re
 router.get('/public/jobs', getPublicJobs);
 router.get('/public/jobs/:slug', getPublicJobBySlug);
 router.post('/public/jobs/:slug/apply', jobApplicationRateLimit, resumeUpload.single('resume'), sanitizeRequestBody, applyForJob);
-router.get('/public/offers/:token', jobApplicationRateLimit, getPublicOfferResponse);
-router.post('/public/offers/:token/respond', jobApplicationRateLimit, sanitizeRequestBody, respondToPublicOffer);
+router.get('/public/offer-links/:code', offerShortLinkRateLimit, getPublicOfferShortLink);
+router.get('/public/offers/:token', offerLinkViewRateLimit, getPublicOfferResponse);
+router.get('/public/offers/:token/pdf', offerLinkViewRateLimit, getPublicOfferPdf);
+router.get('/public/offers/:token/certificate', offerLinkViewRateLimit, getPublicOfferCertificate);
+router.post('/public/offers/:token/respond', offerLinkRespondRateLimit, signedOfferUpload.single('signedCopy'), sanitizeRequestBody, respondToPublicOffer);
 
 // Applicant protected endpoints
 router.get('/my-applications', requireAuth, getMyApplications);
@@ -229,7 +263,20 @@ router.post('/admin/sell-accounts/:id/start-rto', canUpdateSell, canCreateRto, s
 router.post('/admin/sell-accounts/:id/complete', canUpdateSell, canUpdateRto, completeSellAccountSale);
 router.post('/admin/sell-accounts/:id/invoice/resend', canUpdateSell, resendSellAccountInvoice);
 router.get('/admin/sell-accounts/:id/invoice', canViewSell, downloadSellAccountInvoice);
+router.get('/admin/sell-accounts/:id/profit-invoice', canViewSell, downloadSellAccountProfitInvoice);
 router.get('/admin/sell-accounts/:id/delivery-challan', canViewSell, downloadSellAccountDeliveryChallan);
+const canViewTransport = requireAdminOrEmployeePermissions(['accounts.transport.read', 'accounts.transport.crud']);
+const canManageTransport = requireAdminOrEmployeePermissions(['accounts.transport.crud', 'accounts.transport.update', 'accounts.transport.create']);
+const canDeleteTransport = requireAdminOrEmployeePermissions(['accounts.transport.crud', 'accounts.transport.delete']);
+
+router.get('/admin/vehicle-transports', canViewTransport, listVehicleTransports);
+router.get('/admin/vehicle-transports/:id', canViewTransport, getVehicleTransportDetail);
+router.get('/admin/vehicle-transports/:id/challan', canViewTransport, downloadDeliveryChallan);
+router.patch('/admin/vehicle-transports/:id/carrier', canManageTransport, updateCarrierInfo);
+router.post('/admin/vehicle-transports/:id/status', canManageTransport, updateTransportStage);
+router.post('/admin/vehicle-transports/:id/notify', canManageTransport, resendTransportWhatsApp);
+router.delete('/admin/vehicle-transports/:id', canDeleteTransport, deleteVehicleTransport);
+
 router.get('/admin/sell-accounts/:id/delete-impact', canDeleteSell, getSellAccountDeletionImpactRecord);
 router.delete('/admin/sell-accounts/:id', canDeleteSell, deleteSellAccountRecord);
 router.post('/admin/sell-accounts/:id/payments', canUpdateSell, addSellAccountPaymentRecord);
@@ -272,10 +319,18 @@ router.delete('/admin/interviews/:id', canDeleteInterviews, deleteInterview);
 router.post('/admin/interviews/:id/feedback', canManageInterviewScorecards, submitInterviewFeedback);
 
 // Offers
+const canPrepareOffers = requireSuperAdminOrEmployeePermissions(['recruitment.offers.create', 'recruitment.offers.update']);
+router.get('/admin/offers/form-options', canPrepareOffers, getOfferFormOptions);
+router.get('/admin/offers/manager-options', canPrepareOffers, getOfferManagerOptions);
 router.get('/admin/offers', canViewOffers, getAdminOffers);
+router.get('/admin/offers/:id/pdf', canViewOffers, downloadAdminOfferPdf);
 router.post('/admin/offers', canCreateOffers, offerLetterUpload.single('offerPdf'), sanitizeRequestBody, createOffer);
 router.patch('/admin/offers/:id', canUpdateOffers, offerLetterUpload.single('offerPdf'), sanitizeRequestBody, updateOffer);
 router.patch('/admin/offers/:id/status', canChangeOfferStatus, updateOfferStatus);
+router.post('/admin/offers/:id/resend', canChangeOfferStatus, sanitizeRequestBody, resendOffer);
+router.post('/admin/offers/:id/accept-offline', canChangeOfferStatus, signedOfferUpload.single('signedCopy'), sanitizeRequestBody, acceptOfferOffline);
+router.get('/admin/offers/:id/acceptance/:kind', canViewOffers, downloadOfferAcceptanceFile);
+router.post('/admin/offers/:id/hrm-handoff', canChangeOfferStatus, retryOfferHrmHandoff);
 router.delete('/admin/offers/:id', canDeleteOffers, deleteOffer);
 
 // Settings
@@ -284,6 +339,9 @@ router.post('/admin/settings/pipeline-stages', canCreatePipeline, createPipeline
 router.put('/admin/settings/pipeline-stages/:id', canUpdatePipeline, updatePipelineStage);
 router.delete('/admin/settings/pipeline-stages/:id', canDeletePipeline, deletePipelineStage);
 router.put('/admin/settings/departments/:id', canUpdateDepartments, updateDepartment);
-router.put('/admin/settings/templates/:id', canUpdateRecruitmentSettings, updateEmailTemplate);
+router.post('/admin/settings/templates', canUpdateEmailTemplate, sanitizeRequestBody, createEmailTemplate);
+router.put('/admin/settings/templates/:id', canUpdateEmailTemplate, updateEmailTemplate);
+router.delete('/admin/settings/templates/:id', canUpdateEmailTemplate, deleteEmailTemplate);
+router.put('/admin/settings/email-rules/:eventCode', canUpdateEmailTemplate, updateEmailAutomationRule);
 
 export default router;

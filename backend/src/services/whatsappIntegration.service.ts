@@ -18,11 +18,23 @@ import {
   resolveWhatsAppTemplatePurpose,
   getWhatsAppPublishedBroadcastAudience,
   getWhatsAppPublishedBroadcastConsentCategory,
+  recruitmentEventsWithTemplateChecks,
+  validateRecruitmentTemplate,
+  resolveRecruitmentTemplateDocument,
+  readOfferLinkRef,
+  withOfferLinkPlaceholders,
+  fillOfferLinkPlaceholders,
+  hasOfferLinkPlaceholders,
+  offerLinkSkipMessage,
+  type OfferLinkClosedReason,
   type WhatsAppTemplatePurpose,
   type WhatsAppPublishedBroadcastEvent,
 } from '../modules/whatsapp-core';
 import { getAutomationTemplateComponents } from '../modules/whatsapp-core/automationTemplateComponents';
-import { dispatchMarketplaceSms, dispatchRecruitmentSms } from './smsIntegration.service';
+import { maskOfferLinks } from '../utils/offerShortCode';
+import { resolveOfferLinkForDelivery } from './offerShortLink.service';
+import { dispatchMarketplaceSms, dispatchRecruitmentSms, marketplaceSmsEvents, type MarketplaceSmsEvent } from './smsIntegration.service';
+import { buildTransportDeliveryChallanPdf } from './vehicleTransport.service';
 import { getWhatsAppPublishedBroadcastRecipients } from './whatsappAudience.service';
 import { resolveNotificationPreference } from './notificationRecipient.service';
 import { extractDriveFileId, streamFileFromDrive } from './googleDrive.service';
@@ -30,7 +42,9 @@ import { buildCustomerPrimeInvoicePdfForSubscription } from './customerPrimeInvo
 import { buildVehicleSaleInvoicePdf, buildVehicleSalePaymentReceiptPdf } from './vehicleSaleInvoice.service';
 import { validateVehicleSaleInvoiceWhatsAppTemplate } from './vehicleSaleInvoiceWhatsAppTemplate';
 import { validateVehicleSalePaymentReceiptWhatsAppTemplate } from './vehicleSalePaymentReceiptWhatsAppTemplate';
+import { validateVehicleTransportWhatsAppTemplate } from './vehicleTransportWhatsAppTemplate';
 import { provisionAutomationRules } from './notificationAutomationProvisioning.service';
+import { enqueueConfiguredEmail } from './recruitmentEmail.service';
 
 const SETTINGS_ID = 'default';
 
@@ -51,6 +65,8 @@ export const marketplaceWhatsAppEvents = [
   'MARKETPLACE_KYC_SUBMITTED_SUPERADMIN',
   'VEHICLE_SALE_INVOICE',
   'VEHICLE_SALE_PAYMENT_RECEIPT',
+  'VEHICLE_TRANSPORT_DISPATCHED',
+  'VEHICLE_TRANSPORT_STATUS_UPDATE',
   // CRM (src/modules/crm/services/notify.service.ts documents each template's body variables).
   'CRM_LEAD_ACKNOWLEDGEMENT',
   'CRM_LEAD_ASSIGNED',
@@ -73,6 +89,10 @@ export const recruitmentWhatsAppEvents = [
   'RECRUITMENT_INTERVIEW_CANCELLED',
   'RECRUITMENT_OFFER_SENT',
   'RECRUITMENT_OFFER_STATUS_UPDATED',
+  'RECRUITMENT_OFFER_ACCEPTED',
+  'RECRUITMENT_OFFER_ACCEPTED_HR',
+  'RECRUITMENT_JOINING_REMINDER',
+  'RECRUITMENT_JOINING_WELCOME',
   'RECRUITMENT_NEW_JOB_PUBLISHED',
 ] as const;
 
@@ -258,6 +278,12 @@ const saveWhatsAppAutomationRule = async ({
   }
   if (selectedTemplate && eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT') {
     validateVehicleSalePaymentReceiptWhatsAppTemplate(selectedTemplate);
+  }
+  // Offer / acceptance templates: the header and buttons must match what the sender fills (checked again at dispatch).
+  // Only when the rule is switched on: HR can always switch a rule off or clear it, even if a re-sync changed the template.
+  if (enabled && selectedTemplate && recruitmentEventsWithTemplateChecks.includes(eventCode)) {
+    const check = validateRecruitmentTemplate(eventCode, selectedTemplate.components);
+    if (!check.ok) throw new Error(check.error);
   }
   if (enabled && (!selectedTemplate || selectedTemplate.status !== 'APPROVED' || !selectedTemplate.metaTemplateId)) {
     throw new Error('Select an approved Meta template before enabling this automation.');
@@ -482,9 +508,14 @@ type StoredWhatsAppTemplatePayload = {
   templateName?: unknown;
   templateLanguage?: unknown;
   templateComponents?: unknown;
+  documentUrl?: unknown;
+  documentFileName?: unknown;
+  // Rows queued before the document header was generalised name the offer letter.
   offerLetterUrl?: unknown;
   offerLetterFileName?: unknown;
 };
+
+const storedText = (value: unknown) => (typeof value === 'string' && value ? value : null);
 
 const getStoredTemplatePayload = (payload: unknown) => {
   const stored = (payload && typeof payload === 'object' ? payload : {}) as StoredWhatsAppTemplatePayload;
@@ -497,9 +528,28 @@ const getStoredTemplatePayload = (payload: unknown) => {
     templateLanguage,
     templateComponents: Array.isArray(stored.templateComponents) ? stored.templateComponents : undefined,
     eventCode,
-    offerLetterUrl: typeof stored.offerLetterUrl === 'string' ? stored.offerLetterUrl : null,
-    offerLetterFileName: typeof stored.offerLetterFileName === 'string' ? stored.offerLetterFileName : null,
+    // A secure Drive file (offer letter, acceptance certificate) sent as the DOCUMENT header.
+    documentUrl: storedText(stored.documentUrl) ?? storedText(stored.offerLetterUrl),
+    documentFileName: storedText(stored.documentFileName) ?? storedText(stored.offerLetterFileName),
+    offerLink: readOfferLinkRef(stored),
   };
+};
+
+/**
+ * A message written for an offer link that is no longer valid (resent since, or the offer was answered / withdrawn)
+ * is never delivered: the outbox row is cancelled and the log says why. Retries never pick it up again.
+ */
+const skipOfferLinkMessage = async (messageLogId: string, outboxId: string, reason: OfferLinkClosedReason) => {
+  const message = offerLinkSkipMessage(reason);
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.whatsAppMessageLog.update({ where: { id: messageLogId }, data: { status: 'SKIPPED', errorCode: reason, errorMessage: message } }),
+    prisma.whatsAppOutbox.update({
+      where: { id: outboxId },
+      data: { status: 'CANCELLED', nextAttemptAt: null, processedAt: now, lockedAt: null, lastError: message },
+    }),
+  ]);
+  return { sent: false as const, skipped: true as const, messageLogId, reason, error: message };
 };
 
 const streamToBuffer = async (stream: NodeJS.ReadableStream) => {
@@ -530,7 +580,7 @@ const deliverWhatsAppOutboxMessage = async (messageLogId: string, { respectSched
     throw new Error('This WhatsApp message is not due for an automatic retry yet.');
   }
 
-  const { templateName, templateLanguage, templateComponents, eventCode, offerLetterUrl, offerLetterFileName } = getStoredTemplatePayload(messageLog.outbox.payload);
+  const { templateName, templateLanguage, templateComponents, eventCode, documentUrl, documentFileName, offerLink } = getStoredTemplatePayload(messageLog.outbox.payload);
   const claimedAt = new Date();
   const retrySchedule = respectSchedule && messageLog.outbox.status === 'FAILED'
     ? { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: claimedAt } }] }
@@ -554,78 +604,63 @@ const deliverWhatsAppOutboxMessage = async (messageLogId: string, { respectSched
   }
 
   try {
+    // Late binding: the stored message holds placeholders, the offer link is built now for the link version it was
+    // written for. A resent / answered offer cancels the message instead (manual retries come through here too).
+    let messageComponents = templateComponents;
+    if (offerLink) {
+      const link = await resolveOfferLinkForDelivery(offerLink.offerId, offerLink.tokenVersion, {
+        requireOpenOffer: eventCode === 'RECRUITMENT_OFFER_SENT',
+      });
+      if (!link.open) return await skipOfferLinkMessage(messageLog.id, messageLog.outbox.id, link.reason);
+      messageComponents = fillOfferLinkPlaceholders(templateComponents, link);
+    }
+    if (hasOfferLinkPlaceholders(messageComponents)) throw new Error('Offer link details are missing for WhatsApp delivery.');
+
     const settings = await getEnabledSettings();
     const accessToken = decryptWhatsAppCredential(settings.encryptedAccessToken!, credentialSecret());
-    let deliveryComponents = templateComponents;
-    if (eventCode === 'RECRUITMENT_OFFER_SENT') {
-      const driveFileId = extractDriveFileId(offerLetterUrl);
-      if (!driveFileId) throw new Error('Offer letter Drive file is missing for WhatsApp delivery.');
-      const offerStream = await streamFileFromDrive(driveFileId);
-      const offerPdf = await streamToBuffer(offerStream);
-      const uploadedMedia = await uploadWhatsAppDocument({
-        accessToken,
-        phoneNumberId: settings.phoneNumberId!,
-        graphApiVersion: graphApiVersion(settings.graphApiVersion),
-      }, offerPdf, offerLetterFileName || 'Offer_Letter.pdf');
-      deliveryComponents = [
-        {
-          type: 'header',
-          parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: offerLetterFileName || 'Offer_Letter.pdf' } }],
-        },
-        ...(Array.isArray(templateComponents) ? templateComponents : []),
-      ];
-    } else if (eventCode === 'VEHICLE_SALE_INVOICE') {
-      if (!messageLog.relatedEntityId) throw new Error('Sold Vehicle record is missing for invoice delivery.');
-      const invoice = await buildVehicleSaleInvoicePdf(messageLog.relatedEntityId);
-      const uploadedMedia = await uploadWhatsAppDocument({
-        accessToken,
-        phoneNumberId: settings.phoneNumberId!,
-        graphApiVersion: graphApiVersion(settings.graphApiVersion),
-      }, invoice.buffer, invoice.fileName);
-      deliveryComponents = [
-        {
-          type: 'header',
-          parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: invoice.fileName } }],
-        },
-        ...(Array.isArray(templateComponents) ? templateComponents : []),
-      ];
-    } else if (eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT') {
-      if (!messageLog.relatedEntityId) throw new Error('Payment record is missing for receipt delivery.');
-      const receipt = await buildVehicleSalePaymentReceiptPdf(messageLog.relatedEntityId);
-      const uploadedMedia = await uploadWhatsAppDocument({
-        accessToken,
-        phoneNumberId: settings.phoneNumberId!,
-        graphApiVersion: graphApiVersion(settings.graphApiVersion),
-      }, receipt.buffer, receipt.fileName);
-      deliveryComponents = [
-        {
-          type: 'header',
-          parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: receipt.fileName } }],
-        },
-        ...(Array.isArray(templateComponents) ? templateComponents : []),
-      ];
-    } else if (eventCode === 'CUSTOMER_PRIME_APPROVED') {
-      if (!messageLog.relatedEntityId) throw new Error('Prime subscription is missing for invoice delivery.');
-      const invoice = await buildCustomerPrimeInvoicePdfForSubscription(messageLog.relatedEntityId);
-      const uploadedMedia = await uploadWhatsAppDocument({
-        accessToken,
-        phoneNumberId: settings.phoneNumberId!,
-        graphApiVersion: graphApiVersion(settings.graphApiVersion),
-      }, invoice.buffer, invoice.fileName);
-      deliveryComponents = [
-        {
-          type: 'header',
-          parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: invoice.fileName } }],
-        },
-        ...(Array.isArray(templateComponents) ? templateComponents : []),
-      ];
-    }
-
-    const { metaMessageId } = await sendWhatsAppTemplate({
+    const cloudApiConfig = {
       accessToken,
       phoneNumberId: settings.phoneNumberId!,
       graphApiVersion: graphApiVersion(settings.graphApiVersion),
-    }, messageLog.recipientPhone, {
+    };
+    // The template's DOCUMENT header gets the uploaded PDF, ahead of the body / button components.
+    const withDocumentHeader = async (file: Buffer, fileName: string) => {
+      const uploadedMedia = await uploadWhatsAppDocument(cloudApiConfig, file, fileName);
+      return [
+        { type: 'header', parameters: [{ type: 'document', document: { id: uploadedMedia.mediaId, filename: fileName } }] },
+        ...(Array.isArray(messageComponents) ? messageComponents : []),
+      ];
+    };
+    let deliveryComponents: unknown = messageComponents;
+    if (documentUrl || eventCode === 'RECRUITMENT_OFFER_SENT') {
+      // A stored secure Drive file: the offer letter, or the acceptance certificate when its template has the header.
+      const driveFileId = extractDriveFileId(documentUrl);
+      if (!driveFileId) {
+        throw new Error(eventCode === 'RECRUITMENT_OFFER_SENT'
+          ? 'Offer letter Drive file is missing for WhatsApp delivery.'
+          : 'The document Drive file is missing for WhatsApp delivery.');
+      }
+      const file = await streamToBuffer(await streamFileFromDrive(driveFileId));
+      deliveryComponents = await withDocumentHeader(file, documentFileName || (eventCode === 'RECRUITMENT_OFFER_SENT' ? 'Offer_Letter.pdf' : 'Document.pdf'));
+    } else if (eventCode === 'VEHICLE_SALE_INVOICE') {
+      if (!messageLog.relatedEntityId) throw new Error('Sold Vehicle record is missing for invoice delivery.');
+      const invoice = await buildVehicleSaleInvoicePdf(messageLog.relatedEntityId);
+      deliveryComponents = await withDocumentHeader(invoice.buffer, invoice.fileName);
+    } else if (eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT') {
+      if (!messageLog.relatedEntityId) throw new Error('Payment record is missing for receipt delivery.');
+      const receipt = await buildVehicleSalePaymentReceiptPdf(messageLog.relatedEntityId);
+      deliveryComponents = await withDocumentHeader(receipt.buffer, receipt.fileName);
+    } else if (eventCode === 'VEHICLE_TRANSPORT_DISPATCHED' || eventCode === 'VEHICLE_TRANSPORT_STATUS_UPDATE') {
+      if (!messageLog.relatedEntityId) throw new Error('Transport record is missing for challan delivery.');
+      const challan = await buildTransportDeliveryChallanPdf(messageLog.relatedEntityId);
+      deliveryComponents = await withDocumentHeader(challan.buffer, challan.fileName);
+    } else if (eventCode === 'CUSTOMER_PRIME_APPROVED') {
+      if (!messageLog.relatedEntityId) throw new Error('Prime subscription is missing for invoice delivery.');
+      const invoice = await buildCustomerPrimeInvoicePdfForSubscription(messageLog.relatedEntityId);
+      deliveryComponents = await withDocumentHeader(invoice.buffer, invoice.fileName);
+    }
+
+    const { metaMessageId } = await sendWhatsAppTemplate(cloudApiConfig, messageLog.recipientPhone, {
       name: templateName,
       language: templateLanguage,
       components: deliveryComponents,
@@ -659,7 +694,11 @@ export const retryFailedWhatsAppMessage = async (messageLogId: string) => {
   if (!messageLog?.outbox) throw new Error('WhatsApp message was not found.');
   if (messageLog.status !== 'FAILED') throw new Error('Only failed WhatsApp messages can be retried.');
   if (!canRetryWhatsAppOutbox(messageLog.outbox)) throw new Error('This WhatsApp message has reached the retry limit.');
-  return deliverWhatsAppOutboxMessage(messageLogId);
+  const result = await deliverWhatsAppOutboxMessage(messageLogId);
+  // A retry of an offer whose link changed (or that was answered) is cancelled, not sent: say so instead of
+  // "Meta did not accept it".
+  if ('skipped' in result && result.skipped) throw new Error(`${result.error}: the message was cancelled and not sent.`);
+  return result;
 };
 
 const recoverStaleWhatsAppOutbox = async (now: Date) => {
@@ -705,11 +744,13 @@ export const processWhatsAppOutbox = async ({ limit = 50 }: { limit?: number } =
     select: { messageLogId: true },
   });
   const results = await Promise.all(pending.map(({ messageLogId }) => deliverWhatsAppOutboxMessage(messageLogId, { respectSchedule: true }).catch((error) => ({ sent: false, error: error instanceof Error ? error.message : 'Unable to process WhatsApp outbox message.' }))));
+  const skipped = results.filter((result) => 'skipped' in result && result.skipped).length;
   return {
     recovered,
     selected: pending.length,
     sent: results.filter((result) => result.sent).length,
-    failed: results.filter((result) => !result.sent).length,
+    failed: results.filter((result) => !result.sent).length - skipped,
+    skipped,
   };
 };
 
@@ -759,10 +800,13 @@ type AutomationDispatchInput = {
   relatedEntityId: string;
   recipientType: WhatsAppRecipientType;
   recipientPhone?: string | null | undefined;
+  recipientEmail?: string | null | undefined;
   templateComponents?: unknown;
   payloadSnapshot?: Record<string, unknown>;
   // Lets an intentional re-send (e.g. a refreshed invoice link) bypass the one-message-per-event guard.
   dedupeSuffix?: string | undefined;
+  // Offer sends dispatch SMS separately so each channel has an independent result.
+  dispatchSms?: boolean | undefined;
 };
 
 const buildDedupeKey = (input: AutomationDispatchInput, recipientPhone: string) =>
@@ -820,11 +864,33 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
           error: error instanceof Error ? error.message : 'Payment receipt WhatsApp template is invalid.',
         };
       }
+    } else if (input.eventCode === 'VEHICLE_TRANSPORT_DISPATCHED' || input.eventCode === 'VEHICLE_TRANSPORT_STATUS_UPDATE') {
+      try {
+        validateVehicleTransportWhatsAppTemplate(rule.template);
+      } catch (error) {
+        return {
+          queued: false,
+          reason: 'INVALID_TEMPLATE_CONFIGURATION',
+          error: error instanceof Error ? error.message : 'Vehicle transport WhatsApp template is invalid.',
+        };
+      }
+    } else if (recruitmentEventsWithTemplateChecks.includes(input.eventCode)) {
+      // Same check as when the rule was saved: the template may have been re-synced since.
+      const check = validateRecruitmentTemplate(input.eventCode, rule.template.components);
+      if (!check.ok) return { queued: false, reason: 'INVALID_TEMPLATE_CONFIGURATION', error: check.error };
     }
 
+    const payloadSnapshot = input.payloadSnapshot || {};
+    // The PDF for a recruitment DOCUMENT header (offer letter / acceptance certificate); delivery fetches it.
+    const headerDocument = resolveRecruitmentTemplateDocument(input.eventCode, rule.template.components, payloadSnapshot);
+    if (!headerDocument.ok) return { queued: false, reason: 'DOCUMENT_UNAVAILABLE', error: headerDocument.error };
+
+    // An offer link is never stored in clear: the outbox gets placeholders (filled at delivery for the link version
+    // in payload.offerLink) and the log a masked copy.
+    const offerLink = readOfferLinkRef(payloadSnapshot);
     const resolvedTemplateComponents = getAutomationTemplateComponents(
       input.eventCode,
-      input.payloadSnapshot || {},
+      offerLink ? withOfferLinkPlaceholders(payloadSnapshot) : payloadSnapshot,
       input.templateComponents,
       rule.template.components,
     );
@@ -843,13 +909,13 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
           recipientType: input.recipientType,
           recipientPhone: decision.recipientPhone,
           dedupeKey,
-          payloadSnapshot: {
-            ...(input.payloadSnapshot || {}),
+          payloadSnapshot: maskOfferLinks({
+            ...payloadSnapshot,
             templateId: rule.template.id,
             templateName: rule.template.name,
             templateLanguage: rule.template.language,
             templateComponents: resolvedTemplateComponents,
-          },
+          }) as Prisma.InputJsonValue,
           outbox: {
             create: {
               payload: {
@@ -857,9 +923,9 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
                 templateId: rule.template.id,
                 templateName: rule.template.name,
                 templateLanguage: rule.template.language,
-                templateComponents: resolvedTemplateComponents,
-                ...(typeof input.payloadSnapshot?.offerLetterUrl === 'string' ? { offerLetterUrl: input.payloadSnapshot.offerLetterUrl } : {}),
-                ...(typeof input.payloadSnapshot?.offerLetterFileName === 'string' ? { offerLetterFileName: input.payloadSnapshot.offerLetterFileName } : {}),
+                templateComponents: resolvedTemplateComponents as Prisma.InputJsonValue,
+                ...(headerDocument.document ? { documentUrl: headerDocument.document.url, documentFileName: headerDocument.document.fileName } : {}),
+                ...(offerLink ? { offerLink } : {}),
               },
             },
           },
@@ -874,8 +940,14 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
       throw error;
     }
 
-    const delivery = await deliverWhatsAppOutboxMessage(messageLog.id);
-    return { queued: true, ...delivery };
+    try {
+      const delivery = await deliverWhatsAppOutboxMessage(messageLog.id);
+      return { queued: true, ...delivery };
+    } catch (error) {
+      // The message is stored and the worker retries it, but it was not sent now: callers must not report success.
+      console.error(`WhatsApp delivery failed for ${input.eventCode}:`, error);
+      return { queued: true, sent: false, messageLogId: messageLog.id, error: error instanceof Error ? error.message : 'WhatsApp delivery failed.' };
+    }
   } catch (error) {
     // Notification automation is deliberately isolated from product transactions.
     console.error(`WhatsApp automation failed for ${input.eventCode}:`, error);
@@ -884,26 +956,52 @@ export const dispatchConfiguredWhatsApp = async (input: AutomationDispatchInput)
 };
 
 export const dispatchMarketplaceWhatsApp = (input: Omit<AutomationDispatchInput, 'eventCode'> & { eventCode: MarketplaceWhatsAppEvent }) => {
-  void dispatchMarketplaceSms({
-    eventCode: input.eventCode,
-    relatedEntityType: input.relatedEntityType,
-    relatedEntityId: input.relatedEntityId,
-    recipientType: input.recipientType,
-    ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
-    ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
-  });
+  if (input.recipientEmail) {
+    void enqueueConfiguredEmail({
+      eventCode: input.eventCode,
+      relatedEntityType: input.relatedEntityType,
+      relatedEntityId: input.relatedEntityId,
+      recipientEmail: input.recipientEmail,
+      ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
+      ...(input.dedupeSuffix === undefined ? {} : { dedupeSuffix: input.dedupeSuffix }),
+    }).catch((error) => console.error(`Email automation failed for ${input.eventCode}:`, error));
+  }
+  if (input.dispatchSms !== false && (marketplaceSmsEvents as readonly string[]).includes(input.eventCode)) {
+    void dispatchMarketplaceSms({
+      eventCode: input.eventCode as MarketplaceSmsEvent,
+      relatedEntityType: input.relatedEntityType,
+      relatedEntityId: input.relatedEntityId,
+      recipientType: input.recipientType,
+      ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
+      ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
+      ...(input.dedupeSuffix === undefined ? {} : { dedupeSuffix: input.dedupeSuffix }),
+    });
+  }
   return dispatchConfiguredWhatsApp(input);
 };
 
 export const dispatchRecruitmentWhatsApp = (input: Omit<AutomationDispatchInput, 'eventCode'> & { eventCode: RecruitmentWhatsAppEvent }) => {
-  void dispatchRecruitmentSms({
-    eventCode: input.eventCode,
-    relatedEntityType: input.relatedEntityType,
-    relatedEntityId: input.relatedEntityId,
-    recipientType: input.recipientType,
-    ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
-    ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
-  });
+  if (input.recipientEmail) {
+    void enqueueConfiguredEmail({
+      eventCode: input.eventCode,
+      relatedEntityType: input.relatedEntityType,
+      relatedEntityId: input.relatedEntityId,
+      recipientEmail: input.recipientEmail,
+      ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
+      ...(input.dedupeSuffix === undefined ? {} : { dedupeSuffix: input.dedupeSuffix }),
+    }).catch((error) => console.error(`Email automation failed for ${input.eventCode}:`, error));
+  }
+  if (input.dispatchSms !== false) {
+    void dispatchRecruitmentSms({
+      eventCode: input.eventCode,
+      relatedEntityType: input.relatedEntityType,
+      relatedEntityId: input.relatedEntityId,
+      recipientType: input.recipientType,
+      ...(input.recipientPhone === undefined ? {} : { recipientPhone: input.recipientPhone }),
+      ...(input.payloadSnapshot === undefined ? {} : { payloadSnapshot: input.payloadSnapshot }),
+      ...(input.dedupeSuffix === undefined ? {} : { dedupeSuffix: input.dedupeSuffix }),
+    });
+  }
   return dispatchConfiguredWhatsApp(input);
 };
 
@@ -983,7 +1081,7 @@ export const dispatchApprovedWhatsAppTemplate = async ({
       recipientType,
       recipientPhone: phone,
       dedupeKey,
-      payloadSnapshot: { ...(payloadSnapshot || {}), templateId: template.id, templateName: template.name, templateLanguage: template.language, templateComponents: [] },
+      payloadSnapshot: maskOfferLinks({ ...(payloadSnapshot || {}), templateId: template.id, templateName: template.name, templateLanguage: template.language, templateComponents: [] }) as Prisma.InputJsonValue,
       outbox: { create: { payload: { eventCode, templateId: template.id, templateName: template.name, templateLanguage: template.language, templateComponents: [] } } },
     },
   });

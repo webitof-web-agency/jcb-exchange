@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { buildPaginationItems } from '@/lib/paginationUtils';
 import RatingDropdown from '@/components/recruitment/RatingDropdown';
+import RemoteSearchPicker from '@/components/recruitment/RemoteSearchPicker';
 import type { InterviewStatus } from '@/components/recruitment/InterviewStatusDropdown';
 import { isInterviewNotificationActive } from '@/lib/interviewNotification';
 import { fromInterviewDateTimeInput, toInterviewDateTimeInput } from '@/lib/interviewDateTime';
@@ -47,6 +48,7 @@ interface InterviewItem {
   application: {
     id: string;
     applicationRef: string;
+    currentStage?: string;
     candidate: {
       fullName: string;
       email: string;
@@ -85,79 +87,34 @@ interface ApplicationOption {
   job?: { title?: string | null };
 }
 
+const applicationOptionLabel = (app: ApplicationOption) => `${app.candidate?.fullName || 'Candidate'} - ${app.job?.title || 'Job'} (${app.applicationRef})`;
+
+const searchApplicationOptions = async (query: string): Promise<ApplicationOption[]> => {
+  const res = await api.get('/recruitment/admin/applications', { params: { compact: 'true', limit: 20, ...(query ? { q: query } : {}) } });
+  const list = res.data?.applications || res.data?.data;
+  return Array.isArray(list) ? (list as ApplicationOption[]) : [];
+};
+
+/** Searches applications on the server (any number of them), keeping the chosen one shown. */
 function ApplicationSelectDropdown({
-  applications,
-  value,
+  selected,
   onChange,
 }: {
-  applications: ApplicationOption[];
-  value: string;
-  onChange: (val: string) => void;
+  selected: ApplicationOption | null;
+  onChange: (app: ApplicationOption) => void;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent | TouchEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsOpen(false);
-    }
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('touchstart', handleClickOutside, { passive: true });
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, [isOpen]);
-
-  const selectedApp = applications.find((a) => a.id === value);
   const { t } = useTranslation();
-  const displayLabel = selectedApp
-    ? `${selectedApp.candidate?.fullName || 'Candidate'} - ${selectedApp.job?.title || 'Job'} (${selectedApp.applicationRef})`
-    : t('recruitment.selectCandidateApp', 'Select candidate application...');
-
   return (
-    <div className="relative inline-block w-full text-left" ref={dropdownRef} onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-semibold text-gray-900 hover:border-gray-300 focus:outline-none transition-all cursor-pointer shadow-sm"
-      >
-        <span className={selectedApp ? 'text-gray-900 font-semibold truncate' : 'text-gray-400 font-medium truncate'}>
-          {displayLabel}
-        </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-
-      {isOpen && (
-        <div className="absolute left-0 top-full z-[100] mt-1.5 w-full min-w-[200px] overflow-hidden rounded-2xl border border-gray-200 bg-white p-1.5 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.25)] animate-in fade-in zoom-in-95 duration-100">
-          <div className="max-h-60 overflow-y-auto space-y-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            {applications.map((app) => {
-              const isSelected = app.id === value;
-              const label = `${app.candidate?.fullName || 'Candidate'} - ${app.job?.title || 'Job'} (${app.applicationRef})`;
-              return (
-                <button
-                  key={app.id}
-                  type="button"
-                  onClick={() => {
-                    onChange(app.id);
-                    setIsOpen(false);
-                  }}
-                  className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-xs transition-colors duration-150 ${isSelected
-                      ? 'bg-amber-50/80 font-bold text-gray-950'
-                      : 'text-gray-700 font-medium hover:bg-gray-100 hover:text-gray-900'
-                    }`}
-                >
-                  <span className="leading-tight text-[13px] truncate">{label}</span>
-                  {isSelected && <CheckCircle2 className="h-4 w-4 shrink-0 text-[#E5A700] stroke-[2.5]" />}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
+    <RemoteSearchPicker<ApplicationOption>
+      selectedId={selected?.id ?? ''}
+      selectedLabel={selected ? applicationOptionLabel(selected) : ''}
+      placeholder={t('recruitment.selectCandidateApp', 'Select candidate application...')}
+      searchPlaceholder="Search candidate name, email, mobile or ref"
+      search={searchApplicationOptions}
+      itemId={(app) => app.id}
+      itemLabel={applicationOptionLabel}
+      onSelect={onChange}
+    />
   );
 }
 
@@ -255,7 +212,7 @@ export default function AdminInterviewsPage() {
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [deletingScorecard, setDeletingScorecard] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [applications, setApplications] = useState<ApplicationOption[]>([]);
+  const [selectedApplication, setSelectedApplication] = useState<ApplicationOption | null>(null);
   const [selectedApplicationId, setSelectedApplicationId] = useState('');
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleType, setScheduleType] = useState('VIDEO');
@@ -299,21 +256,9 @@ export default function AdminInterviewsPage() {
     return () => window.removeEventListener('recruitment_interviews_updated', handleInterviewRefresh);
   }, []);
 
-  const loadApplications = async () => {
-    try {
-      const res = await api.get('/recruitment/admin/applications?limit=100&compact=true');
-      const list = res.data?.applications || res.data?.data;
-      if (!Array.isArray(list)) throw new Error('Invalid applications response');
-      setApplications(list);
-      return true;
-    } catch {
-      alert('Unable to load applications for scheduling.');
-      return false;
-    }
-  };
-
   const resetScheduleForm = () => {
     setSelectedApplicationId('');
+    setSelectedApplication(null);
     setScheduleDate('');
     setScheduleType('VIDEO');
     setScheduleUrl('');
@@ -323,10 +268,8 @@ export default function AdminInterviewsPage() {
 
   const openScheduleModal = async () => {
     if (!canCreateInterview) return;
-    if (await loadApplications()) {
-      resetScheduleForm();
-      setShowScheduleModal(true);
-    }
+    resetScheduleForm();
+    setShowScheduleModal(true);
   };
 
   const handleScheduleInterview = async (event: React.FormEvent) => {
@@ -360,9 +303,14 @@ export default function AdminInterviewsPage() {
 
   const openEditInterview = async (item: InterviewItem) => {
     if (!canUpdateInterview) return;
-    if (!(await loadApplications())) return;
     setEditingInterviewId(item.id);
     setSelectedApplicationId(item.application.id);
+    setSelectedApplication({
+      id: item.application.id,
+      applicationRef: item.application.applicationRef,
+      candidate: { fullName: item.application.candidate?.fullName ?? null },
+      job: { title: item.application.job?.title ?? null },
+    });
     setScheduleDate(toInterviewDateTimeInput(item.scheduledAt));
     setScheduleType(['VIDEO', 'PHONE', 'IN_PERSON'].includes(item.interviewType) ? item.interviewType : 'VIDEO');
     setScheduleUrl(item.meetingUrl || '');
@@ -582,9 +530,15 @@ export default function AdminInterviewsPage() {
                           </div>
 
                           <div className="flex items-start gap-2 shrink-0">
-                            <span className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-extrabold text-gray-700">
-                              {item.status.replaceAll('_', ' ')}
-                            </span>
+                            {item.application?.currentStage === 'HIRED' || item.status === 'COMPLETED' ? (
+                              <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-extrabold text-emerald-800">
+                                {item.application?.currentStage === 'HIRED' ? 'HIRED' : 'COMPLETED'}
+                              </span>
+                            ) : (
+                              <span className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-extrabold text-gray-700">
+                                {item.status.replaceAll('_', ' ')}
+                              </span>
+                            )}
                             {item.status === 'SCHEDULED' && isInterviewNotificationActive(item.scheduledAt, item.durationMinutes, currentTime) && (
                               <span
                                 className="relative mt-2 inline-flex h-2.5 w-2.5"
@@ -781,9 +735,8 @@ export default function AdminInterviewsPage() {
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">{t('recruitment.candidateApplication', 'Candidate Application')} *</label>
                 <ApplicationSelectDropdown
-                  applications={applications}
-                  value={selectedApplicationId}
-                  onChange={setSelectedApplicationId}
+                  selected={selectedApplication}
+                  onChange={(app) => { setSelectedApplication(app); setSelectedApplicationId(app.id); }}
                 />
               </div>
               <div>

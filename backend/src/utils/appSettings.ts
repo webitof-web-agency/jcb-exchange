@@ -83,6 +83,7 @@ export type FooterSettings = {
     privacyPolicy: string | null;
     termsConditions: string | null;
     disclaimer: string | null;
+    refundReturnPolicy: string | null;
     updatedAt: string | null;
     updatedByUserId: string | null;
   };
@@ -410,6 +411,7 @@ const defaultSettings: AppSettings = {
       privacyPolicy: null,
       termsConditions: null,
       disclaimer: null,
+      refundReturnPolicy: null,
       updatedAt: null,
       updatedByUserId: null,
     },
@@ -493,14 +495,28 @@ const normalizeAppSettingsSnapshot = (parsed?: Partial<AppSettings> | null): App
       updatedByUserId: parsed?.footer?.contact?.updatedByUserId || null,
     },
     legalPages: {
-      privacyPolicy: parsed?.footer?.legalPages?.privacyPolicy?.trim() || null,
-      termsConditions: parsed?.footer?.legalPages?.termsConditions?.trim() || null,
-      disclaimer: parsed?.footer?.legalPages?.disclaimer?.trim() || null,
+      privacyPolicy: normalizeLegalPageContent(parsed?.footer?.legalPages?.privacyPolicy),
+      termsConditions: normalizeLegalPageContent(parsed?.footer?.legalPages?.termsConditions),
+      disclaimer: normalizeLegalPageContent(parsed?.footer?.legalPages?.disclaimer),
+      refundReturnPolicy: normalizeLegalPageContent(parsed?.footer?.legalPages?.refundReturnPolicy),
       updatedAt: parsed?.footer?.legalPages?.updatedAt || null,
       updatedByUserId: parsed?.footer?.legalPages?.updatedByUserId || null,
     },
   },
 });
+
+/**
+ * Keep an explicitly saved empty legal page empty. `null`/`undefined` still mean
+ * that no custom page has been configured and allow the frontend to use its
+ * initial fallback content.
+ */
+export const normalizeLegalPageContent = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return typeof value === 'string' ? value.trim() : null;
+};
 
 const normalizeClientId = (value?: string | null) => {
   const trimmedValue = value?.trim();
@@ -1097,9 +1113,10 @@ export const updateFooterSettings = async ({
       },
       legalPages: {
         // Legal pages are rendered as HTML on the public site: allow-list clean on every save.
-        privacyPolicy: legalPages?.privacyPolicy !== undefined ? (sanitizeLegalHtml(legalPages.privacyPolicy) || null) : currentSettings.footer.legalPages.privacyPolicy,
-        termsConditions: legalPages?.termsConditions !== undefined ? (sanitizeLegalHtml(legalPages.termsConditions) || null) : currentSettings.footer.legalPages.termsConditions,
-        disclaimer: legalPages?.disclaimer !== undefined ? (sanitizeLegalHtml(legalPages.disclaimer) || null) : currentSettings.footer.legalPages.disclaimer,
+        privacyPolicy: legalPages?.privacyPolicy !== undefined ? sanitizeLegalHtml(legalPages.privacyPolicy) : currentSettings.footer.legalPages.privacyPolicy,
+        termsConditions: legalPages?.termsConditions !== undefined ? sanitizeLegalHtml(legalPages.termsConditions) : currentSettings.footer.legalPages.termsConditions,
+        disclaimer: legalPages?.disclaimer !== undefined ? sanitizeLegalHtml(legalPages.disclaimer) : currentSettings.footer.legalPages.disclaimer,
+        refundReturnPolicy: legalPages?.refundReturnPolicy !== undefined ? sanitizeLegalHtml(legalPages.refundReturnPolicy) : currentSettings.footer.legalPages.refundReturnPolicy,
         updatedAt: nextTimestamp,
         updatedByUserId: updatedByUserId || null,
       },

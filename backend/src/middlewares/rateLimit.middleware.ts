@@ -155,6 +155,19 @@ export const otpRateLimit = createRateLimiter({ windowMs: 15 * MINUTE, max: 20, 
 export const passwordResetRateLimit = createRateLimiter({ windowMs: 15 * MINUTE, max: 10, message: 'Too many password reset attempts. Please try again in a few minutes.' });
 export const publicLeadRateLimit = createRateLimiter({ windowMs: 10 * MINUTE, max: 10, message: 'Too many enquiries. Please try again in a few minutes.' });
 export const jobApplicationRateLimit = createRateLimiter({ windowMs: 60 * MINUTE, max: 5, message: 'Too many applications from this network. Please try again later.' });
+// A candidate opens the offer page, views / downloads the PDF (range requests) and answers: that needs its own,
+// roomier allowance per link than the job-application bucket, so reading the letter never blocks the answer.
+const offerLinkKey = (req: Request) => `${clientIp(req)}:${String((req.params as Record<string, unknown>)?.token ?? '').slice(-32)}`;
+export const offerLinkViewRateLimit = createRateLimiter({ windowMs: 15 * MINUTE, max: 120, message: 'Too many requests for this offer link. Please try again in a few minutes.', key: offerLinkKey });
+// Short links are 8-character codes: guessing is limited per network address.
+export const offerShortLinkRateLimit = createRateLimiter({ windowMs: 15 * MINUTE, max: 60, message: 'Too many offer link requests from this network. Please try again in a few minutes.' });
+export const offerLinkRespondRateLimit = createRateLimiter({ windowMs: 15 * MINUTE, max: 15, message: 'Too many attempts to answer this offer. Please try again in a few minutes.', key: offerLinkKey });
+export const hrmMutationRateLimit = createRateLimiter({
+  windowMs: MINUTE,
+  max: 120,
+  message: 'Too many HRM changes in a short period. Please retry shortly.',
+  key: (req) => (req as Request & { user?: { id?: string } }).user?.id || clientIp(req),
+});
 export const analyticsEventRateLimit = createRateLimiter({ windowMs: MINUTE, max: 120 });
 export const aiChatRateLimit = createDatabaseRateLimiter({
   namespace: 'ai-chat',

@@ -141,6 +141,7 @@ import {
   areRequiredPartnerAgreementsAccepted,
   buildPartnerAgreementContentHash,
 } from '../services/partnerAgreement.service';
+import { syncHrmEmployeeFromLogin } from '../modules/hrm/services/employeeLogin.service';
 import { resolveJwtSecret } from '../utils/jwtSecret';
 import { partnerDisplayName } from '../utils/messageDisplayValues';
 
@@ -2659,6 +2660,7 @@ export const submitCustomerPrimeSubscription = async (req: Request, res: Respons
       customerName: subscription.user?.name,
       whatsappNumber: subscription.user?.whatsappNumber,
       mobile: subscription.user?.mobile,
+      email: subscription.user?.email,
     });
     if (whatsappDispatch) {
       void dispatchMarketplaceWhatsApp(whatsappDispatch);
@@ -2884,6 +2886,18 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
       }
 
       return nextUser;
+    });
+
+    // An employee who also has an HR record: the login owns the identity, so the HR copy follows (never fails this update).
+    await syncHrmEmployeeFromLogin({
+      userId,
+      actorUserId: userId,
+      previous: { name: currentUser.name, email: currentUser.email, mobile: currentUser.mobile },
+      next: {
+        name: isPartnerProfileAccount ? (normalizedOwnerName || currentUser.name) : (normalizedName || currentUser.name),
+        email: nextEmail,
+        mobile: normalizedMobile || currentUser.mobile || null,
+      },
     });
 
     const refreshedUser = await fetchAuthenticatedUserById(userId);
@@ -3168,7 +3182,7 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
 
         const superAdmins = await prisma.user.findMany({
           where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
-          select: { id: true, mobile: true, whatsappNumber: true },
+          select: { id: true, mobile: true, whatsappNumber: true, email: true },
         });
         superAdmins.forEach((superAdmin) => {
           void dispatchMarketplaceWhatsApp({
@@ -3177,6 +3191,7 @@ export const submitPartnerOnboarding = async (req: Request, res: Response, next:
             relatedEntityId: req.user!.id,
             recipientType: 'SUPER_ADMIN',
             recipientPhone: superAdmin.whatsappNumber || superAdmin.mobile,
+            recipientEmail: superAdmin.email,
             payloadSnapshot: {
               partnerId: partnerIdentifier,
               partnerCode: partnerProfile?.partnerCode ?? undefined,

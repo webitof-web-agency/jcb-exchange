@@ -20,6 +20,11 @@ export type OfferLetterFormData = {
   acceptanceDate: string;
   acceptancePlace: string;
   additionalTerms: string;
+  /** Printed on the letter only (HR closes an offer by hand): YYYY-MM-DD. Sent to the server as offerValidUntil. */
+  offerValidUntil: string;
+  /** Printed labels from the HRM placement (the ids travel separately, see lib/offerHrm.ts). */
+  employmentType: string;
+  reportingManager: string;
 };
 
 export const emptyOfferLetterData: OfferLetterFormData = {
@@ -44,7 +49,31 @@ export const emptyOfferLetterData: OfferLetterFormData = {
   acceptanceDate: '',
   acceptancePlace: '',
   additionalTerms: '',
+  offerValidUntil: '',
+  employmentType: '',
+  reportingManager: '',
 };
+
+/** YYYY-MM-DD plus a number of days (calendar arithmetic on the date only). Empty for an invalid date. */
+export const addDaysToIsoDate = (value: string, days: number) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return '';
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(date.getTime())) return '';
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+/** Days an offer is shown as valid for by default (informational: HR marks it expired by hand). */
+export const DEFAULT_OFFER_VALIDITY_DAYS = 7;
+export const defaultOfferValidUntil = (letterDate: string) => addDaysToIsoDate(letterDate, DEFAULT_OFFER_VALIDITY_DAYS);
+
+/**
+ * A generated offer must remain branded even while the remotely configured
+ * site logo is loading or temporarily unavailable. The same source is used by
+ * the preview and by the PDF blob uploaded for email/WhatsApp delivery.
+ */
+export const getOfferLetterLogoSource = (logoUrl?: string | null) => logoUrl?.trim() || '/Logo-black.webp';
 
 export const formatOfferDate = (value: string) => {
   if (!value) return '';

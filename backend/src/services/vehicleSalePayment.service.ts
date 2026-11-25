@@ -1,5 +1,7 @@
 import prisma from '../lib/prisma';
 import { paymentSummaryForSellAccount } from './sellAccountFinance';
+import { resolvePurchaserEmail } from './vehicleSaleCompletion.service';
+import { enqueueConfiguredEmail } from './recruitmentEmail.service';
 import { dispatchConfiguredSms } from './smsIntegration.service';
 import { dispatchConfiguredWhatsApp } from './whatsappIntegration.service';
 import { issuePaymentReceiptToken, nextVehicleSalePaymentReceiptNumberFor, vehicleTitleOf } from './vehicleSaleInvoice.service';
@@ -23,7 +25,11 @@ const paymentMethodLabel = (method: string) => ({
   OTHER: 'other',
 } as Record<string, string>)[method] || method.toLowerCase();
 
-const describeDispatch = (channel: 'WHATSAPP' | 'SMS', result: any) => {
+const describeDispatch = (channel: 'WHATSAPP' | 'SMS' | 'EMAIL', result: any) => {
+  if (channel === 'EMAIL') {
+    if (result?.queued) return { channel, sent: true, status: 'QUEUED' };
+    return { channel, sent: false, status: String(result?.reason || 'NOT_SENT'), detail: result?.reason || null };
+  }
   if (result?.queued && result?.sent) return { channel, sent: true, status: 'SENT' };
   if (result?.queued) return { channel, sent: false, status: 'FAILED', detail: result?.error || null };
   if (result?.duplicate) return { channel, sent: false, status: 'DUPLICATE' };
@@ -93,8 +99,9 @@ export const deliverVehicleSalePaymentReceipt = async (
     receiptUrl,
   };
 
+  const purchaserEmail = await resolvePurchaserEmail(payment.sellAccount);
   const selectedChannels = selectedVehicleSaleReceiptChannels(channel);
-  const [whatsapp, sms] = await Promise.all([
+  const [whatsapp, sms, email] = await Promise.all([
     selectedChannels.includes('WHATSAPP') ? dispatchConfiguredWhatsApp({
       eventCode: 'VEHICLE_SALE_PAYMENT_RECEIPT',
       relatedEntityType: 'SELL_ACCOUNT_PAYMENT',
@@ -114,7 +121,7 @@ export const deliverVehicleSalePaymentReceipt = async (
         ],
       }],
       payloadSnapshot,
-      dedupeSuffix,
+      ...(dedupeSuffix ? { dedupeSuffix } : {}),
     }) : null,
     selectedChannels.includes('SMS') ? dispatchConfiguredSms({
       eventCode: 'VEHICLE_SALE_PAYMENT_RECEIPT',
@@ -123,12 +130,26 @@ export const deliverVehicleSalePaymentReceipt = async (
       recipientType: 'CUSTOMER',
       recipientPhone: payment.sellAccount.purchaserNumber,
       payloadSnapshot,
-      dedupeSuffix,
+      ...(dedupeSuffix ? { dedupeSuffix } : {}),
     }) : null,
+    purchaserEmail ? enqueueConfiguredEmail({
+      eventCode: 'VEHICLE_SALE_PAYMENT_RECEIPT',
+      relatedEntityType: 'SELL_ACCOUNT_PAYMENT',
+      relatedEntityId: payment.id,
+      recipientEmail: purchaserEmail,
+      payloadSnapshot,
+      ...(dedupeSuffix ? { dedupeSuffix } : {}),
+    }).catch((error) => {
+      console.error('Email delivery failed for VEHICLE_SALE_PAYMENT_RECEIPT:', error);
+      return { queued: false, reason: 'DISPATCH_ERROR' };
+    }) : Promise.resolve(null),
   ]);
 
-  const channels = selectedChannels.map((selectedChannel) =>
-    describeDispatch(selectedChannel, selectedChannel === 'WHATSAPP' ? whatsapp : sms));
+  const channels = [
+    ...selectedChannels.map((selectedChannel) =>
+      describeDispatch(selectedChannel, selectedChannel === 'WHATSAPP' ? whatsapp : sms)),
+    ...(purchaserEmail ? [describeDispatch('EMAIL', email)] : []),
+  ];
   const previousChannels: Array<{ channel?: string; sent?: boolean }> = Array.isArray((payment.receiptDelivery as { channels?: unknown } | null)?.channels)
     ? ((payment.receiptDelivery as { channels: Array<{ channel?: string; sent?: boolean }> }).channels)
     : [];

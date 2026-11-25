@@ -101,8 +101,11 @@ test('successful Aadhaar template upload saves metadata and clears only encrypte
   const result = await service.uploadTemplate(record.id, 'user-1', 'EMPLOYEE', validPng, 'image/png');
   assert.equal(result.result, null);
   assert.equal(result.template?.id, template.id);
-  assert.deepEqual(updates, [{ encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null }]);
-});
+  // The Aadhaar-derived fingerprint is replaced with a random value once the template is stored.
+  assert.equal(updates.length, 1);
+  const { requestFingerprint, ...cleared } = updates[0] as Record<string, unknown>;
+  assert.deepEqual(cleared, { encryptedResult: null, rawDataExpiresAt: null, ephemeralExpiresAt: null });
+  assert.match(String(requestFingerprint), /^[a-f0-9]{64}$/);});
 
 test('Aadhaar template upload preserves a safe complete-number filename supplied by the authorized UI', async () => {
   const record = baseRecord();

@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Search, Truck, X, Upload, Pencil, Trash2, MoreVertical, Eye, EyeOff, UserCheck, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Loader2, Sparkles, ShieldCheck, Link2, LayoutGrid, MapPin, PlayCircle, Video } from 'lucide-react';
+import { Plus, Search, Truck, X, Upload, Pencil, Trash2, MoreVertical, Eye, EyeOff, UserCheck, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Loader2, Sparkles, ShieldCheck, Link2, LayoutGrid, MapPin, PlayCircle, Video, Info } from 'lucide-react';
 import axios from 'axios';
 import api from '@/lib/api';
 import BrandLoader from '@/components/ui/BrandLoader';
@@ -32,6 +32,7 @@ import {
 } from '@/lib/listingFormSanitizers';
 import ListingRtoFields from '@/components/listings/ListingRtoFields';
 import ListingAiImproveBar from '@/components/listings/ListingAiImproveBar';
+import MediaSampleGuideModal from '@/components/listings/MediaSampleGuideModal';
 import { ApiFillBox, ApiFillLegend } from '@/components/ui/ApiFillBadge';
 import { buildListingRtoDetails, emptyListingRtoForm, hasListingRtoInput, sanitizeListingRtoForm, shouldSyncListingRto, validateListingRtoForm, type ListingRtoFormState } from '@/lib/listingRtoForm';
 import { findMasterOption, getProviderVehicleIdentityMismatch, getVehicleVerificationButtonState, getVehicleVerificationSubmitValidationError, mapProviderVehicleToListing, normalizeMasterName, normalizeRegistrationNumber, type VehicleVerificationSource } from '@/lib/listingVehicleVerification';
@@ -944,6 +945,7 @@ export default function PartnerListingsPage() {
   const [listings, setListings] = useState<ListingRecord[]>([]);
   const [mediaState, setMediaState] = useState<MediaSlotState>(createEmptyMediaState);
   const [previewState, setPreviewState] = useState<MediaPreviewState>(createEmptyPreviewState);
+  const [sampleGuideSlot, setSampleGuideSlot] = useState<MediaSlotKey | null>(null);
   const [loadingListings, setLoadingListings] = useState(true);
 
   const openListingDetails = (listing: ListingRecord) => {
@@ -1422,6 +1424,7 @@ export default function PartnerListingsPage() {
     }
 
     setIsModalOpen(false);
+    setSampleGuideSlot(null);
     setForm(initialForm);
     setMediaState(createEmptyMediaState());
     setPreviewState(createEmptyPreviewState());
@@ -1971,6 +1974,7 @@ export default function PartnerListingsPage() {
       await refreshListings();
       setMessage(response.data.message || (saveAsDraft ? 'Draft saved successfully.' : editingListingId ? 'Listing updated successfully.' : 'Listing saved successfully.'));
       setIsModalOpen(false);
+      setSampleGuideSlot(null);
       setForm(initialForm);
       setMediaState(createEmptyMediaState());
       setPreviewState(createEmptyPreviewState());
@@ -2947,6 +2951,7 @@ export default function PartnerListingsPage() {
                         onUploadingChange={(isUploading) =>
                           setUploadingCount((current) => current + (isUploading ? 1 : -1))
                         }
+                        onOpenSampleGuide={(key) => setSampleGuideSlot(key)}
                       />
                     ))}
                   </div>
@@ -3139,6 +3144,12 @@ export default function PartnerListingsPage() {
         </div>
       ) : null}
 
+      <MediaSampleGuideModal
+        slotKey={sampleGuideSlot}
+        mediaSlots={mediaSlots}
+        onChangeSlot={setSampleGuideSlot}
+      />
+
           {visibilityTarget ? (
         <ListingModerationDialog
           listing={visibilityTarget.listing}
@@ -3210,6 +3221,7 @@ function ListingMediaUploadBox({
   onPreviewReady,
   onClear,
   onUploadingChange,
+  onOpenSampleGuide,
 }: {
   slotKey: MediaSlotKey;
   label: string;
@@ -3221,6 +3233,7 @@ function ListingMediaUploadBox({
   onPreviewReady: (previewUrl: string) => void;
   onClear: () => void;
   onUploadingChange: (isUploading: boolean) => void;
+  onOpenSampleGuide: (slotKey: MediaSlotKey) => void;
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadMode, setUploadMode] = useState<'new' | 'replace' | null>(null);
@@ -3328,12 +3341,18 @@ function ListingMediaUploadBox({
         tabIndex={0}
         aria-label={`${hasUploadedAsset ? 'Replace' : 'Upload'} ${label}`}
         onClick={(event) => {
+          if ((event.target as HTMLElement).closest('button')) {
+            return;
+          }
           if (kind === 'video' && (event.target as HTMLElement).closest('video')) {
             return;
           }
           fileInputRef.current?.click();
         }}
         onKeyDown={(event) => {
+          if ((event.target as HTMLElement).closest('button')) {
+            return;
+          }
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
             fileInputRef.current?.click();
@@ -3423,14 +3442,25 @@ function ListingMediaUploadBox({
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span>✓ {kind === 'video' ? 'Video' : 'Uploaded'}</span>
           </div>
-        ) : sampleMedia ? (
-          <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-600 shadow-sm">
-            Example
-          </div>
+        ) : null}
+        {sampleMedia ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenSampleGuide(slotKey);
+            }}
+            className="absolute right-2 top-2 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/95 text-amber-700 shadow-sm border border-amber-200/90 transition hover:bg-amber-400 hover:text-gray-950 hover:border-amber-400 cursor-pointer"
+            aria-label={`View photo instructions and sample for ${label}`}
+            title={`Instructions & Sample (${label})`}
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
         ) : null}
 
         {!hasUploadedAsset && !hasPreview ? (
-          <div className="relative z-20 flex flex-col items-center rounded-lg bg-white/90 px-3 py-2 shadow-sm">
+          <div className="pointer-events-none relative z-20 flex flex-col items-center rounded-lg bg-white/90 px-3 py-2 shadow-sm">
             <Upload className="mb-2 h-5 w-5 text-gray-400" />
             <span className="text-center text-xs font-medium text-gray-600">{label}</span>
             <span className="mt-1 text-center text-[11px] text-gray-500">

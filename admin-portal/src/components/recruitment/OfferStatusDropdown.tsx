@@ -4,7 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, ChevronDown } from 'lucide-react';
 
-export type OfferStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED';
+export type { OfferStatus } from '@/lib/offerHrm';
+import type { OfferStatus } from '@/lib/offerHrm';
 
 const OFFER_STATUS_OPTIONS: Array<{ value: OfferStatus; label: string }> = [
   { value: 'DRAFT', label: 'Draft' },
@@ -12,6 +13,7 @@ const OFFER_STATUS_OPTIONS: Array<{ value: OfferStatus; label: string }> = [
   { value: 'ACCEPTED', label: 'Accepted' },
   { value: 'DECLINED', label: 'Declined' },
   { value: 'EXPIRED', label: 'Expired' },
+  { value: 'WITHDRAWN', label: 'Withdrawn' },
 ];
 
 const getStatusBadgeStyle = (status: OfferStatus) => {
@@ -26,6 +28,8 @@ const getStatusBadgeStyle = (status: OfferStatus) => {
       return 'bg-rose-50 text-rose-800 border-rose-200/90 hover:bg-rose-100/80';
     case 'EXPIRED':
       return 'bg-gray-100 text-gray-700 border-gray-200/90 hover:bg-gray-200/80';
+    case 'WITHDRAWN':
+      return 'bg-orange-50 text-orange-800 border-orange-200/90 hover:bg-orange-100/80';
     default:
       return 'bg-gray-50 text-gray-800 border-gray-200/90 hover:bg-gray-100';
   }

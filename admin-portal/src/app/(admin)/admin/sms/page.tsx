@@ -45,6 +45,8 @@ type SmsRule = {
   messageId: string | null;
   variablesTemplate: string | null;
   variableOptions?: string[];
+  /** Offer rule only: the fixed https://<site>/o/ part HR writes in the approved DLT text. */
+  offerShortLinkPrefix?: string;
 };
 
 type SmsLog = {
@@ -82,8 +84,18 @@ const recruitmentEvents: Record<string, { title: string; recipient: string }> = 
   RECRUITMENT_INTERVIEW_CANCELLED: { title: 'Interview cancelled', recipient: 'Candidate' },
   RECRUITMENT_OFFER_SENT: { title: 'Offer sent', recipient: 'Candidate' },
   RECRUITMENT_OFFER_STATUS_UPDATED: { title: 'Offer status updated', recipient: 'Candidate' },
+  RECRUITMENT_OFFER_ACCEPTED: { title: 'Offer accepted confirmation', recipient: 'Candidate' },
+  RECRUITMENT_OFFER_ACCEPTED_HR: { title: 'Offer accepted alert', recipient: 'Super admin / Offer creator' },
+  RECRUITMENT_JOINING_REMINDER: { title: 'Joining reminder (checklist incomplete)', recipient: 'HR / State Manager' },
+  RECRUITMENT_JOINING_WELCOME: { title: 'Joining welcome', recipient: 'New employee' },
   RECRUITMENT_NEW_JOB_PUBLISHED: { title: 'New job published', recipient: 'Candidates' },
 };
+
+// A DLT {#var#} value holds about 30 characters: the offer link goes in as the 8-character code after a fixed prefix.
+const DLT_VARIABLE_MAX_LENGTH = 30;
+const OFFER_LINK_VARIABLES = ['offerShortCode', 'offerShortUrl', 'offerResponseUrl'];
+const offerLinkVariablesIn = (template: string | null) =>
+  (template || '').split('|').map((variable) => variable.trim()).filter((variable) => OFFER_LINK_VARIABLES.includes(variable));
 
 const variableHelp = 'Optional: fill this only when the approved DLT template has variables. Use event values without braces, separated by |. Example: customerName|listingTitle|status.';
 
@@ -125,6 +137,11 @@ function RuleCard({
 }) {
   const [draft, setDraft] = useState(rule);
   const isVehicleSaleRule = rule.eventCode === 'VEHICLE_SALE_INVOICE' || rule.eventCode === 'VEHICLE_SALE_PAYMENT_RECEIPT';
+  const isOfferRule = rule.eventCode === 'RECRUITMENT_OFFER_SENT';
+  const shortLinkPrefix = rule.offerShortLinkPrefix || 'https://<site>/o/';
+  const offerLinkVariables = isOfferRule ? offerLinkVariablesIn(draft.variablesTemplate) : [];
+  // https://<site>/o/ + the 8-character code.
+  const shortUrlLength = shortLinkPrefix.length + 8;
 
   return (
     <section className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm transition hover:shadow-md sm:p-5 lg:p-6">
@@ -192,7 +209,7 @@ function RuleCard({
             value={draft.variablesTemplate || ''}
             onChange={(event) => setDraft((current) => ({ ...current, variablesTemplate: event.target.value }))}
             disabled={!canManage || saving}
-            placeholder={defaultVehicleSaleSmsVariables(rule.eventCode) || 'Optional: customerName|listingTitle|status'}
+            placeholder={isOfferRule ? 'candidateName|jobTitle|offerShortCode' : defaultVehicleSaleSmsVariables(rule.eventCode) || 'Optional: customerName|listingTitle|status'}
             className="mt-1.5 h-11 w-full rounded-xl border border-gray-300 bg-white px-3.5 text-sm outline-none transition focus:border-[#FFC107] focus:ring-1 focus:ring-[#FFC107] disabled:bg-gray-100 disabled:text-gray-400"
           />
         </div>
@@ -212,6 +229,26 @@ function RuleCard({
 
       <div className="mt-3 space-y-1 text-xs leading-relaxed text-gray-500">
         <p>{variableHelp}</p>
+        {isOfferRule ? (
+          <>
+            <p className="font-semibold text-amber-700">
+              Offer SMS must include one link value: <code>offerShortCode</code> (recommended), <code>offerShortUrl</code> or <code>offerResponseUrl</code>.
+            </p>
+            <p>
+              A DLT variable holds about {DLT_VARIABLE_MAX_LENGTH} characters, so write the fixed link in the approved DLT text and send only the
+              8-character code, e.g. <span className="font-mono text-gray-700">... View &amp; sign: {shortLinkPrefix}{'{#var#}'} ...</span> with{' '}
+              <span className="font-mono text-gray-700">candidateName|jobTitle|offerShortCode</span>. <code>offerShortUrl</code> is the whole short link
+              ({shortUrlLength} characters{shortUrlLength > DLT_VARIABLE_MAX_LENGTH ? ', longer than a DLT variable' : ''}).
+            </p>
+            <p>The link is built when the SMS is sent: a message for an offer that was resent or is no longer open is cancelled, not sent.</p>
+            {offerLinkVariables.includes('offerResponseUrl') && !offerLinkVariables.some((variable) => variable !== 'offerResponseUrl') ? (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 font-semibold text-amber-800">
+                <code>offerResponseUrl</code> is the long signed link and is usually longer than a DLT variable allows. It keeps working for this
+                rule; switch to <code>offerShortCode</code> once a DLT template with the {shortLinkPrefix} prefix is approved.
+              </p>
+            ) : null}
+          </>
+        ) : null}
         {isVehicleSaleRule && !draft.enabled ? (
           <p className="rounded-lg bg-amber-50 px-3 py-2 font-semibold text-amber-800">
             This Sold Vehicle SMS is not active. Enter the approved DLT Message ID and save this rule; the required variable order will be validated before activation.
@@ -380,8 +417,10 @@ export default function SmsNotificationsPage() {
     setError('');
     setNotice('');
     try {
-      const response = await api.post<{ message: string }>(`/sms/logs/${log.id}/retry`);
-      setNotice(response.data.message);
+      const response = await api.post<{ message: string; result?: { skipped?: boolean; reason?: string } }>(`/sms/logs/${log.id}/retry`);
+      // An offer SMS whose link was replaced by a resend (or whose offer is closed) is cancelled, not rejected.
+      const skipped = response.data.result?.skipped ? response.data.result.reason : undefined;
+      setNotice(skipped ? `SMS not sent: ${skipped}. The message was cancelled.` : response.data.message);
       const refreshed = await api.get<{ logs: SmsLog[] }>('/sms/logs?limit=50');
       setLogs(refreshed.data.logs);
     } catch (requestError) {
@@ -770,7 +809,8 @@ export default function SmsNotificationsPage() {
       {tab === 'RECRUITMENT' && (
         <div className="space-y-4">
           <div className="rounded-2xl border border-purple-100 bg-purple-50/80 p-4 text-xs text-purple-900 sm:text-sm">
-            Configure automated DLT SMS rules triggered by recruitment events (Job applications, interview schedules, offer letters).
+            Configure automated DLT SMS rules triggered by recruitment events (job applications, interview schedules, offer letters, offer acceptance and joining).
+            New rules start switched off: enter the approved DLT Message ID and turn a rule on once its template is approved.
           </div>
           {recruitment.map((rule) => (
             <RuleCard
@@ -836,7 +876,7 @@ export default function SmsNotificationsPage() {
                     <td className="px-5 py-4">
                       <p className="font-bold text-gray-900">{log.eventCode}</p>
                       {log.errorMessage && (
-                        <p className="mt-1 max-w-md rounded bg-red-50 p-1.5 font-mono text-xs text-red-600">
+                        <p className={`mt-1 max-w-md rounded p-1.5 font-mono text-xs ${log.status === 'SKIPPED' ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-600'}`}>
                           {log.errorMessage}
                         </p>
                       )}
@@ -853,6 +893,8 @@ export default function SmsNotificationsPage() {
                             ? 'bg-emerald-100 text-emerald-800'
                             : log.status === 'FAILED'
                             ? 'bg-red-100 text-red-800'
+                            : log.status === 'SKIPPED'
+                            ? 'bg-amber-100 text-amber-800'
                             : 'bg-gray-100 text-gray-700'
                         }`}
                       >
@@ -931,6 +973,8 @@ export default function SmsNotificationsPage() {
                         ? 'bg-emerald-100 text-emerald-800'
                         : log.status === 'FAILED'
                         ? 'bg-red-100 text-red-800'
+                        : log.status === 'SKIPPED'
+                        ? 'bg-amber-100 text-amber-800'
                         : 'bg-gray-100 text-gray-700'
                     }`}
                   >
@@ -939,7 +983,7 @@ export default function SmsNotificationsPage() {
                 </div>
 
                 {log.errorMessage && (
-                  <p className="rounded bg-red-50 p-2 font-mono text-xs text-red-600">
+                  <p className={`rounded p-2 font-mono text-xs ${log.status === 'SKIPPED' ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-600'}`}>
                     {log.errorMessage}
                   </p>
                 )}

@@ -6,11 +6,12 @@ import { getAppSettings } from '../utils/appSettings';
 import { numberToWordsInr } from '../utils/customerPrimeInvoice';
 import { renderSellAccountVoucherPdf } from '../utils/sellAccountVoucherPdf';
 import { renderBillOfSupplyPdf, renderDeliveryChallanPdf, renderMoneyReceiptPdf } from '../utils/vehicleSaleDocumentsPdf';
-import { fillBillOfSupplyTemplate, fillMoneyReceiptTemplate } from '../utils/vehicleSaleDocxTemplate';
+import { fillBillOfSupplyTemplate } from '../utils/vehicleSaleDocxTemplate';
 import { financialYearLabel, nextVehicleSaleInvoiceNumber, vehicleSaleInvoicePrefix } from '../utils/vehicleSaleInvoice';
 import { loadInvoiceLogo } from './customerPrimeInvoice.service';
 import { convertDocxToPdf } from './docxToPdf.service';
-import { paymentSummaryForSellAccount } from './sellAccountFinance';
+import { paymentSummaryForSellAccount, calculateSellAccountGst } from './sellAccountFinance';
+import { renderProfitGstInvoicePdf } from '../utils/vehicleSaleProfitInvoicePdf';
 
 const INVOICE_LINK_TTL_DAYS = 180;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -327,28 +328,10 @@ export const buildVehicleSalePaymentReceiptPdf = async (paymentId: string, optio
   const customerName = payment.sellAccount.purchaserName || 'Customer';
   const place = customerAddressLine(payment.sellAccount);
   const remarks = [statusNote, receiptRemarks(payment, vehicleTitle, balance)].filter(Boolean).join(' ');
-  const buffer = await renderWithTemplateFallback('Money receipt', async () => {
-    const template = await readTemplate('VEHICLE_SALE_MONEY_RECEIPT_TEMPLATE_PATH', 'JCB_Exchange_OPC_Private_Limited_Money_Receipt.docx');
-    const docx = fillMoneyReceiptTemplate(template, {
-      companyName: company.companyName || 'JCB Exchange',
-      gstin: company.gstin || '-',
-      companyAddressLine: companyAddressLine(company),
-      receiptNumber,
-      receiptDate: formatDocumentDate(payment.paymentDate),
-      vehicleTitle,
-      vehicleColor: '-',
-      customerId: payment.sellAccount.recordNumber,
-      customerName,
-      place,
-      paymentMethod: paymentMethodLabel(payment.method),
-      amount: formatInr(received),
-      amountInWords: numberToWordsInr(received),
-      remarks,
-      authorisedSignatoryName: authorisedSignatoryName(company),
-      authorisedSignatoryDesignation: authorisedSignatoryDesignation(company),
-    }, logo);
-    return convertDocxToPdf(docx, `JCB-Exchange-Money-Receipt-${fileLabel}.pdf`);
-  }, () => renderMoneyReceiptPdf({
+  // Use one portable renderer for every channel. The former DOCX branch could only run on
+  // machines with both the stationery file and an office converter, causing live receipts
+  // to fall back to a different design than local downloads.
+  const buffer = await renderMoneyReceiptPdf({
     company: { name: company.companyName || 'JCB Exchange', addressLine: companyAddressLine(company), cin: company.cin, gstin: company.gstin },
     title: isDraft ? 'MONEY RECEIPT (DRAFT - NOT VALID)' : payment.receiptStatus === 'CANCELLED' ? 'MONEY RECEIPT (CANCELLED)' : 'MONEY RECEIPT',
     receiptNumber,
@@ -363,9 +346,10 @@ export const buildVehicleSalePaymentReceiptPdf = async (paymentId: string, optio
     drawnOn: payment.drawnOn || '-',
     amount: rupeesText(received),
     amountInWords: numberToWordsInr(received),
+    balance: rupeesText(balance),
     remarks: remarks.replace(/₹/g, 'Rs. '),
     signatory: { name: authorisedSignatoryName(company), designation: authorisedSignatoryDesignation(company) },
-  }, logo));
+  }, logo);
   return {
     buffer,
     fileName: `JCB-Exchange-Money-Receipt-${fileLabel}.pdf`,
@@ -483,6 +467,177 @@ export const buildSellAccountCreditNotePdf = async (sellAccountId: string) => {
     signatory: context.signatory,
   }, context.logo);
   return { buffer, fileName: `JCB-Exchange-Credit-Note-${record.creditNoteNumber.replace(/[^A-Za-z0-9-]+/g, '-')}.pdf` };
+};
+
+export const formatProfitInvoiceDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+};
+
+export const generateProfitInvoiceNumber = (date: Date) => {
+  const datePart = formatProfitInvoiceDate(date);
+  const randomDigits = Math.floor(1000 + Math.random() * 9000);
+  return `JCBX/PR/${datePart}/${randomDigits}`;
+};
+
+export const nextVehicleSaleProfitInvoiceNumberFor = async (client: any, date: Date): Promise<string> => {
+  for (let i = 0; i < 25; i++) {
+    const candidate = generateProfitInvoiceNumber(date);
+    const exists = await client.sellAccount.findUnique({
+      where: { profitInvoiceNumber: candidate },
+      select: { id: true },
+    });
+    if (!exists) return candidate;
+  }
+  return `JCBX/PR/${formatProfitInvoiceDate(date)}/${Date.now().toString().slice(-4)}`;
+};
+
+/**
+ * Profit Tax Invoice (Margin Scheme under Rule 32(5) of CGST Rules, 2017).
+ * Strictly for internal accounting & tax compliance download; never sent to customers.
+ */
+export const buildVehicleSaleProfitInvoicePdf = async (sellAccountId: string) => {
+  const record = await prisma.sellAccount.findUnique({
+    where: { id: sellAccountId },
+    include: {
+      payments: true,
+      refunds: true,
+      listing: { select: { address: true, locationCity: true, locationState: true, engineNumber: true } },
+    },
+  });
+  if (!record || record.deletedAt) throw new Error('Sold Vehicle record was not found for profit invoice generation.');
+  if (record.isDraft) throw new Error('Profit invoice is not available for draft records.');
+
+  const now = new Date();
+  let profitInvoiceNumber = record.profitInvoiceNumber;
+  let profitInvoiceGeneratedAt = record.profitInvoiceGeneratedAt;
+  if (!profitInvoiceNumber) {
+    profitInvoiceNumber = await nextVehicleSaleProfitInvoiceNumberFor(prisma, record.invoiceGeneratedAt || now);
+    profitInvoiceGeneratedAt = record.invoiceGeneratedAt || now;
+    await prisma.sellAccount.update({
+      where: { id: record.id },
+      data: {
+        profitInvoiceNumber,
+        profitInvoiceGeneratedAt,
+      },
+    });
+  }
+
+  const appSettings = await getAppSettings();
+  const company = appSettings.companyInvoice;
+
+  const isJpegOrPng = (buffer?: Buffer | null): buffer is Buffer =>
+    Boolean(
+      buffer &&
+        buffer.length > 4 &&
+        ((buffer[0] === 0xff && buffer[1] === 0xd8) ||
+          (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47)),
+    );
+
+  let logo = await loadInvoiceLogo(appSettings.siteLogo.darkLogoUrl || appSettings.siteLogo.imageUrl);
+  if (!isJpegOrPng(logo)) {
+    try {
+      logo = await fs.readFile(resolveVehicleSaleAssetPath('jcb-exchange-logo.jpg'));
+    } catch {
+      logo = null;
+    }
+  }
+
+  const saleAmount = Number(record.sellAmount);
+  const purchaseAmount = Number(record.purchaseAmount);
+  const expenses = Number(record.expenses);
+  const marginBasis = record.marginBasis;
+  const sellerState = record.sellerState;
+  const purchaserState = record.purchaserState;
+
+  const gst = calculateSellAccountGst({
+    sellAmount: saleAmount,
+    purchaseAmount,
+    expenses,
+    ...(marginBasis ? { marginBasis } : {}),
+    sellerState: sellerState || '',
+    purchaserState: purchaserState || '',
+  });
+
+  const rawBreakdown = record.expenseBreakdown as any;
+  const breakdownParts = rawBreakdown
+    ? [
+        rawBreakdown.vehicleTransport ? `Vehicle Transport: Rs. ${Number(rawBreakdown.vehicleTransport).toLocaleString('en-IN')}` : '',
+        rawBreakdown.rtoWork ? `RTO Work: Rs. ${Number(rawBreakdown.rtoWork).toLocaleString('en-IN')}` : '',
+        rawBreakdown.transport ? `Transport: Rs. ${Number(rawBreakdown.transport).toLocaleString('en-IN')}` : '',
+        rawBreakdown.paperwork ? `Paperwork: Rs. ${Number(rawBreakdown.paperwork).toLocaleString('en-IN')}` : '',
+        rawBreakdown.other ? `Other: Rs. ${Number(rawBreakdown.other).toLocaleString('en-IN')}` : '',
+      ].filter(Boolean)
+    : [];
+  const breakdownText = breakdownParts.length ? ` (${breakdownParts.join(', ')})` : '';
+
+  const remarksBullets = [
+    `• Purchase Price (Dealer Inward Cost): Rs. ${purchaseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+    `• Sale Price (Customer Deal Value): Rs. ${saleAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+    `• Direct Deductible Expenses: Rs. ${expenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}${breakdownText}`,
+    `• Gross Profit Margin (Inclusive of 18% GST): Rs. ${gst.marginAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+    `• Taxable Margin Base (Gross Margin / 1.18): Rs. ${gst.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+    `• 18% GST Applicable (${gst.isIntraState ? `CGST Rs. ${gst.cgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })} + SGST Rs. ${gst.sgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : `IGST Rs. ${gst.igst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}): Rs. ${gst.gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+    `• Net Realised Profit After GST: Rs. ${gst.netProfitAfterGst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+    `• Cross-Reference Customer Bill of Supply: ${record.invoiceNumber || 'Pending / N/A'}`,
+    `• Note: Tax Invoice issued under GST Margin Scheme pursuant to Rule 32(5) of the CGST Rules, 2017. Internal record for accounting and audit compliance.`,
+  ];
+
+  const buffer = await renderProfitGstInvoicePdf(
+    {
+      company: {
+        name: company.companyName || 'JCB Exchange',
+        addressLine: companyAddressLine(company),
+        cin: company.cin,
+        gstin: company.gstin,
+        state: company.state || 'Chhattisgarh',
+      },
+      invoiceNumber: profitInvoiceNumber,
+      invoiceDate: formatDocumentDate(profitInvoiceGeneratedAt || now),
+      customerName: record.purchaserName || 'Customer',
+      customerAddressLine: customerAddressLine(record),
+      customerStateCode: record.purchaserState || record.listing?.locationState || company.state || '—',
+      placeOfSupply: record.purchaserState || record.listing?.locationState || company.state || '—',
+      vehicle: {
+        title: vehicleTitleOf(record),
+        registrationNumber: record.vehicleNumber || '—',
+        chassisNumber: record.chassisNumber || '—',
+        engineNumber: record.listing?.engineNumber || null,
+        category: record.vehicleType || 'Heavy Equipment',
+      },
+      relatedBillOfSupplyNumber: record.invoiceNumber,
+      finance: {
+        purchaseAmount,
+        saleAmount,
+        expenses,
+        grossMargin: gst.marginAmount,
+        taxableValue: gst.taxableAmount,
+        gstRatePercent: gst.gstRatePercent,
+        isIntraState: gst.isIntraState,
+        cgst: gst.cgst,
+        sgst: gst.sgst,
+        igst: gst.igst,
+        totalGst: gst.gstAmount,
+        totalInvoiceAmount: gst.marginAmount,
+        netProfitAfterGst: gst.netProfitAfterGst,
+      },
+      amountInWords: numberToWordsInr(gst.marginAmount),
+      remarksBullets,
+      signatory: {
+        name: authorisedSignatoryName(company),
+        designation: authorisedSignatoryDesignation(company),
+      },
+    },
+    logo,
+  );
+
+  return {
+    buffer,
+    fileName: `Profit-Invoice-${profitInvoiceNumber.replace(/[^A-Za-z0-9-]+/g, '_')}_${(record.vehicleNumber || 'VEHICLE').replace(/[^A-Za-z0-9-]+/g, '_')}.pdf`,
+    profitInvoiceNumber,
+  };
 };
 
 /** Resolves a public invoice link. Unknown, malformed and expired tokens all look the same. */

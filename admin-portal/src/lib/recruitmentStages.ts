@@ -20,7 +20,8 @@ export const DEFAULT_RECRUITMENT_STAGES: RecruitmentStage[] = [
   { name: 'Offer Prepared', code: 'OFFER_PREPARED', order: 8, color: 'orange', isSystem: false, isTerminal: false },
   { name: 'Offer Sent', code: 'OFFER_SENT', order: 9, color: 'pink', isSystem: false, isTerminal: false },
   { name: 'Offer Accepted', code: 'OFFER_ACCEPTED', order: 10, color: 'lime', isSystem: false, isTerminal: false },
-  { name: 'Hired', code: 'HIRED', order: 11, color: 'green', isSystem: false, isTerminal: true },
+  { name: 'Offer Declined', code: 'OFFER_DECLINED', order: 11, color: 'rose', isSystem: false, isTerminal: true },
+  { name: 'Hired', code: 'HIRED', order: 12, color: 'green', isSystem: false, isTerminal: true },
 ];
 
 const STAGE_TONES: Record<string, { dot: string; border: string; pill: string; soft: string }> = {

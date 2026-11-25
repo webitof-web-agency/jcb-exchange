@@ -508,7 +508,7 @@ const acknowledgeLead = async (leadId: string, config: CrmConfig) => {
   if (!config.automation.enabled || !config.automation.leadAcknowledgement) return;
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { id: true, leadType: true, listingTitleSnapshot: true, customer: { select: { name: true, mobile: true, whatsappNumber: true, crmProfile: { select: { doNotContact: true } } } } },
+    select: { id: true, leadType: true, listingTitleSnapshot: true, customer: { select: { name: true, mobile: true, whatsappNumber: true, email: true, crmProfile: { select: { doNotContact: true } } } } },
   });
   if (!lead || lead.customer.crmProfile?.doNotContact) return;
   const enquiry = lead.listingTitleSnapshot || leadTypeLabel(lead.leadType);
@@ -516,6 +516,7 @@ const acknowledgeLead = async (leadId: string, config: CrmConfig) => {
     event: 'CRM_LEAD_ACKNOWLEDGEMENT',
     recipientType: 'CUSTOMER',
     phone: lead.customer.whatsappNumber || lead.customer.mobile,
+    email: lead.customer.email,
     entityId: lead.id,
     values: [lead.customer.name, enquiry],
     variables: { customerName: lead.customer.name, enquiry },

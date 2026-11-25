@@ -3238,7 +3238,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
 
       const buyer = await prisma.user.findUnique({
         where: { id: req.user.id },
-        select: { mobile: true, whatsappNumber: true },
+        select: { mobile: true, whatsappNumber: true, email: true },
       });
       if (paymentOutcome.requiresManualReview) {
         void dispatchMarketplaceWhatsApp({
@@ -3247,6 +3247,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
           relatedEntityId: payment.id,
           recipientType: 'CUSTOMER',
           recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
+          recipientEmail: buyer?.email,
           payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: listing!.id, listingTitle, method: payment.method, paymentStatus: 'PENDING' },
         });
         // Admin audit copy - notify all superadmins about new payment receipt for manual review
@@ -3254,7 +3255,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
           try {
             const superAdmins = await prisma.user.findMany({
               where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
-              select: { id: true, mobile: true, whatsappNumber: true },
+              select: { id: true, mobile: true, whatsappNumber: true, email: true },
             });
             superAdmins.forEach((superAdmin) => {
               void dispatchMarketplaceWhatsApp({
@@ -3263,6 +3264,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
                 relatedEntityId: payment.id,
                 recipientType: 'SUPER_ADMIN',
                 recipientPhone: superAdmin.whatsappNumber || superAdmin.mobile,
+                recipientEmail: superAdmin.email,
                 payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: listing!.id, listingTitle, method: payment.method },
               });
             });
@@ -3277,6 +3279,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
           relatedEntityId: payment.id,
           recipientType: 'CUSTOMER',
           recipientPhone: buyer?.whatsappNumber || buyer?.mobile,
+          recipientEmail: buyer?.email,
           payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: listing!.id, listingTitle, paymentStatus: 'PAID' },
         });
         void dispatchMarketplaceWhatsApp({
@@ -3285,6 +3288,7 @@ export const submitListingPayment = async (req: Request, res: Response, next: Ne
           relatedEntityId: payment.id,
           recipientType: 'PARTNER',
           recipientPhone: listing!.partner?.whatsappNumber || listing!.partner?.mobile,
+          recipientEmail: listing!.partner?.email,
           payloadSnapshot: { paymentId: payment.id, paymentRef: payment.transactionRef || undefined, listingId: listing!.id, listingTitle, paymentStatus: 'PAID', recipientRole: 'PARTNER' },
         });
       }

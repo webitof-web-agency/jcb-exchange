@@ -64,8 +64,8 @@ export const announceAssignment = async (leadId: string, ownerId: string, reason
       id: true,
       leadType: true,
       listingTitleSnapshot: true,
-      customer: { select: { name: true, mobile: true } },
-      owner: { select: { name: true, mobile: true, role: true } },
+      customer: { select: { name: true, mobile: true, email: true } },
+      owner: { select: { name: true, mobile: true, email: true, role: true } },
       followUps: { where: { status: 'PENDING' }, select: { id: true } },
     },
   });
@@ -85,6 +85,7 @@ export const announceAssignment = async (leadId: string, ownerId: string, reason
       event: 'CRM_LEAD_ASSIGNED',
       recipientType: lead.owner?.role === 'PARTNER' ? 'PARTNER' : 'EMPLOYEE',
       phone: lead.owner?.mobile,
+      email: lead.owner?.email,
       entityId: lead.id,
       values: [lead.owner?.name, lead.customer.name, lead.customer.mobile, what],
       variables: { staffName: lead.owner?.name, customerName: lead.customer.name, customerMobile: lead.customer.mobile, enquiry: what },

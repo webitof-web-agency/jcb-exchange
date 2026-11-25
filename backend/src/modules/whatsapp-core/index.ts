@@ -9,3 +9,5 @@ export * from './templatePurposePolicy';
 export * from './marketplaceTemplatePolicy';
 export * from './publishedBroadcastPolicy';
 export * from './recruitmentTemplatePolicy';
+export * from './metaTemplateDefinition';
+export * from './offerLinkBinding';

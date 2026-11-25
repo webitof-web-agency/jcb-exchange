@@ -3,17 +3,24 @@ import { inflateSync } from 'node:zlib';
 import test from 'node:test';
 import { renderBillOfSupplyPdf, renderDeliveryChallanPdf, renderMoneyReceiptPdf } from './vehicleSaleDocumentsPdf';
 
-const pdfText = (buffer: Buffer) => {
+const pdfCommands = (buffer: Buffer) => {
   const source = buffer.toString('latin1');
-  return [...source.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)]
+  return [...source.matchAll(/stream\r?\n([\s\S]*?)\n?endstream/g)]
     .map((match) => {
       try {
-        return inflateSync(Buffer.from(match[1]!, 'latin1')).toString('latin1');
+        return inflateSync(Buffer.from(match[1]!.replace(/\r?\n$/, ''), 'latin1')).toString('latin1');
       } catch {
         return match[1] || '';
       }
     })
     .join('\n');
+};
+
+const pdfText = (buffer: Buffer) => {
+  const commands = pdfCommands(buffer);
+  return [...commands.matchAll(/<([0-9a-f]+)>/gi)]
+    .map((match) => Buffer.from(match[1]!, 'hex').toString('latin1'))
+    .join('');
 };
 
 test('money receipts print the configured GSTIN instead of the CIN', async () => {
@@ -42,8 +49,86 @@ test('money receipts print the configured GSTIN instead of the CIN', async () =>
   });
 
   const text = pdfText(pdf);
-  assert.match(text, /<475354494e3a>.*<20323241415046553039333946315a56>/s);
-  assert.doesNotMatch(text, /<43494e3a>/);
+  assert.match(text, /GSTIN: 22AAPFU0939F1ZV/);
+  assert.doesNotMatch(text, /CIN:/);
+});
+
+test('money receipts use the approved classic layout without transaction-only columns', async () => {
+  const pdf = await renderMoneyReceiptPdf({
+    company: {
+      name: 'JCB Exchange (OPC) Private Limited',
+      addressLine: 'Shop No. 8, Housing Board Complex, Raipur',
+      gstin: '22AAHCJ5752E1ZR',
+    },
+    title: 'MONEY RECEIPT',
+    receiptNumber: 'JCB/BILASPUR/SAL/26-27/0002',
+    receiptDate: '25/NOV/2026',
+    vehicleTitle: 'JCB INDIA LIMITED 3DX PLUS-2WD',
+    customerId: 'SA-2026-003',
+    customerName: 'ONKAR SURYAVANSHI',
+    place: 'Bilaspur, Chhattisgarh',
+    mode: 'CASH',
+    txnNumber: '22091168',
+    txnDate: '25/NOV/2026',
+    drawnOn: 'CANARA',
+    amount: 'Rs. 2,27,000.00',
+    amountInWords: 'Rupees Two Lakh Twenty Seven Thousand Only',
+    remarks: 'Being amount received through cash.',
+    signatory: { name: 'Authorised Signatory', designation: 'Authorised Signatory' },
+  });
+
+  const text = pdfText(pdf);
+  assert.match(text, /MODE.*AMOUNT/, 'the payment table must have a MODE and AMOUNT column');
+  assert.doesNotMatch(text, /TXN NO\./, 'TXN NO. must stay in remarks, not create a second layout');
+  assert.doesNotMatch(text, /DRAWN ON/, 'DRAWN ON must stay in remarks, not create a second layout');
+  assert.doesNotMatch(text, /COLOR\s*:/i, 'COLOR label must not be rendered on money receipts');
+  assert.match(text, /CUSTOMER ID : SA-2026-003/, 'CUSTOMER ID must still be rendered');
+  assert.match(pdfCommands(pdf), /36 \d+ 523 2 re/, 'header must include a full-width horizontal divider bar');
+  assert.match(pdfCommands(pdf), /36 176 523 42 re/, 'the classic receipt must retain its boxed reference section');
+  assert.doesNotMatch(
+    pdfCommands(pdf),
+    /0\.11764705882352941 0\.22745098039215686 0\.5411764705882353 scn/,
+    'the blue fallback stationery must never be used for money receipts',
+  );
+});
+
+test('money receipts expand box height dynamically for long model names and show dynamic balance', async () => {
+  const pdf = await renderMoneyReceiptPdf({
+    company: {
+      name: 'JCB Exchange (OPC) Private Limited',
+      addressLine: 'Shop No. 8, Housing Board Complex, Shankar Nagar Khamhardih Raipur C.G., Raipur, Chhattisgarh, India',
+      gstin: '22AAHCJ5752E1ZR',
+    },
+    title: 'MONEY RECEIPT',
+    receiptNumber: 'JCB/SANGLI/SAL/26-27/0003',
+    receiptDate: '25/NOV/2026',
+    vehicleTitle: 'CASE EQUIPMENT PRIVATE LTD CASE 770 SS LODER BACKOE providercategoryconstruction equipment vehicle',
+    customerId: 'SA-2026-006',
+    customerName: 'PARASHARM KASINATH MALI',
+    place: 'SANGLI, MAHARASHTRA',
+    mode: 'BANK TRANSFER',
+    txnNumber: 'ICICR42026100100554774',
+    txnDate: '30/OCT/2026',
+    drawnOn: '-',
+    amount: 'Rs. 3,00,000.00',
+    amountInWords: 'Rupees Three Lakh Only',
+    balance: 'Rs. 2,00,000.00',
+    remarks: 'Being amount received through BANK TRANSFER. Customer balance: ₹2,00,000.00. PO/DD/CHQ subject to realisation.',
+    signatory: { name: 'Authorised Signatory', designation: 'Authorised Signatory' },
+  });
+
+  const pageCount = (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
+  assert.equal(pageCount, 1, 'Money receipt with long model text must still fit on 1 page');
+
+  const commands = pdfCommands(pdf);
+  const boxMatch = commands.match(/36 176 523 (\d+) re/);
+  assert.ok(boxMatch, 'reference box must start at expected top coordinate');
+  assert.ok(Number(boxMatch[1]) > 42, `expected dynamic reference box height > 42 for wrapped model, got ${boxMatch[1]}`);
+
+  const text = pdfText(pdf);
+  assert.doesNotMatch(text, /COLOR\s*:/i);
+  assert.match(text, /CUSTOMER ID : SA-2026-006/);
+  assert.match(text, /CUSTOMER BALANCE : Rs\. 2,00,000\.00/);
 });
 
 test('bill of supply renders as 1 single page, removes CIN safely, and has Remarks and Signatory', async () => {
@@ -74,7 +159,7 @@ test('bill of supply renders as 1 single page, removes CIN safely, and has Remar
   assert.equal(pageCount, 1, 'Bill of supply must fit strictly on 1 single page');
 
   const text = pdfText(pdf);
-  assert.doesNotMatch(text, /<43494e3a>/, 'CIN must be safely omitted from Bill of Supply');
+  assert.doesNotMatch(text, /CIN:/, 'CIN must be safely omitted from Bill of Supply');
   assert.doesNotMatch(text, /U46594CT2026OPC020990/, 'Raw CIN string must not be present');
 });
 
