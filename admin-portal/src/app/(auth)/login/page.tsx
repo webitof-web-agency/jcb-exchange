@@ -253,7 +253,7 @@ function LoginPageInner() {
         navigateToAuthenticatedPortal(
           router,
           resolveEmployeeRouteRedirect(nextRoute || '', user.permissions) ||
-            getEmployeeLandingPath(user.permissions)
+          getEmployeeLandingPath(user.permissions)
         );
         return;
       }
@@ -945,10 +945,10 @@ function LoginPageInner() {
   return (
     <div className="h-screen w-full flex items-center justify-center bg-zinc-950 font-sans relative px-4 py-3 sm:py-4 overflow-hidden selection:bg-amber-400 selection:text-black">
       {/* Background Image with Clean Viewport Constraint */}
-      <div 
-        className="absolute inset-0 bg-[url('/jcb-bg.webp')] bg-cover bg-center opacity-40 mix-blend-luminosity pointer-events-none" 
+      <div
+        className="absolute inset-0 bg-[url('/jcb-bg.webp')] bg-cover bg-center opacity-40 mix-blend-luminosity pointer-events-none"
       />
-      
+
       {/* Dark Ambient Gradient Mesh */}
       <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-zinc-900/90 pointer-events-none" />
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] bg-amber-500/10 blur-[120px] rounded-full pointer-events-none" />
@@ -956,7 +956,7 @@ function LoginPageInner() {
       {/* Main Auth Card Container - Fits viewport without window scroll */}
       <div className="relative z-10 w-full max-w-[420px] max-h-[calc(100dvh-1.5rem)] flex flex-col">
         <div className="bg-white rounded-2xl sm:rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.1)] overflow-hidden flex flex-col max-h-full">
-          
+
           {/* Subtle Top JCB Brand Stripe */}
           <div className="h-1.5 w-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 shrink-0" />
 
@@ -1001,22 +1001,20 @@ function LoginPageInner() {
                   <button
                     type="button"
                     onClick={() => handleTabSwitch('login')}
-                    className={`h-8 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                      activeTab === 'login'
+                    className={`h-8 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 ${activeTab === 'login'
                         ? 'bg-white text-zinc-900 font-bold shadow-sm'
                         : 'text-zinc-500 hover:text-zinc-900 font-medium'
-                    }`}
+                      }`}
                   >
-                    <span>Sign In</span>
+                    <span>Signnn In</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleTabSwitch('register')}
-                    className={`h-8 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                      activeTab === 'register'
+                    className={`h-8 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 ${activeTab === 'register'
                         ? 'bg-white text-zinc-900 font-bold shadow-sm'
                         : 'text-zinc-500 hover:text-zinc-900 font-medium'
-                    }`}
+                      }`}
                   >
                     <span>Partner Register</span>
                   </button>
@@ -1041,549 +1039,549 @@ function LoginPageInner() {
                 {/* SIGN IN FORM */}
                 {activeTab === 'login' ? (
                   <>
-                  {isPasswordReset ? (
-                  <>
-                  <form
-                    onSubmit={
-                      passwordResetStep === 'mobile'
-                        ? handleSendPasswordResetOtp
-                        : passwordResetStep === 'otp'
-                          ? handleVerifyPasswordResetOtp
-                          : handleResetPassword
-                    }
-                    className="space-y-3.5"
-                    autoComplete="on"
-                  >
-                    {passwordResetStep === 'mobile' ? (
+                    {isPasswordReset ? (
                       <>
-                        <div>
-                          <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                            Mobile Number
-                          </label>
-                          <div className="relative flex">
-                            <span className="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-zinc-200 bg-zinc-100 text-zinc-600 text-xs font-bold select-none h-11">
-                              +91
-                            </span>
-                            <div className="relative flex-1">
-                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
-                                <Smartphone className="h-4 w-4" />
+                        <form
+                          onSubmit={
+                            passwordResetStep === 'mobile'
+                              ? handleSendPasswordResetOtp
+                              : passwordResetStep === 'otp'
+                                ? handleVerifyPasswordResetOtp
+                                : handleResetPassword
+                          }
+                          className="space-y-3.5"
+                          autoComplete="on"
+                        >
+                          {passwordResetStep === 'mobile' ? (
+                            <>
+                              <div>
+                                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                                  Mobile Number
+                                </label>
+                                <div className="relative flex">
+                                  <span className="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-zinc-200 bg-zinc-100 text-zinc-600 text-xs font-bold select-none h-11">
+                                    +91
+                                  </span>
+                                  <div className="relative flex-1">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+                                      <Smartphone className="h-4 w-4" />
+                                    </div>
+                                    <input
+                                      type="tel"
+                                      inputMode="numeric"
+                                      maxLength={10}
+                                      required
+                                      value={passwordResetMobile}
+                                      onChange={(e) => {
+                                        setPasswordResetMobile(sanitizeMobile(e.target.value).slice(0, 10));
+                                        if (error) setError('');
+                                      }}
+                                      className="h-11 block w-full pl-9 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-r-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                                      placeholder="Enter 10-digit mobile number"
+                                      autoComplete="tel-national"
+                                    />
+                                  </div>
+                                </div>
                               </div>
+                              <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-center text-[11px] font-medium text-blue-700">
+                                If this mobile number is registered, an OTP will be sent by SMS.
+                              </p>
+                            </>
+                          ) : passwordResetStep === 'otp' ? (
+                            <div>
+                              <label className="block text-xs font-semibold text-zinc-700 mb-1.5" htmlFor="password-reset-otp">
+                                Enter OTP
+                              </label>
                               <input
-                                type="tel"
+                                id="password-reset-otp"
+                                type="text"
                                 inputMode="numeric"
-                                maxLength={10}
+                                autoComplete="one-time-code"
+                                maxLength={passwordResetOtpLength}
                                 required
-                                value={passwordResetMobile}
+                                value={passwordResetOtp}
                                 onChange={(e) => {
-                                  setPasswordResetMobile(sanitizeMobile(e.target.value).slice(0, 10));
+                                  setPasswordResetOtp(normalizeOtpInput(e.target.value, passwordResetOtpLength));
                                   if (error) setError('');
                                 }}
-                                className="h-11 block w-full pl-9 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-r-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                                placeholder="Enter 10-digit mobile number"
-                                autoComplete="tel-national"
+                                className="h-11 block w-full px-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 tracking-[0.35em] text-center text-base font-bold focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                                placeholder={'•'.repeat(passwordResetOtpLength)}
                               />
+                              <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-medium text-zinc-500">
+                                <span>OTP sent to {passwordResetMaskedMobile || 'your mobile number'}</span>
+                                <span className={passwordResetOtpSecondsRemaining <= 30 ? 'text-red-600' : 'text-zinc-500'}>
+                                  {passwordResetOtpSecondsRemaining > 0
+                                    ? `Expires in ${Math.floor(passwordResetOtpSecondsRemaining / 60)}:${String(passwordResetOtpSecondsRemaining % 60).padStart(2, '0')}`
+                                    : 'OTP expired'}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-3 text-[11px] font-semibold">
+                                <button
+                                  type="button"
+                                  onClick={handleResendPasswordResetOtp}
+                                  disabled={passwordResetResendSecondsRemaining > 0 || passwordResetAction === 'resend'}
+                                  className="text-amber-700 hover:text-amber-900 disabled:text-zinc-400 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {passwordResetAction === 'resend'
+                                    ? 'Sending…'
+                                    : passwordResetResendSecondsRemaining > 0
+                                      ? `Resend OTP in ${passwordResetResendSecondsRemaining}s`
+                                      : 'Resend OTP'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPasswordResetStep('mobile');
+                                    setPasswordResetChallengeId('');
+                                    setPasswordResetOtp('');
+                                    setPasswordResetOtpExpiresAt(0);
+                                    setPasswordResetResendAvailableAt(0);
+                                    setError('');
+                                    setSuccessMessage('');
+                                  }}
+                                  className="text-zinc-500 hover:text-zinc-800 transition-colors"
+                                >
+                                  Change mobile
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                        <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-center text-[11px] font-medium text-blue-700">
-                          If this mobile number is registered, an OTP will be sent by SMS.
-                        </p>
+                          ) : (
+                            <>
+                              <p className="text-center text-[11px] font-medium text-zinc-500">
+                                Set a new password for your account.
+                              </p>
+                              <div>
+                                <label className="block text-xs font-semibold text-zinc-700 mb-1.5" htmlFor="password-reset-new">
+                                  New Password
+                                </label>
+                                <div className="relative">
+                                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
+                                    <Lock className="h-4 w-4" />
+                                  </div>
+                                  <input
+                                    id="password-reset-new"
+                                    type={showPasswordResetPassword ? 'text' : 'password'}
+                                    required
+                                    value={passwordResetNewPassword}
+                                    onChange={(e) => {
+                                      setPasswordResetNewPassword(e.target.value);
+                                      if (error) setError('');
+                                    }}
+                                    className="h-11 block w-full pl-10 pr-10 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                                    placeholder="Minimum 8 characters"
+                                    autoComplete="new-password"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowPasswordResetPassword(!showPasswordResetPassword)}
+                                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-400 hover:text-zinc-700 focus:outline-none"
+                                    aria-label={showPasswordResetPassword ? 'Hide new password' : 'Show new password'}
+                                  >
+                                    {showPasswordResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                  </button>
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-zinc-700 mb-1.5" htmlFor="password-reset-confirm">
+                                  Confirm New Password
+                                </label>
+                                <div className="relative">
+                                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
+                                    <Lock className="h-4 w-4" />
+                                  </div>
+                                  <input
+                                    id="password-reset-confirm"
+                                    type={showPasswordResetConfirmPassword ? 'text' : 'password'}
+                                    required
+                                    value={passwordResetConfirmPassword}
+                                    onChange={(e) => {
+                                      setPasswordResetConfirmPassword(e.target.value);
+                                      if (error) setError('');
+                                    }}
+                                    className="h-11 block w-full pl-10 pr-10 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                                    placeholder="Re-enter new password"
+                                    autoComplete="new-password"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowPasswordResetConfirmPassword(!showPasswordResetConfirmPassword)}
+                                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-400 hover:text-zinc-700 focus:outline-none"
+                                    aria-label={showPasswordResetConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
+                                  >
+                                    {showPasswordResetConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          <button
+                            type="submit"
+                            disabled={passwordResetAction !== null}
+                            className="h-11 w-full font-bold px-4 rounded-xl mt-2 bg-gradient-to-r from-amber-400 via-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 active:scale-[0.99] text-zinc-950 text-sm transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer tracking-wide"
+                          >
+                            {passwordResetAction ? (
+                              <div className="w-4 h-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <>
+                                <span>
+                                  {passwordResetStep === 'mobile'
+                                    ? 'Send OTP'
+                                    : passwordResetStep === 'otp'
+                                      ? 'Verify OTP'
+                                      : 'Update Password'}
+                                </span>
+                                <ArrowRight className="h-4 w-4" />
+                              </>
+                            )}
+                          </button>
+                        </form>
+                        <button
+                          type="button"
+                          onClick={closePasswordReset}
+                          className="mt-3 w-full text-[11px] font-semibold text-zinc-500 hover:text-zinc-800 transition-colors"
+                        >
+                          Back to Sign In
+                        </button>
                       </>
-                    ) : passwordResetStep === 'otp' ? (
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1.5" htmlFor="password-reset-otp">
-                          Enter OTP
-                        </label>
-                        <input
-                          id="password-reset-otp"
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          maxLength={passwordResetOtpLength}
-                          required
-                          value={passwordResetOtp}
-                          onChange={(e) => {
-                            setPasswordResetOtp(normalizeOtpInput(e.target.value, passwordResetOtpLength));
-                            if (error) setError('');
-                          }}
-                          className="h-11 block w-full px-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 tracking-[0.35em] text-center text-base font-bold focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                          placeholder={'•'.repeat(passwordResetOtpLength)}
-                        />
-                        <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-medium text-zinc-500">
-                          <span>OTP sent to {passwordResetMaskedMobile || 'your mobile number'}</span>
-                          <span className={passwordResetOtpSecondsRemaining <= 30 ? 'text-red-600' : 'text-zinc-500'}>
-                            {passwordResetOtpSecondsRemaining > 0
-                              ? `Expires in ${Math.floor(passwordResetOtpSecondsRemaining / 60)}:${String(passwordResetOtpSecondsRemaining % 60).padStart(2, '0')}`
-                              : 'OTP expired'}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] font-semibold">
-                          <button
-                            type="button"
-                            onClick={handleResendPasswordResetOtp}
-                            disabled={passwordResetResendSecondsRemaining > 0 || passwordResetAction === 'resend'}
-                            className="text-amber-700 hover:text-amber-900 disabled:text-zinc-400 disabled:cursor-not-allowed transition-colors"
-                          >
-                            {passwordResetAction === 'resend'
-                              ? 'Sending…'
-                              : passwordResetResendSecondsRemaining > 0
-                                ? `Resend OTP in ${passwordResetResendSecondsRemaining}s`
-                                : 'Resend OTP'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPasswordResetStep('mobile');
-                              setPasswordResetChallengeId('');
-                              setPasswordResetOtp('');
-                              setPasswordResetOtpExpiresAt(0);
-                              setPasswordResetResendAvailableAt(0);
-                              setError('');
-                              setSuccessMessage('');
-                            }}
-                            className="text-zinc-500 hover:text-zinc-800 transition-colors"
-                          >
-                            Change mobile
-                          </button>
-                        </div>
-                      </div>
                     ) : (
                       <>
-                        <p className="text-center text-[11px] font-medium text-zinc-500">
-                          Set a new password for your account.
-                        </p>
-                        <div>
-                          <label className="block text-xs font-semibold text-zinc-700 mb-1.5" htmlFor="password-reset-new">
-                            New Password
-                          </label>
-                          <div className="relative">
-                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
-                              <Lock className="h-4 w-4" />
+                        {activeLoginMethod === 'mobileOtp' ? (
+                          <form
+                            onSubmit={mobileChallengeId ? handleVerifyMobileOtp : handleSendMobileOtp}
+                            className="space-y-3.5"
+                            autoComplete="on"
+                          >
+                            <div>
+                              <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                                Mobile Number
+                              </label>
+                              <div className="relative flex">
+                                <span className="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-zinc-200 bg-zinc-100 text-zinc-600 text-xs font-bold select-none h-11">
+                                  +91
+                                </span>
+                                <div className="relative flex-1">
+                                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+                                    <Phone className="h-4 w-4" />
+                                  </div>
+                                  <input
+                                    type="tel"
+                                    inputMode="numeric"
+                                    maxLength={10}
+                                    required
+                                    value={loginMobile}
+                                    onChange={(e) => {
+                                      setLoginMobile(sanitizeMobile(e.target.value).slice(0, 10));
+                                      if (error) setError('');
+                                    }}
+                                    className="h-11 block w-full pl-9 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-r-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                                    placeholder="Enter 10-digit mobile number"
+                                    autoComplete="tel-national"
+                                  />
+                                </div>
+                              </div>
                             </div>
-                            <input
-                              id="password-reset-new"
-                              type={showPasswordResetPassword ? 'text' : 'password'}
-                              required
-                              value={passwordResetNewPassword}
-                              onChange={(e) => {
-                                setPasswordResetNewPassword(e.target.value);
-                                if (error) setError('');
-                              }}
-                              className="h-11 block w-full pl-10 pr-10 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                              placeholder="Minimum 8 characters"
-                              autoComplete="new-password"
-                            />
+
+                            {mobileChallengeId && (
+                              <div>
+                                <label className="block text-xs font-semibold text-zinc-700 mb-1.5" htmlFor="mobile-login-otp">
+                                  Enter OTP
+                                </label>
+                                <input
+                                  id="mobile-login-otp"
+                                  type="text"
+                                  inputMode="numeric"
+                                  autoComplete="one-time-code"
+                                  maxLength={mobileOtpLength}
+                                  required
+                                  value={mobileOtp}
+                                  onChange={(e) => {
+                                    setMobileOtp(normalizeOtpInput(e.target.value, mobileOtpLength));
+                                    if (error) setError('');
+                                  }}
+                                  className="h-11 block w-full px-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 tracking-[0.35em] text-center text-base font-bold focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                                  placeholder={'•'.repeat(mobileOtpLength)}
+                                />
+                                <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-medium text-zinc-500">
+                                  <span>OTP sent to {mobileMaskedMobile || 'your mobile number'}</span>
+                                  <span className={mobileOtpSecondsRemaining <= 30 ? 'text-red-600' : 'text-zinc-500'}>
+                                    {mobileOtpSecondsRemaining > 0
+                                      ? `Expires in ${Math.floor(mobileOtpSecondsRemaining / 60)}:${String(mobileOtpSecondsRemaining % 60).padStart(2, '0')}`
+                                      : 'OTP expired'}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            <button
+                              type="submit"
+                              disabled={otpAction === 'mobile-send' || otpAction === 'mobile-verify'}
+                              className="h-11 w-full font-bold px-4 rounded-xl mt-2 bg-gradient-to-r from-amber-400 via-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 active:scale-[0.99] text-zinc-950 text-sm transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer tracking-wide"
+                            >
+                              {otpAction === 'mobile-send' || otpAction === 'mobile-verify' ? (
+                                <div className="w-4 h-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <>
+                                  <span>{mobileChallengeId ? 'Verify OTP' : 'Send OTP'}</span>
+                                  <ArrowRight className="h-4 w-4" />
+                                </>
+                              )}
+                            </button>
+
+                            {mobileChallengeId && (
+                              <div className="flex items-center justify-between gap-3 text-[11px] font-semibold">
+                                <button
+                                  type="button"
+                                  onClick={handleResendMobileOtp}
+                                  disabled={mobileOtpResendSecondsRemaining > 0 || otpAction === 'mobile-resend'}
+                                  className="text-amber-700 hover:text-amber-900 disabled:text-zinc-400 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {otpAction === 'mobile-resend'
+                                    ? 'Sending…'
+                                    : mobileOtpResendSecondsRemaining > 0
+                                      ? `Resend OTP in ${mobileOtpResendSecondsRemaining}s`
+                                      : 'Resend OTP'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    clearMobileOtpChallenge();
+                                    setSuccessMessage('');
+                                  }}
+                                  className="text-zinc-500 hover:text-zinc-800 transition-colors"
+                                >
+                                  Change mobile
+                                </button>
+                              </div>
+                            )}
+                          </form>
+                        ) : activeLoginMethod === 'emailOtp' ? (
+                          <form
+                            onSubmit={emailChallengeId ? handleVerifyEmailOtp : handleSendEmailOtp}
+                            className="space-y-3.5"
+                            autoComplete="on"
+                          >
+                            <div>
+                              <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                                Email Address
+                              </label>
+                              <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
+                                  <Mail className="h-4 w-4" />
+                                </div>
+                                <input
+                                  type="email"
+                                  required
+                                  value={emailOtpEmail}
+                                  onChange={(e) => {
+                                    setEmailOtpEmail(e.target.value);
+                                    if (error) setError('');
+                                  }}
+                                  onBlur={(e) => setEmailOtpEmail(sanitizeEmail(e.target.value))}
+                                  className="h-11 block w-full pl-10 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                                  placeholder="Enter your email address"
+                                  autoComplete="email"
+                                />
+                              </div>
+                            </div>
+
+                            {emailChallengeId && (
+                              <div>
+                                <label className="block text-xs font-semibold text-zinc-700 mb-1.5" htmlFor="email-login-otp">
+                                  Enter OTP
+                                </label>
+                                <input
+                                  id="email-login-otp"
+                                  type="text"
+                                  inputMode="numeric"
+                                  autoComplete="one-time-code"
+                                  maxLength={emailOtpLength}
+                                  required
+                                  value={emailOtp}
+                                  onChange={(e) => {
+                                    setEmailOtp(normalizeOtpInput(e.target.value, emailOtpLength));
+                                    if (error) setError('');
+                                  }}
+                                  className="h-11 block w-full px-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 tracking-[0.35em] text-center text-base font-bold focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                                  placeholder={'•'.repeat(emailOtpLength)}
+                                />
+                                <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-medium text-zinc-500">
+                                  <span>OTP sent to {emailMaskedEmail || 'your email address'}</span>
+                                  <span className={emailOtpSecondsRemaining <= 30 ? 'text-red-600' : 'text-zinc-500'}>
+                                    {emailOtpSecondsRemaining > 0
+                                      ? `Expires in ${Math.floor(emailOtpSecondsRemaining / 60)}:${String(emailOtpSecondsRemaining % 60).padStart(2, '0')}`
+                                      : 'OTP expired'}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            <button
+                              type="submit"
+                              disabled={otpAction === 'email-send' || otpAction === 'email-verify'}
+                              className="h-11 w-full font-bold px-4 rounded-xl mt-2 bg-gradient-to-r from-amber-400 via-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 active:scale-[0.99] text-zinc-950 text-sm transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer tracking-wide"
+                            >
+                              {otpAction === 'email-send' || otpAction === 'email-verify' ? (
+                                <div className="w-4 h-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <>
+                                  <span>{emailChallengeId ? 'Verify OTP' : 'Send OTP'}</span>
+                                  <ArrowRight className="h-4 w-4" />
+                                </>
+                              )}
+                            </button>
+
+                            {emailChallengeId && (
+                              <div className="flex items-center justify-between gap-3 text-[11px] font-semibold">
+                                <button
+                                  type="button"
+                                  onClick={handleResendEmailOtp}
+                                  disabled={emailOtpResendSecondsRemaining > 0 || otpAction === 'email-resend'}
+                                  className="text-amber-700 hover:text-amber-900 disabled:text-zinc-400 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {otpAction === 'email-resend'
+                                    ? 'Sending…'
+                                    : emailOtpResendSecondsRemaining > 0
+                                      ? `Resend OTP in ${emailOtpResendSecondsRemaining}s`
+                                      : 'Resend OTP'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    clearEmailOtpChallenge();
+                                    setSuccessMessage('');
+                                  }}
+                                  className="text-zinc-500 hover:text-zinc-800 transition-colors"
+                                >
+                                  Change email
+                                </button>
+                              </div>
+                            )}
+                          </form>
+                        ) : (
+                          <form onSubmit={handleLoginSubmit} className="space-y-3.5" autoComplete="on">
+                            <div>
+                              <label htmlFor={emailInputId} className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                                {t('authPortal.emailAddress')}
+                              </label>
+                              <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
+                                  <Mail className="h-4 w-4" />
+                                </div>
+                                <input
+                                  id={emailInputId}
+                                  type="email"
+                                  name="email"
+                                  required
+                                  value={loginData.email}
+                                  onChange={(e) => {
+                                    setLoginData({ ...loginData, email: e.target.value });
+                                    if (error) setError('');
+                                  }}
+                                  onBlur={(e) => {
+                                    setLoginData({ ...loginData, email: sanitizeEmail(e.target.value) });
+                                  }}
+                                  className="h-11 block w-full pl-10 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                                  placeholder="Enter your email address"
+                                  autoComplete="username"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex justify-between items-center mb-1.5">
+                                <label htmlFor={passwordInputId} className="block text-xs font-semibold text-zinc-700">
+                                  {t('authPortal.password')}
+                                </label>
+                                {loginCapsLock && (
+                                  <span className="text-[10px] font-semibold text-amber-700">
+                                    Caps Lock is ON
+                                  </span>
+                                )}
+                              </div>
+                              <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
+                                  <Lock className="h-4 w-4" />
+                                </div>
+                                <input
+                                  id={passwordInputId}
+                                  type={showLoginPassword ? 'text' : 'password'}
+                                  name="password"
+                                  required
+                                  value={loginData.password}
+                                  onChange={(e) => {
+                                    setLoginData({ ...loginData, password: e.target.value });
+                                    if (error) setError('');
+                                  }}
+                                  onKeyUp={(e) => {
+                                    if (typeof e.getModifierState === 'function') {
+                                      setLoginCapsLock(e.getModifierState('CapsLock'));
+                                    }
+                                  }}
+                                  className="h-11 block w-full pl-10 pr-10 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
+                                  placeholder="Enter your password"
+                                  autoComplete="current-password"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowLoginPassword(!showLoginPassword)}
+                                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-400 hover:text-zinc-700 focus:outline-none"
+                                  aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
+                                >
+                                  {showLoginPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </button>
+                              </div>
+                            </div>
+
                             <button
                               type="button"
-                              onClick={() => setShowPasswordResetPassword(!showPasswordResetPassword)}
-                              className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-400 hover:text-zinc-700 focus:outline-none"
-                              aria-label={showPasswordResetPassword ? 'Hide new password' : 'Show new password'}
+                              onClick={openPasswordReset}
+                              className="text-left text-[11px] font-semibold text-amber-700 hover:text-amber-900 transition-colors"
                             >
-                              {showPasswordResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              Forgot password?
                             </button>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-zinc-700 mb-1.5" htmlFor="password-reset-confirm">
-                            Confirm New Password
-                          </label>
-                          <div className="relative">
-                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
-                              <Lock className="h-4 w-4" />
-                            </div>
-                            <input
-                              id="password-reset-confirm"
-                              type={showPasswordResetConfirmPassword ? 'text' : 'password'}
-                              required
-                              value={passwordResetConfirmPassword}
-                              onChange={(e) => {
-                                setPasswordResetConfirmPassword(e.target.value);
-                                if (error) setError('');
-                              }}
-                              className="h-11 block w-full pl-10 pr-10 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                              placeholder="Re-enter new password"
-                              autoComplete="new-password"
-                            />
+
                             <button
-                              type="button"
-                              onClick={() => setShowPasswordResetConfirmPassword(!showPasswordResetConfirmPassword)}
-                              className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-400 hover:text-zinc-700 focus:outline-none"
-                              aria-label={showPasswordResetConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
+                              type="submit"
+                              disabled={loading}
+                              className="h-11 w-full font-bold px-4 rounded-xl mt-2 bg-gradient-to-r from-amber-400 via-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 active:scale-[0.99] text-zinc-950 text-sm transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer tracking-wide"
                             >
-                              {showPasswordResetConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              {loading ? (
+                                <div className="w-4 h-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <>
+                                  <span>Sign In</span>
+                                  <ArrowRight className="h-4 w-4" />
+                                </>
+                              )}
                             </button>
+                          </form>
+                        )}
+
+                        {(mobileOtpEnabled || emailOtpEnabled) && (
+                          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] font-semibold">
+                            {mobileOtpEnabled && (
+                              <button
+                                type="button"
+                                onClick={() => switchLoginMethod(activeLoginMethod === 'mobileOtp' ? 'password' : 'mobileOtp')}
+                                className="text-amber-700 hover:text-amber-900 transition-colors"
+                              >
+                                {activeLoginMethod === 'mobileOtp' ? 'Use password instead' : 'Login with Mobile OTP'}
+                              </button>
+                            )}
+                            {emailOtpEnabled && (
+                              <button
+                                type="button"
+                                onClick={() => switchLoginMethod(activeLoginMethod === 'emailOtp' ? 'password' : 'emailOtp')}
+                                className="text-amber-700 hover:text-amber-900 transition-colors"
+                              >
+                                {activeLoginMethod === 'emailOtp' ? 'Use password instead' : 'Login with Email OTP'}
+                              </button>
+                            )}
                           </div>
-                        </div>
+                        )}
                       </>
                     )}
-
-                    <button
-                      type="submit"
-                      disabled={passwordResetAction !== null}
-                      className="h-11 w-full font-bold px-4 rounded-xl mt-2 bg-gradient-to-r from-amber-400 via-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 active:scale-[0.99] text-zinc-950 text-sm transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer tracking-wide"
-                    >
-                      {passwordResetAction ? (
-                        <div className="w-4 h-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <span>
-                            {passwordResetStep === 'mobile'
-                              ? 'Send OTP'
-                              : passwordResetStep === 'otp'
-                                ? 'Verify OTP'
-                                : 'Update Password'}
-                          </span>
-                          <ArrowRight className="h-4 w-4" />
-                        </>
-                      )}
-                    </button>
-                  </form>
-                  <button
-                    type="button"
-                    onClick={closePasswordReset}
-                    className="mt-3 w-full text-[11px] font-semibold text-zinc-500 hover:text-zinc-800 transition-colors"
-                  >
-                    Back to Sign In
-                  </button>
-                  </>
-                  ) : (
-                    <>
-                  {activeLoginMethod === 'mobileOtp' ? (
-                  <form
-                    onSubmit={mobileChallengeId ? handleVerifyMobileOtp : handleSendMobileOtp}
-                    className="space-y-3.5"
-                    autoComplete="on"
-                  >
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                        Mobile Number
-                      </label>
-                      <div className="relative flex">
-                        <span className="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-zinc-200 bg-zinc-100 text-zinc-600 text-xs font-bold select-none h-11">
-                          +91
-                        </span>
-                        <div className="relative flex-1">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
-                            <Phone className="h-4 w-4" />
-                          </div>
-                          <input
-                            type="tel"
-                            inputMode="numeric"
-                            maxLength={10}
-                            required
-                            value={loginMobile}
-                            onChange={(e) => {
-                              setLoginMobile(sanitizeMobile(e.target.value).slice(0, 10));
-                              if (error) setError('');
-                            }}
-                            className="h-11 block w-full pl-9 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-r-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                            placeholder="Enter 10-digit mobile number"
-                            autoComplete="tel-national"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {mobileChallengeId && (
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1.5" htmlFor="mobile-login-otp">
-                          Enter OTP
-                        </label>
-                        <input
-                          id="mobile-login-otp"
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          maxLength={mobileOtpLength}
-                          required
-                          value={mobileOtp}
-                          onChange={(e) => {
-                            setMobileOtp(normalizeOtpInput(e.target.value, mobileOtpLength));
-                            if (error) setError('');
-                          }}
-                          className="h-11 block w-full px-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 tracking-[0.35em] text-center text-base font-bold focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                          placeholder={'•'.repeat(mobileOtpLength)}
-                        />
-                        <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-medium text-zinc-500">
-                          <span>OTP sent to {mobileMaskedMobile || 'your mobile number'}</span>
-                          <span className={mobileOtpSecondsRemaining <= 30 ? 'text-red-600' : 'text-zinc-500'}>
-                            {mobileOtpSecondsRemaining > 0
-                              ? `Expires in ${Math.floor(mobileOtpSecondsRemaining / 60)}:${String(mobileOtpSecondsRemaining % 60).padStart(2, '0')}`
-                              : 'OTP expired'}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={otpAction === 'mobile-send' || otpAction === 'mobile-verify'}
-                      className="h-11 w-full font-bold px-4 rounded-xl mt-2 bg-gradient-to-r from-amber-400 via-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 active:scale-[0.99] text-zinc-950 text-sm transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer tracking-wide"
-                    >
-                      {otpAction === 'mobile-send' || otpAction === 'mobile-verify' ? (
-                        <div className="w-4 h-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <span>{mobileChallengeId ? 'Verify OTP' : 'Send OTP'}</span>
-                          <ArrowRight className="h-4 w-4" />
-                        </>
-                      )}
-                    </button>
-
-                    {mobileChallengeId && (
-                      <div className="flex items-center justify-between gap-3 text-[11px] font-semibold">
-                        <button
-                          type="button"
-                          onClick={handleResendMobileOtp}
-                          disabled={mobileOtpResendSecondsRemaining > 0 || otpAction === 'mobile-resend'}
-                          className="text-amber-700 hover:text-amber-900 disabled:text-zinc-400 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {otpAction === 'mobile-resend'
-                            ? 'Sending…'
-                            : mobileOtpResendSecondsRemaining > 0
-                              ? `Resend OTP in ${mobileOtpResendSecondsRemaining}s`
-                              : 'Resend OTP'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            clearMobileOtpChallenge();
-                            setSuccessMessage('');
-                          }}
-                          className="text-zinc-500 hover:text-zinc-800 transition-colors"
-                        >
-                          Change mobile
-                        </button>
-                      </div>
-                    )}
-                  </form>
-                  ) : activeLoginMethod === 'emailOtp' ? (
-                  <form
-                    onSubmit={emailChallengeId ? handleVerifyEmailOtp : handleSendEmailOtp}
-                    className="space-y-3.5"
-                    autoComplete="on"
-                  >
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                        Email Address
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
-                          <Mail className="h-4 w-4" />
-                        </div>
-                        <input
-                          type="email"
-                          required
-                          value={emailOtpEmail}
-                          onChange={(e) => {
-                            setEmailOtpEmail(e.target.value);
-                            if (error) setError('');
-                          }}
-                          onBlur={(e) => setEmailOtpEmail(sanitizeEmail(e.target.value))}
-                          className="h-11 block w-full pl-10 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                          placeholder="Enter your email address"
-                          autoComplete="email"
-                        />
-                      </div>
-                    </div>
-
-                    {emailChallengeId && (
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1.5" htmlFor="email-login-otp">
-                          Enter OTP
-                        </label>
-                        <input
-                          id="email-login-otp"
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          maxLength={emailOtpLength}
-                          required
-                          value={emailOtp}
-                          onChange={(e) => {
-                            setEmailOtp(normalizeOtpInput(e.target.value, emailOtpLength));
-                            if (error) setError('');
-                          }}
-                          className="h-11 block w-full px-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 tracking-[0.35em] text-center text-base font-bold focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                          placeholder={'•'.repeat(emailOtpLength)}
-                        />
-                        <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-medium text-zinc-500">
-                          <span>OTP sent to {emailMaskedEmail || 'your email address'}</span>
-                          <span className={emailOtpSecondsRemaining <= 30 ? 'text-red-600' : 'text-zinc-500'}>
-                            {emailOtpSecondsRemaining > 0
-                              ? `Expires in ${Math.floor(emailOtpSecondsRemaining / 60)}:${String(emailOtpSecondsRemaining % 60).padStart(2, '0')}`
-                              : 'OTP expired'}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={otpAction === 'email-send' || otpAction === 'email-verify'}
-                      className="h-11 w-full font-bold px-4 rounded-xl mt-2 bg-gradient-to-r from-amber-400 via-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 active:scale-[0.99] text-zinc-950 text-sm transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer tracking-wide"
-                    >
-                      {otpAction === 'email-send' || otpAction === 'email-verify' ? (
-                        <div className="w-4 h-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <span>{emailChallengeId ? 'Verify OTP' : 'Send OTP'}</span>
-                          <ArrowRight className="h-4 w-4" />
-                        </>
-                      )}
-                    </button>
-
-                    {emailChallengeId && (
-                      <div className="flex items-center justify-between gap-3 text-[11px] font-semibold">
-                        <button
-                          type="button"
-                          onClick={handleResendEmailOtp}
-                          disabled={emailOtpResendSecondsRemaining > 0 || otpAction === 'email-resend'}
-                          className="text-amber-700 hover:text-amber-900 disabled:text-zinc-400 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {otpAction === 'email-resend'
-                            ? 'Sending…'
-                            : emailOtpResendSecondsRemaining > 0
-                              ? `Resend OTP in ${emailOtpResendSecondsRemaining}s`
-                              : 'Resend OTP'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            clearEmailOtpChallenge();
-                            setSuccessMessage('');
-                          }}
-                          className="text-zinc-500 hover:text-zinc-800 transition-colors"
-                        >
-                          Change email
-                        </button>
-                      </div>
-                    )}
-                  </form>
-                  ) : (
-                  <form onSubmit={handleLoginSubmit} className="space-y-3.5" autoComplete="on">
-                    <div>
-                      <label htmlFor={emailInputId} className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                        {t('authPortal.emailAddress')}
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
-                          <Mail className="h-4 w-4" />
-                        </div>
-                        <input
-                          id={emailInputId}
-                          type="email"
-                          name="email"
-                          required
-                          value={loginData.email}
-                          onChange={(e) => {
-                            setLoginData({ ...loginData, email: e.target.value });
-                            if (error) setError('');
-                          }}
-                          onBlur={(e) => {
-                            setLoginData({ ...loginData, email: sanitizeEmail(e.target.value) });
-                          }}
-                          className="h-11 block w-full pl-10 pr-3.5 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                          placeholder="Enter your email address"
-                          autoComplete="username"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <label htmlFor={passwordInputId} className="block text-xs font-semibold text-zinc-700">
-                          {t('authPortal.password')}
-                        </label>
-                        {loginCapsLock && (
-                          <span className="text-[10px] font-semibold text-amber-700">
-                            Caps Lock is ON
-                          </span>
-                        )}
-                      </div>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
-                          <Lock className="h-4 w-4" />
-                        </div>
-                        <input
-                          id={passwordInputId}
-                          type={showLoginPassword ? 'text' : 'password'}
-                          name="password"
-                          required
-                          value={loginData.password}
-                          onChange={(e) => {
-                            setLoginData({ ...loginData, password: e.target.value });
-                            if (error) setError('');
-                          }}
-                          onKeyUp={(e) => {
-                            if (typeof e.getModifierState === 'function') {
-                              setLoginCapsLock(e.getModifierState('CapsLock'));
-                            }
-                          }}
-                          className="h-11 block w-full pl-10 pr-10 bg-zinc-50/70 hover:bg-zinc-50 focus:bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl text-zinc-900 placeholder:text-zinc-400 text-sm focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all"
-                          placeholder="Enter your password"
-                          autoComplete="current-password"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowLoginPassword(!showLoginPassword)}
-                          className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-zinc-400 hover:text-zinc-700 focus:outline-none"
-                          aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
-                        >
-                          {showLoginPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={openPasswordReset}
-                      className="text-left text-[11px] font-semibold text-amber-700 hover:text-amber-900 transition-colors"
-                    >
-                      Forgot password?
-                    </button>
-
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="h-11 w-full font-bold px-4 rounded-xl mt-2 bg-gradient-to-r from-amber-400 via-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 active:scale-[0.99] text-zinc-950 text-sm transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer tracking-wide"
-                    >
-                      {loading ? (
-                        <div className="w-4 h-4 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <span>Sign In</span>
-                          <ArrowRight className="h-4 w-4" />
-                        </>
-                      )}
-                    </button>
-                  </form>
-                  )}
-
-                  {(mobileOtpEnabled || emailOtpEnabled) && (
-                    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] font-semibold">
-                      {mobileOtpEnabled && (
-                        <button
-                          type="button"
-                          onClick={() => switchLoginMethod(activeLoginMethod === 'mobileOtp' ? 'password' : 'mobileOtp')}
-                          className="text-amber-700 hover:text-amber-900 transition-colors"
-                        >
-                          {activeLoginMethod === 'mobileOtp' ? 'Use password instead' : 'Login with Mobile OTP'}
-                        </button>
-                      )}
-                      {emailOtpEnabled && (
-                        <button
-                          type="button"
-                          onClick={() => switchLoginMethod(activeLoginMethod === 'emailOtp' ? 'password' : 'emailOtp')}
-                          className="text-amber-700 hover:text-amber-900 transition-colors"
-                        >
-                          {activeLoginMethod === 'emailOtp' ? 'Use password instead' : 'Login with Email OTP'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  </>
-                  )}
                   </>
                 ) : (
                   /* PARTNER REGISTER FORM */
