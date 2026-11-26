@@ -2,7 +2,9 @@
   // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
     // File Layout
-    // "rootDir": "./src",
+    // Must stay "." : the build output is dist/src/server.js (used by "start" and the Dockerfile). TypeScript 7 needs
+    // it written down, because the Docker build copies only src/, which would otherwise move the common source folder.
+    "rootDir": ".",
     "outDir": "./dist",
 
     // Environment Settings
