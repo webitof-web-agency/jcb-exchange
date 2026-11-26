@@ -1002,18 +1002,18 @@ function LoginPageInner() {
                     type="button"
                     onClick={() => handleTabSwitch('login')}
                     className={`h-8 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 ${activeTab === 'login'
-                        ? 'bg-white text-zinc-900 font-bold shadow-sm'
-                        : 'text-zinc-500 hover:text-zinc-900 font-medium'
+                      ? 'bg-white text-zinc-900 font-bold shadow-sm'
+                      : 'text-zinc-500 hover:text-zinc-900 font-medium'
                       }`}
                   >
-                    <span>Signnn In</span>
+                    <span>Sign In</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleTabSwitch('register')}
                     className={`h-8 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 ${activeTab === 'register'
-                        ? 'bg-white text-zinc-900 font-bold shadow-sm'
-                        : 'text-zinc-500 hover:text-zinc-900 font-medium'
+                      ? 'bg-white text-zinc-900 font-bold shadow-sm'
+                      : 'text-zinc-500 hover:text-zinc-900 font-medium'
                       }`}
                   >
                     <span>Partner Register</span>
