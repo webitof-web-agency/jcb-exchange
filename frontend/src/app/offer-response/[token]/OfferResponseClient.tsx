@@ -19,6 +19,9 @@ import {
 import api, { API_BASE_URL } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/apiError.mjs';
 import SignaturePad from '@/components/offer/SignaturePad';
+import LetterPages, { SignatureCloseUp, type SignatureOverlay } from '@/components/offer/LetterPages';
+import { useLetterPages, type LetterView } from '@/components/offer/useLetterPages';
+import { renderTypedSignature, SIGNATURE_FONT } from '@/components/offer/typedSignature';
 import {
   ACCEPTANCE_METHOD_LABELS,
   EMPLOYMENT_TYPE_LABELS,
@@ -70,12 +73,10 @@ type PublicOffer = {
   };
   offerLetterFileName: string | null;
   offerLetterAvailable: boolean;
-  acceptance: null | { method: string | null; name: string | null; place: string | null; acceptedAt: string | null; certificateAvailable: boolean };
+  acceptance: null | { method: string | null; name: string | null; place: string | null; acceptedAt: string | null; certificateAvailable: boolean; signedLetterType?: string | null };
 };
 
 type LoadState = { kind: 'loading' } | { kind: 'missing' } | { kind: 'error'; message: string } | { kind: 'ready'; offer: PublicOffer };
-
-const SIGNATURE_FONT = "'Segoe Script', 'Brush Script MT', 'Lucida Handwriting', 'Apple Chancery', cursive";
 
 const STATUS_BADGES: Record<OfferStatus, { label: string; className: string }> = {
   DRAFT: { label: 'Draft', className: 'bg-gray-100 text-gray-700' },
@@ -180,15 +181,41 @@ export default function OfferResponseClient({ token }: { token: string }) {
     );
   }
 
-  const { offer } = state;
+  return <OfferView offer={state.offer} baseUrl={baseUrl} token={encodedToken} onDone={() => void load(true)} />;
+}
+
+/** What the candidate is typing or drawing, kept here so the letter above shows it as they sign. */
+function useSigning() {
+  const [mode, setMode] = useState<'accept' | 'decline'>('accept');
+  const [method, setMethod] = useState<SignMethod>('TYPED');
+  const [fullName, setFullName] = useState('');
+  const [place, setPlace] = useState('');
+  const [drawn, setDrawn] = useState<string | null>(null);
+  const typed = useMemo(() => renderTypedSignature(fullName), [fullName]);
+  return { mode, setMode, method, setMethod, fullName, setFullName, place, setPlace, drawn, setDrawn, typed };
+}
+type Signing = ReturnType<typeof useSigning>;
+
+const todayOnLetter = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
+
+function OfferView({ offer, baseUrl, token, onDone }: { offer: PublicOffer; baseUrl: string; token: string; onDone: () => void }) {
+  const signedPdf = offer.status === 'ACCEPTED' && offer.acceptance?.signedLetterType === 'application/pdf';
+  const letterPath = signedPdf
+    ? `/recruitment/public/offers/${token}/signed-letter`
+    : offer.offerLetterAvailable ? `/recruitment/public/offers/${token}/pdf` : null;
+  const letter = useLetterPages(letterPath);
+  const signing = useSigning();
+  const overlay: SignatureOverlay | null = offer.status === 'SENT' && signing.mode === 'accept' && signing.method !== 'UPLOADED_SCAN'
+    ? { image: signing.method === 'TYPED' ? signing.typed : signing.drawn, date: todayOnLetter(), place: signing.place.trim() }
+    : null;
   return (
     <Shell>
       <OfferHeader offer={offer} />
       <StatusPanel offer={offer} baseUrl={baseUrl} />
       <OfferDetails offer={offer} />
-      <LetterPanel offer={offer} baseUrl={baseUrl} />
+      <LetterPanel offer={offer} baseUrl={baseUrl} letter={letter} overlay={overlay} signed={signedPdf} />
+      {offer.status === 'SENT' ? <RespondPanel offer={offer} token={token} onDone={onDone} signing={signing} letter={letter} overlay={overlay} /> : null}
       <ApplicationDetails offer={offer} />
-      {offer.status === 'SENT' ? <RespondPanel offer={offer} token={encodedToken} onDone={() => void load(true)} /> : null}
     </Shell>
   );
 }
@@ -238,14 +265,18 @@ function StatusPanel({ offer, baseUrl }: { offer: PublicOffer; baseUrl: string }
               </dl>
             ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
-              {acceptance?.certificateAvailable ? (
-                <a href={`${baseUrl}/certificate`} rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">
-                  <Award className="h-4 w-4" aria-hidden="true" /> Download acceptance certificate
+              {acceptance?.signedLetterType ? (
+                <a href={`${baseUrl}/signed-letter?download=1`} rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">
+                  <Download className="h-4 w-4" aria-hidden="true" /> Download signed offer letter
+                </a>
+              ) : offer.offerLetterAvailable ? (
+                <a href={`${baseUrl}/pdf?download=1`} rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">
+                  <Download className="h-4 w-4" aria-hidden="true" /> Download offer letter
                 </a>
               ) : null}
-              {offer.offerLetterAvailable ? (
-                <a href={`${baseUrl}/pdf?download=1`} rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-50">
-                  <Download className="h-4 w-4" aria-hidden="true" /> Download offer letter
+              {acceptance?.certificateAvailable ? (
+                <a href={`${baseUrl}/certificate`} rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-50">
+                  <Award className="h-4 w-4" aria-hidden="true" /> Acceptance certificate
                 </a>
               ) : null}
             </div>
@@ -341,25 +372,39 @@ function OfferDetails({ offer }: { offer: PublicOffer }) {
   );
 }
 
-function LetterPanel({ offer, baseUrl }: { offer: PublicOffer; baseUrl: string }) {
-  if (!offer.offerLetterAvailable) return null;
+function LetterPanel({ offer, baseUrl, letter, overlay, signed }: { offer: PublicOffer; baseUrl: string; letter: LetterView; overlay: SignatureOverlay | null; signed: boolean }) {
+  if (!offer.offerLetterAvailable && !signed) return null;
+  const file = signed ? `${baseUrl}/signed-letter` : `${baseUrl}/pdf`;
   return (
     <section className={card} aria-labelledby="offer-letter">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="offer-letter" className="flex items-center gap-2 text-lg font-extrabold text-gray-900"><FileText className="h-5 w-5 text-amber-500" aria-hidden="true" /> Offer letter</h2>
+        <h2 id="offer-letter" className="flex items-center gap-2 text-lg font-extrabold text-gray-900"><FileText className="h-5 w-5 text-amber-500" aria-hidden="true" /> {signed ? 'Your signed offer letter' : 'Offer letter'}</h2>
         <div className="flex flex-wrap gap-2">
-          <a href={`${baseUrl}/pdf`} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3.5 py-2 text-sm font-bold text-gray-800 hover:bg-gray-50">
+          <a href={file} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3.5 py-2 text-sm font-bold text-gray-800 hover:bg-gray-50">
             <ExternalLink className="h-4 w-4" aria-hidden="true" /> Open
           </a>
-          <a href={`${baseUrl}/pdf?download=1`} rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3.5 py-2 text-sm font-bold text-white hover:bg-gray-800">
+          <a href={`${file}?download=1`} rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3.5 py-2 text-sm font-bold text-white hover:bg-gray-800">
             <Download className="h-4 w-4" aria-hidden="true" /> Download
           </a>
         </div>
       </div>
-      {/* Inline preview on larger screens; phones open or download the PDF instead. */}
-      <div className="mt-4 hidden overflow-hidden rounded-xl border border-gray-200 md:block">
-        <iframe src={`${baseUrl}/pdf`} title="Offer letter PDF" className="h-[720px] w-full" referrerPolicy="no-referrer" />
-      </div>
+      {offer.status === 'SENT' ? <p className="mt-2 text-sm text-gray-600">Read the letter, then sign below. Your signature appears on its “Signature” line.</p> : null}
+      {letter.status === 'ready' ? (
+        <div className="mt-4 max-h-[75vh] overflow-y-auto overscroll-contain rounded-xl bg-gray-100 p-2 sm:p-3">
+          <LetterPages pages={letter.pages} fields={letter.fields} overlay={overlay} />
+        </div>
+      ) : letter.status === 'loading' ? (
+        <div className="mt-4 flex h-48 items-center justify-center gap-2 rounded-xl bg-gray-50 text-sm font-semibold text-gray-500" role="status">
+          <Loader2 className="h-5 w-5 animate-spin text-[#FFC107]" aria-hidden="true" /> Loading your offer letter…
+        </div>
+      ) : (
+        <>
+          <p className="mt-3 text-sm text-gray-600">The preview could not be shown here. Use Open or Download to read the letter.</p>
+          <div className="mt-3 hidden overflow-hidden rounded-xl border border-gray-200 md:block">
+            <iframe src={file} title="Offer letter PDF" className="h-[720px] w-full" referrerPolicy="no-referrer" />
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -403,21 +448,15 @@ const METHOD_TABS: Array<{ value: SignMethod; label: string; icon: React.Compone
   { value: 'UPLOADED_SCAN', label: 'Upload signed copy', icon: Upload },
 ];
 
-function RespondPanel({ offer, token, onDone }: { offer: PublicOffer; token: string; onDone: () => void }) {
-  const [mode, setMode] = useState<'accept' | 'decline'>('accept');
-  const [method, setMethod] = useState<SignMethod>('TYPED');
-  const [fullName, setFullName] = useState(offer.candidateName);
-  const [place, setPlace] = useState('');
+function RespondPanel({ offer, token, onDone, signing, letter, overlay }: { offer: PublicOffer; token: string; onDone: () => void; signing: Signing; letter: LetterView; overlay: SignatureOverlay | null }) {
+  const { mode, setMode, method, setMethod, fullName, setFullName, place, setPlace, drawn: drawnSignature, setDrawn: setDrawnSignature, typed: typedSignature } = signing;
   const [consent, setConsent] = useState(false);
-  const [drawnSignature, setDrawnSignature] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [declineReason, setDeclineReason] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState('');
   const [sending, setSending] = useState(false);
   const errorRef = useRef<HTMLDivElement | null>(null);
-
-  const typedPreview = useMemo(() => fullName.trim() || offer.candidateName, [fullName, offer.candidateName]);
 
   const showServerError = (message: string) => {
     setServerError(message);
@@ -437,6 +476,8 @@ function RespondPanel({ offer, token, onDone }: { offer: PublicOffer; token: str
     payload.append('place', place.trim());
     payload.append('consent', 'true');
     if (method === 'DRAWN' && drawnSignature) payload.append('drawnSignature', drawnSignature);
+    // The typed signature exactly as shown, for the signed letter.
+    if (method === 'TYPED' && typedSignature) payload.append('typedSignature', typedSignature);
     if (method === 'UPLOADED_SCAN' && file) payload.append('signedCopy', file);
     setSending(true);
     try {
@@ -514,31 +555,39 @@ function RespondPanel({ offer, token, onDone }: { offer: PublicOffer; token: str
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="offer-full-name" className="mb-1.5 block text-sm font-bold text-gray-800">Full name <span className="text-red-500">*</span></label>
-              <input id="offer-full-name" value={fullName} onChange={(event) => setFullName(event.target.value)} className={input} autoComplete="name" aria-invalid={Boolean(errors.fullName)} aria-describedby="err-full-name" maxLength={160} />
+              <input id="offer-full-name" value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder={offer.candidateName} className={input} autoComplete="name" aria-invalid={Boolean(errors.fullName)} aria-describedby="err-full-name full-name-hint" maxLength={160} />
+              <p id="full-name-hint" className="mt-1.5 text-xs text-gray-500">As on the letter: {offer.candidateName}</p>
               <FieldError id="err-full-name" message={errors.fullName} />
             </div>
             <div>
               <label htmlFor="offer-place" className="mb-1.5 block text-sm font-bold text-gray-800">Place (city) <span className="text-red-500">*</span></label>
-              <input id="offer-place" value={place} onChange={(event) => setPlace(event.target.value)} className={input} autoComplete="address-level2" aria-invalid={Boolean(errors.place)} aria-describedby="err-place" maxLength={120} />
+              <input id="offer-place" value={place} onChange={(event) => setPlace(event.target.value)} placeholder="City you are signing in" className={input} autoComplete="address-level2" aria-invalid={Boolean(errors.place)} aria-describedby="err-place" maxLength={120} />
               <FieldError id="err-place" message={errors.place} />
             </div>
           </div>
-
-          {method === 'TYPED' ? (
-            <div>
-              <p className="mb-1.5 text-sm font-bold text-gray-800">Your signature</p>
-              <div className="flex h-28 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-white px-4">
-                <span className="truncate text-4xl text-gray-900" style={{ fontFamily: SIGNATURE_FONT }} aria-label={`Typed signature: ${typedPreview}`}>{typedPreview}</span>
-              </div>
-              <p className="mt-1.5 text-xs text-gray-500">Your full name above is used as your signature.</p>
-            </div>
-          ) : null}
 
           {method === 'DRAWN' ? (
             <div>
               <p id="draw-help" className="mb-1.5 text-sm font-bold text-gray-800">Draw your signature</p>
               <SignaturePad onChange={setDrawnSignature} disabled={sending} invalid={Boolean(errors.signature)} describedBy="draw-help err-signature" />
               <FieldError id="err-signature" message={errors.signature} />
+            </div>
+          ) : null}
+
+          {overlay ? (
+            <div>
+              <p className="mb-1.5 text-sm font-bold text-gray-800">On your offer letter</p>
+              {letter.status === 'ready' && letter.fields ? (
+                <SignatureCloseUp pages={letter.pages} fields={letter.fields} overlay={overlay} />
+              ) : (
+                <div className="flex h-28 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-white px-4">
+                  {overlay.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- a data URL drawn on this device
+                    <img src={overlay.image} alt="Your signature" className="max-h-24 max-w-full object-contain" />
+                  ) : <span className="text-2xl text-gray-300" style={{ fontFamily: SIGNATURE_FONT }}>{offer.candidateName}</span>}
+                </div>
+              )}
+              <p className="mt-1.5 text-xs text-gray-500">{method === 'TYPED' ? 'Your name is used as your signature as you type it.' : 'Your drawing is placed on the signature line.'}</p>
             </div>
           ) : null}
 
@@ -576,7 +625,7 @@ function RespondPanel({ offer, token, onDone }: { offer: PublicOffer; token: str
 
           <button type="submit" disabled={sending} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#FFC107] px-5 py-3.5 text-base font-extrabold text-gray-900 shadow-sm hover:bg-[#ffb300] disabled:opacity-60">
             {sending ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-5 w-5" aria-hidden="true" />}
-            {sending ? 'Recording your acceptance…' : 'Accept offer'}
+            {sending ? 'Recording your acceptance…' : 'Sign & accept offer'}
           </button>
           <p className="text-center text-xs text-gray-500">We record your name, signature, place, time, IP address and browser with your acceptance.</p>
         </form>

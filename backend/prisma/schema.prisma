@@ -3186,6 +3186,7 @@ model State {
   hrmRegionStates        HrmOperationalRegionState[]
   hrmAssignments         HrmEmploymentAssignment[]
   hrmAccessScopes        HrmAccessScope[]
+  jobs                   Job[]
 
   @@index([countryId])
 }
@@ -3337,6 +3338,10 @@ model Job {
   locationCity         String
   locationState        String
   locationAddress      String?
+  /// The HRM state this job is hired for and whether it is a head office or a state office posting. State-limited
+  /// recruiters only see jobs of their own states; a job without them is visible to all-India recruiters only.
+  hrmStateId           Int?
+  hrmLocationType      String?        @db.VarChar(20)
   minExperience        Float          @default(0)
   maxExperience        Float?
   minSalary            Decimal?       @db.Decimal(12, 2)
@@ -3368,6 +3373,7 @@ model Job {
   updatedAt            DateTime       @updatedAt
 
   department      JobDepartment       @relation(fields: [departmentId], references: [id])
+  hrmState        State?              @relation(fields: [hrmStateId], references: [id], onDelete: SetNull)
   createdBy       User?               @relation("JobCreator", fields: [createdById], references: [id])
   customQuestions JobCustomQuestion[]
   applications    JobApplication[]
@@ -3378,6 +3384,7 @@ model Job {
   @@index([departmentId])
   @@index([employmentType])
   @@index([workMode])
+  @@index([hrmStateId, hrmLocationType])
 }
 
 model JobCustomQuestion {
@@ -3650,6 +3657,8 @@ model Offer {
   locationType        String?     @db.VarChar(20)
   stateId             Int?
   cityId              Int?
+  /// The head office chosen for a head office posting (null: older offers, the default head office is used).
+  headOfficeUnitId    String?
   isOfficeManager     Boolean     @default(false)
   employmentType      EmploymentType?
   reportingManagerEmployeeId String?
@@ -3670,6 +3679,9 @@ model Offer {
   /// SHA-256 of the offer letter PDF that was accepted (proves which letter was signed).
   documentHash        String?     @db.VarChar(64)
   acceptanceCertificateUrl String?
+  /// The signed offer letter in private storage: the letter with the signature on it (typed or drawn on the offer
+  /// link), or the signed copy the candidate / HR uploaded.
+  signedLetterUrl     String?
   /// HR's note when the acceptance was recorded from a paper copy.
   acceptanceNote      String?     @db.Text
   acceptedById        String?
@@ -6173,6 +6185,7 @@ model HrmEmployee {
   incentives            HrmIncentive[]
   exitCases             HrmExitCase[]
   shiftAssignments      HrmShiftAssignment[]
+  additionalCharges     HrmAdditionalCharge[]
 
   @@index([status, updatedAt])
   @@index([mobile])
@@ -6192,6 +6205,8 @@ model HrmOrgUnit {
   cityId            Int?
   managerEmployeeId String?
   isActive          Boolean         @default(true)
+  /// The default head office: preselected in forms and used wherever no head office was chosen. At most one.
+  isDefault         Boolean         @default(false)
   createdById       String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -6204,6 +6219,7 @@ model HrmOrgUnit {
   assignments       HrmEmploymentAssignment[] @relation("HrmAssignmentDepartment")
   officeAssignments HrmEmploymentAssignment[] @relation("HrmAssignmentOffice")
   accessScopes      HrmAccessScope[]
+  additionalCharges HrmAdditionalCharge[]
 
   @@index([parentId, isActive])
   @@index([type, isActive])
@@ -6308,8 +6324,8 @@ model HrmAccessScope {
   includeChildren     Boolean        @default(true)
   activeFrom          DateTime       @db.Date
   activeTo            DateTime?      @db.Date
-  /// MANUAL (given by HR) or PLACEMENT (follows the person's office: a State Manager's own state; moved / ended
-  /// automatically on transfer, replacement or exit).
+  /// MANUAL (given by HR), PLACEMENT (follows the person's office: a State Manager's own state; moved / ended
+  /// automatically on transfer, replacement or exit) or CHARGE (lasts exactly as long as an additional charge).
   source              String         @default("MANUAL") @db.VarChar(20)
   createdById         String?
   createdAt           DateTime       @default(now())
@@ -6319,11 +6335,40 @@ model HrmAccessScope {
   orgUnit             HrmOrgUnit?            @relation(fields: [orgUnitId], references: [id], onDelete: Cascade)
   operationalRegion   HrmOperationalRegion?  @relation(fields: [operationalRegionId], references: [id], onDelete: Cascade)
   state               State?                 @relation(fields: [stateId], references: [id], onDelete: Restrict)
+  additionalCharge    HrmAdditionalCharge?
 
   @@index([userId, activeFrom, activeTo])
   @@index([scopeType, orgUnitId])
   @@index([scopeType, operationalRegionId])
   @@index([scopeType, stateId])
+}
+
+/// A state office looked after on top of the person's own posting (a manager handling more than one state). The
+/// posting does not change; the dates decide when the office counts as covered and when the state access is on.
+model HrmAdditionalCharge {
+  id            String   @id @default(uuid())
+  employeeId    String
+  officeUnitId  String
+  effectiveFrom DateTime @db.Date
+  /// The last day (inclusive); null = until it is ended.
+  effectiveTo   DateTime? @db.Date
+  /// ACTIVE, or CANCELLED (ended before it ever started). Upcoming / running / ended follow from the dates.
+  status        String   @default("ACTIVE") @db.VarChar(20)
+  /// HR ticked "give access to this state": the access is created (also when a login is linked later).
+  grantAccess   Boolean  @default(true)
+  accessScopeId String?  @unique
+  reason        String?  @db.Text
+  createdById   String?
+  endedById     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  employee    HrmEmployee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  officeUnit  HrmOrgUnit      @relation(fields: [officeUnitId], references: [id], onDelete: Restrict)
+  accessScope HrmAccessScope? @relation(fields: [accessScopeId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, status])
+  @@index([officeUnitId, status, effectiveFrom])
 }
 
 model HrmOnboardingCase {

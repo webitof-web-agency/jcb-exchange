@@ -5,9 +5,12 @@ import { getSecureDocumentUrl } from '../utils/secureDocumentUrl';
 import {
   METHOD_LABELS,
   buildAcceptanceCertificatePdf,
+  letterDay,
   sha256Hex,
+  signedLetterStatement,
   type AcceptanceMethod,
 } from '../utils/offerAcceptanceEvidence';
+import { buildSignedOfferLetter } from '../utils/signedOfferLetter';
 
 export { validateCandidateAcceptance } from '../utils/offerAcceptanceEvidence';
 
@@ -17,7 +20,8 @@ const MAX_OFFER_PDF_BYTES = 15 * 1024 * 1024;
  * Accepting an offer, with evidence. The candidate signs on the offer link (typed name, drawn signature, or a scan of
  * the signed paper letter), or HR records a paper copy signed at the office. Every acceptance stores: who (the full
  * name typed), how (method), where (place), when, from which IP / browser, the signature or scan (private storage),
- * the SHA-256 of that file and of the offer letter PDF that was accepted, and an acceptance certificate PDF.
+ * the SHA-256 of that file and of the offer letter PDF that was accepted, an acceptance certificate PDF, and the
+ * signed offer letter (a typed or drawn signature is placed on the letter's signature line; a scan is the letter).
  *
  * These are simple electronic records of acceptance (like an email "I accept"), not Aadhaar eSign or a digital
  * signature certificate; the certificate says so.
@@ -51,6 +55,8 @@ export type RecordAcceptanceInput = {
   userAgent: string | null;
   /** The drawn signature PNG, or the uploaded / offline scan. */
   file: { buffer: Buffer; mimeType: string; originalName: string } | null;
+  /** The signature placed on the letter: the drawn one, or the typed name as the offer page showed it (PNG). */
+  signatureImage?: Buffer | null;
   note?: string | null;
   acceptedById?: string | null;
   recordedByName?: string | null;
@@ -71,7 +77,8 @@ export const recordOfferAcceptance = async (input: RecordAcceptanceInput) => {
   const { offer } = input;
   const letterFileId = extractDriveFileId(offer.offerLetterUrl);
   if (!letterFileId) throw new Error('The offer letter PDF is unavailable, so the acceptance cannot be recorded.');
-  const documentHash = sha256Hex(await readDriveFile(letterFileId, MAX_OFFER_PDF_BYTES));
+  const letterBytes = await readDriveFile(letterFileId, MAX_OFFER_PDF_BYTES);
+  const documentHash = sha256Hex(letterBytes);
   const acceptedAt = input.acceptedAt ?? new Date();
   const uploaded: string[] = [];
   const safeName = offer.candidate.fullName.replace(/[^a-z0-9]+/gi, '_');
@@ -92,6 +99,32 @@ export const recordOfferAcceptance = async (input: RecordAcceptanceInput) => {
       if (input.method !== 'DRAWN') signedCopyDocument = { fileName, url: signatureFileUrl, size: input.file.buffer.length, mimeType: input.file.mimeType };
     }
 
+    // The signed letter: the uploaded / offline scan itself, or the letter with the typed / drawn signature on it.
+    let signedLetter = signedCopyDocument;
+    let signedLetterHash: string | null = null;
+    if (input.method === 'TYPED' || input.method === 'DRAWN') {
+      const stamped = await buildSignedOfferLetter(letterBytes, {
+        signature: input.signatureImage ?? (input.method === 'DRAWN' ? input.file?.buffer ?? null : null),
+        signerName: input.acceptedName,
+        signedOn: letterDay(acceptedAt),
+        place: input.place,
+        statement: signedLetterStatement({ signerName: input.acceptedName, acceptedAt, place: input.place, method: input.method, letterNo: letterText(offer, 'offerLetterNo') || offer.application.applicationRef }),
+        letterNo: letterText(offer, 'offerLetterNo') || offer.application.applicationRef,
+        companyName: letterText(offer, 'companyName') || 'JCB Exchange',
+      }).catch((error: unknown) => {
+        // The acceptance and its evidence never depend on drawing on the PDF: it is recorded without the signed copy.
+        console.error('[offer] the signed offer letter could not be prepared:', error instanceof Error ? error.message : error);
+        return null;
+      });
+      if (stamped) {
+        const fileName = `Offer_Letter_Signed_${offer.application.applicationRef}_${safeName}.pdf`;
+        const storedLetter = await uploadFileToDrive(stamped, 'application/pdf', fileName, undefined, { access: 'private' });
+        uploaded.push(storedLetter.fileId);
+        signedLetter = { fileName, url: getSecureDocumentUrl(storedLetter.fileId), size: stamped.length, mimeType: 'application/pdf' };
+        signedLetterHash = sha256Hex(stamped);
+      }
+    }
+
     const imageForCertificate = input.file && (input.file.mimeType === 'image/png' || input.file.mimeType === 'image/jpeg') ? input.file.buffer : null;
     const certificate = await buildAcceptanceCertificatePdf({
       dateOnly: input.method === 'OFFLINE_HR',
@@ -110,6 +143,7 @@ export const recordOfferAcceptance = async (input: RecordAcceptanceInput) => {
       userAgent: input.userAgent,
       documentHash,
       signatureHash,
+      signedLetterHash,
       signatureImage: imageForCertificate,
       recordedBy: input.recordedByName ?? null,
       note: input.note ?? null,
@@ -136,6 +170,7 @@ export const recordOfferAcceptance = async (input: RecordAcceptanceInput) => {
           signatureHash,
           documentHash,
           acceptanceCertificateUrl: certificateUrl,
+          signedLetterUrl: signedLetter?.url ?? null,
           acceptanceNote: input.note ?? null,
           acceptedById: input.acceptedById ?? null,
           hrmHandoffStatus: 'PENDING',
@@ -158,11 +193,11 @@ export const recordOfferAcceptance = async (input: RecordAcceptanceInput) => {
           notes: input.method === 'OFFLINE_HR' ? `Signed paper offer recorded by HR.${input.note ? ` ${input.note}` : ''}` : 'Candidate signed and accepted the offer.',
         },
       });
-      if (signedCopyDocument) {
+      if (signedLetter) {
         await transaction.candidateDocument.create({
           data: {
             candidateId: offer.candidateId, applicationId: offer.applicationId, category: 'OFFER_LETTER_SIGNED',
-            fileName: signedCopyDocument.fileName, fileUrl: signedCopyDocument.url, fileSize: signedCopyDocument.size, mimeType: signedCopyDocument.mimeType,
+            fileName: signedLetter.fileName, fileUrl: signedLetter.url, fileSize: signedLetter.size, mimeType: signedLetter.mimeType,
           },
         });
       }
@@ -184,6 +219,7 @@ export const recordOfferAcceptance = async (input: RecordAcceptanceInput) => {
             method: input.method,
             documentHash,
             ...(signatureHash ? { signatureHash } : {}),
+            ...(signedLetterHash ? { signedLetterHash } : {}),
             ...(input.tokenVersion !== null ? { responseTokenVersion: input.tokenVersion, source: 'PUBLIC_OFFER_LINK' } : { source: 'HR_OFFLINE' }),
             ...(input.ipAddress ? { ip: input.ipAddress } : {}),
             ...(input.userAgent ? { userAgent: input.userAgent.slice(0, 500) } : {}),

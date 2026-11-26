@@ -47,6 +47,7 @@ import {
   retryOfferHrmHandoff,
   downloadOfferAcceptanceFile,
   getPublicOfferCertificate,
+  getPublicOfferSignedLetter,
   getOfferFormOptions,
   getOfferManagerOptions,
   downloadAdminOfferPdf,
@@ -72,9 +73,22 @@ import {
   createAdminDepartment,
   updateAdminDepartment,
   deleteAdminDepartment,
+  getMyRecruitmentReach,
 } from '../controllers/recruitment.controller';
 import { requireAuth, requireAdmin, requireAdminOrEmployeePermissions, requireSuperAdminOrEmployeePermissions } from '../middlewares/auth.middleware';
 import { sanitizeRequestBody } from '../middlewares/sanitizeRequest.middleware';
+import {
+  refuseStateLimitedRecruitmentMail,
+  requireAllIndiaRecruitment,
+  requireApplicationInReach,
+  requireApplicationViewInReach,
+  requireCandidateInReach,
+  requireInterviewFeedbackAccess,
+  requireInterviewInReach,
+  requireJobInReach,
+  requireJobViewInReach,
+  requireOfferInReach,
+} from '../middlewares/recruitmentReach.middleware';
 import { getDocumentUploadMiddleware } from '../utils/documentUpload';
 import {
   addRtoRecordTaskDocument,
@@ -196,6 +210,10 @@ const canViewRecruitmentSettings = (req: Request, res: Response, next: NextFunct
   return requireSuperAdminOrEmployeePermissions(permissions)(req, res, next);
 };
 const canUpdateRecruitmentSettings = requireSuperAdminOrEmployeePermissions(['recruitment.settings.update']);
+const canUseRecruitment = requireSuperAdminOrEmployeePermissions([
+  'recruitment.dashboard.read', 'recruitment.departments.read', 'recruitment.jobs.read', 'recruitment.applications.read',
+  'recruitment.candidates.read', 'recruitment.interviews.read', 'recruitment.offers.read', 'recruitment.pipeline.read', 'recruitment.settings.read',
+]);
 
 // Public endpoints
 router.get('/public/jobs', getPublicJobs);
@@ -205,6 +223,7 @@ router.get('/public/offer-links/:code', offerShortLinkRateLimit, getPublicOfferS
 router.get('/public/offers/:token', offerLinkViewRateLimit, getPublicOfferResponse);
 router.get('/public/offers/:token/pdf', offerLinkViewRateLimit, getPublicOfferPdf);
 router.get('/public/offers/:token/certificate', offerLinkViewRateLimit, getPublicOfferCertificate);
+router.get('/public/offers/:token/signed-letter', offerLinkViewRateLimit, getPublicOfferSignedLetter);
 router.post('/public/offers/:token/respond', offerLinkRespondRateLimit, signedOfferUpload.single('signedCopy'), sanitizeRequestBody, respondToPublicOffer);
 
 // Applicant protected endpoints
@@ -216,22 +235,24 @@ router.get('/my-applications/:id/documents/:documentId/download', requireAuth, d
 router.use('/admin', requireAuth, requireAdmin);
 
 // Dashboard
+// What the caller sees (their states), for the banner and the forms. Every recruitment screen asks for it.
+router.get('/admin/reach', canUseRecruitment, getMyRecruitmentReach);
 router.get('/admin/dashboard', canViewRecruitmentDashboard, getRecruitmentDashboardStats);
 
 // Departments CRUD
 router.get('/admin/departments', canViewDepartments, getAdminDepartments);
-router.post('/admin/departments', canCreateDepartments, createAdminDepartment);
-router.put('/admin/departments/:id', canUpdateDepartments, updateAdminDepartment);
-router.delete('/admin/departments/:id', canDeleteDepartments, deleteAdminDepartment);
+router.post('/admin/departments', canCreateDepartments, requireAllIndiaRecruitment, createAdminDepartment);
+router.put('/admin/departments/:id', canUpdateDepartments, requireAllIndiaRecruitment, updateAdminDepartment);
+router.delete('/admin/departments/:id', canDeleteDepartments, requireAllIndiaRecruitment, deleteAdminDepartment);
 
 // Jobs CRUD
 router.get('/admin/jobs', canViewJobs, getAdminJobs);
 router.post('/admin/jobs', canCreateJobs, createJob);
-router.get('/admin/jobs/:id', canViewJobs, getAdminJobById);
-router.put('/admin/jobs/:id', canUpdateJobs, updateJob);
-router.post('/admin/jobs/:id/duplicate', canDuplicateJobs, duplicateJob);
-router.patch('/admin/jobs/:id/status', canChangeJobStatus, updateJobStatus);
-router.delete('/admin/jobs/:id', canDeleteJobs, deleteJob);
+router.get('/admin/jobs/:id', canViewJobs, requireJobViewInReach, getAdminJobById);
+router.put('/admin/jobs/:id', canUpdateJobs, requireJobInReach, updateJob);
+router.post('/admin/jobs/:id/duplicate', canDuplicateJobs, requireJobInReach, duplicateJob);
+router.patch('/admin/jobs/:id/status', canChangeJobStatus, requireJobInReach, updateJobStatus);
+router.delete('/admin/jobs/:id', canDeleteJobs, requireJobInReach, deleteJob);
 
 // RTO work records
 router.get('/admin/rto-records', canViewRto, listRtoRecords);
@@ -295,53 +316,53 @@ router.get('/admin/sell-accounts/:id/refunds/:refundId/advice', canViewSell, dow
 
 // Applications
 router.get('/admin/applications', canViewApplications, getAdminApplications);
-router.get('/admin/applications/:id', canViewApplications, getAdminApplicationById);
-router.patch('/admin/applications/:id/stage', canUpdateApplicationStage, updateApplicationStage);
-router.patch('/admin/applications/:id/assign', canAssignApplications, assignRecruiter);
-router.post('/admin/applications/:id/notes', canCreateNotes, addApplicationNote);
-router.patch('/admin/applications/:id/notes/:noteId', canUpdateNotes, updateApplicationNote);
-router.delete('/admin/applications/:id/notes/:noteId', canDeleteNotes, deleteApplicationNote);
-router.post('/admin/applications/:id/ratings', canCreateRatings, addCandidateRating);
-router.patch('/admin/applications/:id/ratings/:ratingId', canUpdateRatings, updateCandidateRating);
-router.delete('/admin/applications/:id/ratings/:ratingId', canDeleteRatings, deleteCandidateRating);
-router.delete('/admin/applications/:id', canDeleteApplications, deleteApplication);
+router.get('/admin/applications/:id', canViewApplications, requireApplicationViewInReach, getAdminApplicationById);
+router.patch('/admin/applications/:id/stage', canUpdateApplicationStage, requireApplicationInReach, updateApplicationStage);
+router.patch('/admin/applications/:id/assign', canAssignApplications, requireApplicationInReach, assignRecruiter);
+router.post('/admin/applications/:id/notes', canCreateNotes, requireApplicationInReach, addApplicationNote);
+router.patch('/admin/applications/:id/notes/:noteId', canUpdateNotes, requireApplicationInReach, updateApplicationNote);
+router.delete('/admin/applications/:id/notes/:noteId', canDeleteNotes, requireApplicationInReach, deleteApplicationNote);
+router.post('/admin/applications/:id/ratings', canCreateRatings, requireApplicationInReach, addCandidateRating);
+router.patch('/admin/applications/:id/ratings/:ratingId', canUpdateRatings, requireApplicationInReach, updateCandidateRating);
+router.delete('/admin/applications/:id/ratings/:ratingId', canDeleteRatings, requireApplicationInReach, deleteCandidateRating);
+router.delete('/admin/applications/:id', canDeleteApplications, requireApplicationInReach, deleteApplication);
 
 // Candidates & Talent Pool
 router.get('/admin/candidates', canViewCandidates, getAdminCandidates);
-router.get('/admin/candidates/:id', canViewCandidates, getAdminCandidateById);
-router.patch('/admin/candidates/:id/talent-pool', canUpdateCandidates, toggleTalentPool);
+router.get('/admin/candidates/:id', canViewCandidates, requireCandidateInReach, getAdminCandidateById);
+router.patch('/admin/candidates/:id/talent-pool', canUpdateCandidates, requireCandidateInReach, toggleTalentPool);
 
 // Interviews
 router.get('/admin/interviews', canViewInterviews, getAdminInterviews);
 router.post('/admin/interviews', canCreateInterviews, scheduleInterview);
-router.patch('/admin/interviews/:id', canUpdateInterviews, updateInterview);
-router.delete('/admin/interviews/:id', canDeleteInterviews, deleteInterview);
-router.post('/admin/interviews/:id/feedback', canManageInterviewScorecards, submitInterviewFeedback);
+router.patch('/admin/interviews/:id', canUpdateInterviews, requireInterviewInReach, updateInterview);
+router.delete('/admin/interviews/:id', canDeleteInterviews, requireInterviewInReach, deleteInterview);
+router.post('/admin/interviews/:id/feedback', canManageInterviewScorecards, requireInterviewFeedbackAccess, submitInterviewFeedback);
 
 // Offers
 const canPrepareOffers = requireSuperAdminOrEmployeePermissions(['recruitment.offers.create', 'recruitment.offers.update']);
 router.get('/admin/offers/form-options', canPrepareOffers, getOfferFormOptions);
 router.get('/admin/offers/manager-options', canPrepareOffers, getOfferManagerOptions);
 router.get('/admin/offers', canViewOffers, getAdminOffers);
-router.get('/admin/offers/:id/pdf', canViewOffers, downloadAdminOfferPdf);
+router.get('/admin/offers/:id/pdf', canViewOffers, requireOfferInReach, downloadAdminOfferPdf);
 router.post('/admin/offers', canCreateOffers, offerLetterUpload.single('offerPdf'), sanitizeRequestBody, createOffer);
-router.patch('/admin/offers/:id', canUpdateOffers, offerLetterUpload.single('offerPdf'), sanitizeRequestBody, updateOffer);
-router.patch('/admin/offers/:id/status', canChangeOfferStatus, updateOfferStatus);
-router.post('/admin/offers/:id/resend', canChangeOfferStatus, sanitizeRequestBody, resendOffer);
-router.post('/admin/offers/:id/accept-offline', canChangeOfferStatus, signedOfferUpload.single('signedCopy'), sanitizeRequestBody, acceptOfferOffline);
-router.get('/admin/offers/:id/acceptance/:kind', canViewOffers, downloadOfferAcceptanceFile);
-router.post('/admin/offers/:id/hrm-handoff', canChangeOfferStatus, retryOfferHrmHandoff);
-router.delete('/admin/offers/:id', canDeleteOffers, deleteOffer);
+router.patch('/admin/offers/:id', canUpdateOffers, requireOfferInReach, offerLetterUpload.single('offerPdf'), sanitizeRequestBody, updateOffer);
+router.patch('/admin/offers/:id/status', canChangeOfferStatus, requireOfferInReach, updateOfferStatus);
+router.post('/admin/offers/:id/resend', canChangeOfferStatus, requireOfferInReach, sanitizeRequestBody, resendOffer);
+router.post('/admin/offers/:id/accept-offline', canChangeOfferStatus, requireOfferInReach, signedOfferUpload.single('signedCopy'), sanitizeRequestBody, acceptOfferOffline);
+router.get('/admin/offers/:id/acceptance/:kind', canViewOffers, requireOfferInReach, downloadOfferAcceptanceFile);
+router.post('/admin/offers/:id/hrm-handoff', canChangeOfferStatus, requireOfferInReach, retryOfferHrmHandoff);
+router.delete('/admin/offers/:id', canDeleteOffers, requireOfferInReach, deleteOffer);
 
 // Settings
 router.get('/admin/settings', canViewRecruitmentSettings, getRecruitmentSettings);
-router.post('/admin/settings/pipeline-stages', canCreatePipeline, createPipelineStage);
-router.put('/admin/settings/pipeline-stages/:id', canUpdatePipeline, updatePipelineStage);
-router.delete('/admin/settings/pipeline-stages/:id', canDeletePipeline, deletePipelineStage);
-router.put('/admin/settings/departments/:id', canUpdateDepartments, updateDepartment);
-router.post('/admin/settings/templates', canUpdateEmailTemplate, sanitizeRequestBody, createEmailTemplate);
-router.put('/admin/settings/templates/:id', canUpdateEmailTemplate, updateEmailTemplate);
-router.delete('/admin/settings/templates/:id', canUpdateEmailTemplate, deleteEmailTemplate);
-router.put('/admin/settings/email-rules/:eventCode', canUpdateEmailTemplate, updateEmailAutomationRule);
+router.post('/admin/settings/pipeline-stages', canCreatePipeline, requireAllIndiaRecruitment, createPipelineStage);
+router.put('/admin/settings/pipeline-stages/:id', canUpdatePipeline, requireAllIndiaRecruitment, updatePipelineStage);
+router.delete('/admin/settings/pipeline-stages/:id', canDeletePipeline, requireAllIndiaRecruitment, deletePipelineStage);
+router.put('/admin/settings/departments/:id', canUpdateDepartments, requireAllIndiaRecruitment, updateDepartment);
+router.post('/admin/settings/templates', canUpdateEmailTemplate, refuseStateLimitedRecruitmentMail, sanitizeRequestBody, createEmailTemplate);
+router.put('/admin/settings/templates/:id', canUpdateEmailTemplate, refuseStateLimitedRecruitmentMail, updateEmailTemplate);
+router.delete('/admin/settings/templates/:id', canUpdateEmailTemplate, refuseStateLimitedRecruitmentMail, deleteEmailTemplate);
+router.put('/admin/settings/email-rules/:eventCode', canUpdateEmailTemplate, refuseStateLimitedRecruitmentMail, updateEmailAutomationRule);
 
 export default router;

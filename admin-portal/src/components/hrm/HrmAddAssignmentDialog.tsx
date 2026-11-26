@@ -10,21 +10,22 @@ import {
   REASON_MAX_LENGTH,
   MIN_START_DATE,
   createEmptyAssignmentForm,
-  effectiveOfficeKind,
   firstAssignmentError,
   maxStartDate,
-  placeAfterSwitch,
   stateOfficeStatus,
   toAssignmentPayload,
   validateAssignmentForm,
   type AssignmentErrors,
   type AssignmentForm,
   type AssignmentLocationType,
-  type DefaultPlace,
 } from '@/lib/hrmAssignment';
 import { indiaDay } from '@/lib/hrmDay';
 import { formatHrmStatus, getHrmErrorMessage } from '@/lib/hrmUi';
 import HrmModal from './HrmModal';
+import HrmHeadOfficeField from './HrmHeadOfficeField';
+import { defaultHeadOffice, headOfficePlace, headOfficeProblem, selectedHeadOffice } from '@/lib/hrmHeadOffice';
+import HrmManagerSelect from './HrmManagerSelect';
+import { EMPTY_MANAGER_SELECTION, chosenManager, forgetSuggestedManager, suggestedManager, toManagerParams, type ManagerQuery, type ManagerSelection } from '@/lib/hrmManagers';
 
 type CityOption = { id: number; name: string };
 type OptionsState =
@@ -39,9 +40,6 @@ const inputClass = (error?: string) =>
 
 /** Cities of a state from the location master (the same source every other state/city picker uses). */
 const fetchCities = async (stateId: string): Promise<CityOption[]> => (await api.get<CityOption[]>(`/locations/cities/${stateId}`)).data || [];
-
-const placeOf = (options: HrmEmployeeFormOptions | null): DefaultPlace =>
-  (options?.headOffice && options.headOfficeUnit ? { stateId: options.headOffice.stateId, cityId: options.headOffice.cityId } : null);
 
 function Field({ id, label, required, error, hint, children, className = '' }: { id: string; label: string; required?: boolean; error?: string | undefined; hint?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
@@ -78,9 +76,9 @@ export default function HrmAddAssignmentDialog({ employee, onClose, onDone }: {
   // The state whose cities the person is looking at now: an answer for an earlier choice must not touch the screen.
   const latestStateRef = useRef('');
   const errorRef = useRef<HTMLParagraphElement | null>(null);
+  const [manager, setManager] = useState<ManagerSelection>(EMPTY_MANAGER_SELECTION);
 
   const options = optionsState.status === 'ready' ? optionsState.options : null;
-  const place = placeOf(options);
 
   // Load the form options (departments, designations, states, head office) once, and again on "Try again".
   useEffect(() => {
@@ -91,21 +89,9 @@ export default function HrmAddAssignmentDialog({ employee, onClose, onDone }: {
         const response = await hrmApi.getEmployeeFormOptions();
         if (cancelled) return;
         const loaded = response.data.options;
-        const defaultPlace = placeOf(loaded);
         setOptionsState({ status: 'ready', options: loaded });
         setMaxDate(maxStartDate());
-        setForm((current) => current ?? createEmptyAssignmentForm(indiaDay(), defaultPlace));
-        // The head office place is preselected, so its cities are needed for the City box right away.
-        if (defaultPlace) {
-          const key = String(defaultPlace.stateId);
-          latestStateRef.current = key;
-          try {
-            const list = await fetchCities(key);
-            if (!cancelled) setCities((current) => (current[key] ? current : { ...current, [key]: list }));
-          } catch {
-            if (!cancelled && latestStateRef.current === key) setCityError('Cities could not be loaded. Choose the state again to retry.');
-          }
-        }
+        setForm((current) => current ?? createEmptyAssignmentForm(indiaDay(), defaultHeadOffice(loaded.headOffices)?.id ?? null));
       } catch (error) {
         if (cancelled) return;
         const forbidden = (error as { response?: { status?: number } })?.response?.status === 403;
@@ -151,37 +137,35 @@ export default function HrmAddAssignmentDialog({ employee, onClose, onDone }: {
 
   const chooseLocation = (next: AssignmentLocationType) => {
     if (!form || next === form.locationType) return;
-    const nextPlace = placeAfterSwitch(form, next, place);
-    setForm({ ...form, locationType: next, ...nextPlace });
-    setErrors((current) => ({ ...current, locationType: undefined, stateId: undefined, cityId: undefined }));
+    setForm({ ...form, locationType: next });
+    setErrors((current) => ({ ...current, locationType: undefined, headOfficeUnitId: undefined, stateId: undefined, cityId: undefined }));
     setSubmitError('');
     setCityError('');
-    if (nextPlace.stateId) void loadCities(nextPlace.stateId);
   };
 
   const states = useMemo(() => options?.states ?? [], [options]);
   const selectedState = form ? states.find((state) => String(state.id) === form.stateId) : undefined;
-  const officeKind = form ? effectiveOfficeKind(form, place) : 'STATE_OFFICE';
-  const status = stateOfficeStatus(officeKind === 'STATE_OFFICE' ? selectedState : undefined, Boolean(options?.abilities.canManageOrg));
+  const status = stateOfficeStatus(form?.locationType === 'STATE_OFFICE' ? selectedState : undefined, Boolean(options?.abilities.canManageOrg));
 
   const departmentOptions = useMemo(() => (options?.departments ?? []).map((department) => ({ id: department.id, name: department.name })), [options]);
   const designationOptions = useMemo(() => (options?.designations ?? []).map((designation) => ({ id: designation.id, name: designation.name })), [options]);
   const typeOptions = useMemo(() => EMPLOYMENT_TYPE_OPTIONS.map((type) => ({ id: type, name: formatHrmStatus(type) })), []);
-  const plainStateOptions = useMemo(() => states.map((state) => ({ id: String(state.id), name: state.name })), [states]);
   const stateOptions = useMemo(() => states.map((state) => ({
     id: String(state.id),
     name: state.officeSwitchedOff ? `${state.name} · Office switched off` : !state.hasOffice ? `${state.name} · No office yet` : state.name,
   })), [states]);
   const cityOptions = useMemo(() => (form ? (cities[form.stateId] ?? []).map((city) => ({ id: String(city.id), name: city.name })) : []), [cities, form]);
   const citiesLoading = Boolean(form?.stateId) && citiesLoadingFor === form?.stateId;
-  const headOfficeAvailable = Boolean(options?.headOfficeUnit && options.headOffice);
-  const headOfficeLabel = options?.headOffice ? `${options.headOffice.cityName}, ${options.headOffice.stateName}` : 'Raipur, Chhattisgarh';
+  const headOffices = options?.headOffices ?? [];
+  const headOfficeAvailable = headOffices.length > 0;
+  /** The head office chosen in the form (the default until HR picks another). */
+  const headOffice = selectedHeadOffice(headOffices, form?.headOfficeUnitId ?? '');
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (saving || !form || !options) return;
     const found = validateAssignmentForm(form, {
-      headOfficeAvailable, headOfficePlace: place, states, canManageOrg: options.abilities.canManageOrg,
+      headOfficeAvailable, headOfficeMessage: headOfficeProblem(headOffice), states, canManageOrg: options.abilities.canManageOrg,
     });
     setErrors(found);
     const first = firstAssignmentError(found);
@@ -193,7 +177,8 @@ export default function HrmAddAssignmentDialog({ employee, onClose, onDone }: {
     setSaving(true);
     setSubmitError('');
     try {
-      await hrmApi.createAssignment(employee.id, toAssignmentPayload(form));
+      // Exactly the head office the form showed is sent, also when it was never touched.
+      await hrmApi.createAssignment(employee.id, toAssignmentPayload({ ...form, headOfficeUnitId: headOffice?.id ?? '' }, manager.manager?.id));
       await onDone();
     } catch (requestError) {
       setSubmitError(getHrmErrorMessage(requestError, 'Unable to add the assignment. Nothing was saved.'));
@@ -204,10 +189,12 @@ export default function HrmAddAssignmentDialog({ employee, onClose, onDone }: {
   };
 
   const locationTypes: Array<{ id: AssignmentLocationType; title: string; description: string; disabled: boolean }> = [
-    { id: 'HEAD_OFFICE', title: 'Head office', description: headOfficeAvailable ? headOfficeLabel : 'Set up the head office on the Organisation page first', disabled: !headOfficeAvailable },
+    { id: 'HEAD_OFFICE', title: 'Head office', description: headOfficeAvailable ? headOfficePlace(headOffice) || headOffice!.name : 'Set up the head office on the Organisation page first', disabled: !headOfficeAvailable },
     { id: 'STATE_OFFICE', title: 'State office', description: 'A state and city of India', disabled: false },
   ];
   const ready = Boolean(options && form);
+  // Who they can report to depends on where they will work.
+  const managerQuery: ManagerQuery = { employeeId: employee.id, stateId: form?.stateId, headOffice: form?.locationType === 'HEAD_OFFICE', managerRole: false };
   const blocked = ready && status.kind === 'blocked';
 
   // The dialog shell moves the focus once, while the body is still the loading text (so it lands on the close button).
@@ -263,24 +250,27 @@ export default function HrmAddAssignmentDialog({ employee, onClose, onDone }: {
             </div>
             {errors.locationType ? <p role="alert" className="text-xs font-medium text-rose-600">{errors.locationType}</p> : null}
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field
-                id="hrm-assign-stateId"
-                label="State"
-                required
-                error={errors.stateId || (status.kind === 'blocked' ? status.message : undefined)}
-                hint={status.kind === 'create'
-                  ? <span className="text-amber-700">{status.message}</span>
-                  : form.locationType === 'HEAD_OFFICE'
-                    ? (officeKind === 'HEAD_OFFICE' ? `Default: ${headOfficeLabel}.` : <span className="text-amber-700">This is not the head office city, so the person is placed in the {selectedState?.name ?? 'selected'} state office.</span>)
-                    : 'Every state is listed. A state without an office gets one when you save.'}
-              >
-                <SearchableSelect id="hrm-assign-stateId" options={form.locationType === 'STATE_OFFICE' ? stateOptions : plainStateOptions} value={form.stateId} displayValue={selectedState?.name ?? ''} onChange={(option) => changeState(String(option.id))} placeholder="Select state" disabled={saving} className="w-full" />
-              </Field>
-              <Field id="hrm-assign-cityId" label="City" required error={errors.cityId || cityError || undefined}>
-                <SearchableSelect id="hrm-assign-cityId" options={cityOptions} value={form.cityId} displayValue={cityOptions.find((city) => String(city.id) === form.cityId)?.name ?? ''} onChange={(option) => update('cityId', String(option.id))} placeholder={form.stateId ? (citiesLoading ? 'Loading cities…' : 'Select city') : 'Select state first'} disabled={!form.stateId || saving} loading={citiesLoading} className="w-full" />
-              </Field>
-            </div>
+            {form.locationType === 'HEAD_OFFICE' ? (
+              <div>
+                <label htmlFor="hrm-assign-headOfficeUnitId" className="mb-1 block text-sm font-medium text-slate-700">Head office<span className="text-rose-500"> *</span></label>
+                <HrmHeadOfficeField id="hrm-assign-headOfficeUnitId" offices={headOffices} value={form.headOfficeUnitId} onChange={(office) => update('headOfficeUnitId', office.id)} error={errors.headOfficeUnitId} disabled={saving} />
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  id="hrm-assign-stateId"
+                  label="State"
+                  required
+                  error={errors.stateId || (status.kind === 'blocked' ? status.message : undefined)}
+                  hint={status.kind === 'create' ? <span className="text-amber-700">{status.message}</span> : 'Every state is listed. A state without an office gets one when you save.'}
+                >
+                  <SearchableSelect id="hrm-assign-stateId" options={stateOptions} value={form.stateId} displayValue={selectedState?.name ?? ''} onChange={(option) => changeState(String(option.id))} placeholder="Select state" disabled={saving} className="w-full" />
+                </Field>
+                <Field id="hrm-assign-cityId" label="City" required error={errors.cityId || cityError || undefined}>
+                  <SearchableSelect id="hrm-assign-cityId" options={cityOptions} value={form.cityId} displayValue={cityOptions.find((city) => String(city.id) === form.cityId)?.name ?? ''} onChange={(option) => update('cityId', String(option.id))} placeholder={form.stateId ? (citiesLoading ? 'Loading cities…' : 'Select city') : 'Select state first'} disabled={!form.stateId || saving} loading={citiesLoading} className="w-full" />
+                </Field>
+              </div>
+            )}
           </section>
 
           <section className="grid gap-4 sm:grid-cols-2">
@@ -293,6 +283,22 @@ export default function HrmAddAssignmentDialog({ employee, onClose, onDone }: {
             <Field id="hrm-assign-employmentType" label="Employment type" error={errors.employmentType}>
               <SearchableSelect id="hrm-assign-employmentType" options={typeOptions} value={form.employmentType} displayValue={formatHrmStatus(form.employmentType)} onChange={(option) => update('employmentType', String(option.id))} searchable={false} disabled={saving} className="w-full" />
             </Field>
+            <div className="sm:col-span-2">
+              <label htmlFor="hrm-assign-manager" className="mb-1 block text-sm font-medium text-slate-700">Reporting manager</label>
+              {form.locationType === 'HEAD_OFFICE' || form.stateId ? (
+                <HrmManagerSelect
+                  id="hrm-assign-manager"
+                  value={manager.manager}
+                  auto={manager.source === 'auto'}
+                  onChange={(next) => { setManager(chosenManager(next)); setSubmitError(''); }}
+                  load={async (search) => (await hrmApi.getManagerOptions(toManagerParams(managerQuery, search))).data}
+                  loadKey={JSON.stringify(toManagerParams(managerQuery))}
+                  onLoadStart={() => setManager(forgetSuggestedManager)}
+                  onLoaded={(list) => setManager((current) => suggestedManager(current, list.preselect))}
+                />
+              ) : <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500">Select the state first.</p>}
+              <p className="mt-1 text-xs leading-5 text-slate-500">Optional. Left empty, the profile shows “Reports to: Not set”.</p>
+            </div>
             <Field id="hrm-assign-effectiveFrom" label="Start date" required error={errors.effectiveFrom} hint="Takes effect on this day. A future date starts later.">
               <input id="hrm-assign-effectiveFrom" type="date" value={form.effectiveFrom} min={MIN_START_DATE} max={maxDate} onChange={(event) => update('effectiveFrom', event.target.value)} disabled={saving} aria-invalid={Boolean(errors.effectiveFrom)} className={inputClass(errors.effectiveFrom)} />
             </Field>

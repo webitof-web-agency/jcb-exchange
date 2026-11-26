@@ -27,6 +27,7 @@ import {
 } from '../services/googleDrive.service';
 import { getAppSettings } from '../utils/appSettings';
 import { getSecureDocumentUrlFromToken } from '../utils/secureDocumentUrl';
+import { checkStaffDocumentAccess, isRecruitmentOrHrDriveFile, isRecruitmentOrHrFile } from '../services/secureDocumentAccess.service';
 import {
   buildPublicBrandingFileName,
   PublicBrandingPurpose,
@@ -461,7 +462,11 @@ export const getSecureDocument = async (req: Request, res: Response, next: NextF
       return res.status(404).json({ error: 'Document not found.' });
     }
 
-    const hasAccess = isStaffOperator || (await isSecureDocumentOwner(req.user.id, fileUrl));
+    // Staff open a recruitment or HR file only with that module's permission (and, in recruitment, for their states).
+    const staffAccess = isStaffOperator
+      ? await checkStaffDocumentAccess({ userId: req.user.id, role: req.user.role }, getDocumentUrlCandidates(fileUrl), extractDriveFileId(fileUrl))
+      : null;
+    const hasAccess = staffAccess === null ? await isSecureDocumentOwner(req.user.id, fileUrl) : staffAccess !== 'DENIED';
 
     if (!hasAccess) {
       return res.status(403).json({ error: 'You do not have access to this document.' });
@@ -505,6 +510,11 @@ export const deleteSecureDocument = async (req: Request, res: Response, next: Ne
       : getSecureDocumentUrl(fileName);
     const driveFileId = extractDriveFileId(fileUrl);
 
+    // Files of a recruitment or HR record are history: this route only discards uploads of other forms.
+    if (await isRecruitmentOrHrFile(getDocumentUrlCandidates(fileUrl), driveFileId)) {
+      return res.status(409).json({ error: 'This file belongs to a recruitment or HR record and cannot be deleted here.' });
+    }
+
     if (driveFileId) {
       await deleteFileFromDrive(driveFileId);
     } else {
@@ -528,6 +538,8 @@ export const getPublicDriveMedia = async (req: Request, res: Response, next: Nex
     if (!/^[a-zA-Z0-9_-]{10,}$/.test(fileId)) {
       return res.status(400).json({ error: 'File ID is required.' });
     }
+    // A resume, offer letter or HR document is opened only through its signed-in routes.
+    if (await isRecruitmentOrHrDriveFile(fileId)) return res.status(404).json({ error: 'File not found.' });
 
     const range = typeof req.headers.range === 'string' ? req.headers.range : undefined;
     const { stream, headers, totalSize, byteRange } = await streamDriveMediaWithHeaders(fileId, range);

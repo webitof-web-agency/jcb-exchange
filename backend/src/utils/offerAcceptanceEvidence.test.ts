@@ -6,6 +6,7 @@ import {
   decodeDrawnSignature,
   namesMatch,
   sha256Hex,
+  signedLetterUrlOf,
   validateCandidateAcceptance,
 } from './offerAcceptanceEvidence';
 
@@ -60,6 +61,25 @@ test('what the candidate sends with Accept is checked', () => {
   assert.match((validateCandidateAcceptance({ ...base, method: 'UPLOADED_SCAN' }, 'Ravi K. Sharma', false) as { error: string }).error, /Upload/);
   assert.ok('value' in validateCandidateAcceptance({ ...base, method: 'UPLOADED_SCAN' }, 'Ravi K. Sharma', true));
   assert.match((validateCandidateAcceptance({ ...base, method: 'OFFLINE_HR' }, 'Ravi K. Sharma', true) as { error: string }).error, /Choose how/);
+});
+
+test('the typed signature the page showed is used when it is a real PNG, and is optional', () => {
+  const base = { method: 'TYPED', fullName: 'Ravi K Sharma', place: 'Pune', consent: 'true' };
+  const shown = validateCandidateAcceptance({ ...base, typedSignature: pngDataUrl }, 'Ravi K Sharma', false);
+  assert.ok('value' in shown && shown.typed);
+  const broken = validateCandidateAcceptance({ ...base, typedSignature: 'data:image/png;base64,AAAA' }, 'Ravi K Sharma', false);
+  assert.ok('value' in broken && broken.typed === null);
+  // Only a typed acceptance reads it.
+  const drawn = validateCandidateAcceptance({ ...base, method: 'DRAWN', drawnSignature: pngDataUrl, typedSignature: pngDataUrl }, 'Ravi K Sharma', false);
+  assert.ok('value' in drawn && drawn.typed === null && drawn.drawn);
+});
+
+test('the signed letter is the stored one, or the scan of an older acceptance', () => {
+  assert.equal(signedLetterUrlOf({ signedLetterUrl: 'signed', signatureFileUrl: 'drawing', acceptanceMethod: 'DRAWN' }), 'signed');
+  assert.equal(signedLetterUrlOf({ signedLetterUrl: null, signatureFileUrl: 'scan', acceptanceMethod: 'UPLOADED_SCAN' }), 'scan');
+  assert.equal(signedLetterUrlOf({ signatureFileUrl: 'paper', acceptanceMethod: 'OFFLINE_HR' }), 'paper');
+  assert.equal(signedLetterUrlOf({ signatureFileUrl: 'drawing', acceptanceMethod: 'DRAWN' }), null);
+  assert.equal(signedLetterUrlOf({ acceptanceMethod: 'TYPED' }), null);
 });
 
 test('the acceptance certificate is a PDF for every method', async () => {

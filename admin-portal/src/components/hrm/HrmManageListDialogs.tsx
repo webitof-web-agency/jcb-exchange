@@ -8,9 +8,9 @@ import { getHrmErrorMessage } from '@/lib/hrmUi';
 import HrmModal from './HrmModal';
 
 /**
- * "Manage departments" and "Manage designations": rename, switch off / on and delete from one place, used from the Add
- * Employee form. Both lists behave the same way:
- *  - rename keeps history readable (a designation rename is applied to every assignment that used it);
+ * "Manage designations": rename, switch off / on and delete from one place, used from the Add Employee form.
+ * (Departments are managed only in the Departments section of the Organisation page.)
+ *  - rename is applied to every assignment that used the designation, so history stays readable;
  *  - switch off hides it from the pickers and keeps what already uses it;
  *  - delete is only offered when nothing ever used it, otherwise the reason is shown and switching off is the way.
  * The server decides every one of these and answers 409 with the reason, which is shown in the dialog.
@@ -47,30 +47,6 @@ type Adapter = {
 };
 
 const plural = (count: number, singular: string, pluralForm = `${singular}s`) => `${count} ${count === 1 ? singular : pluralForm}`;
-
-const departmentAdapter: Adapter = {
-  kind: 'department',
-  nameMaxLength: 160,
-  noun: 'department',
-  title: 'Manage departments',
-  description: 'Rename, switch off or delete a department. One that people have been placed in cannot be deleted; switch it off instead.',
-  emptyText: 'No departments yet.',
-  load: async () => (await hrmApi.listDepartmentsForManagement()).data.departments.map((department) => ({
-    id: department.id,
-    name: department.name,
-    isActive: department.isActive,
-    isSystem: false,
-    currentEmployees: department.currentEmployees,
-    totalAssignments: department.totalAssignments,
-    canDelete: department.canDelete,
-    deleteBlockedReason: department.deleteBlockedReason,
-    note: department.parent ? `Under ${department.parent.name}` : null,
-  })),
-  rename: async (id, name) => { await hrmApi.updateOrganisationUnit(id, { name }); return 0; },
-  setActive: async (id, isActive) => { await hrmApi.updateOrganisationUnit(id, { isActive }); },
-  remove: async (id) => { await hrmApi.deleteOrganisationUnit(id); },
-  renameWarning: () => null,
-};
 
 const designationAdapter: Adapter = {
   kind: 'designation',
@@ -358,10 +334,6 @@ function ManageListDialog({ adapter, onClose, onChanged }: { adapter: Adapter; o
       )}
     </HrmModal>
   );
-}
-
-export function ManageDepartmentsDialog({ onClose, onChanged }: { onClose: () => void; onChanged: (change: ListChange) => void }) {
-  return <ManageListDialog adapter={departmentAdapter} onClose={onClose} onChanged={onChanged} />;
 }
 
 export function ManageDesignationsDialog({ onClose, onChanged }: { onClose: () => void; onChanged: (change: ListChange) => void }) {

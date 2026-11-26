@@ -1,7 +1,7 @@
 export type EmailAttachmentMode =
   | 'NONE'
   | 'DYNAMIC_OFFER_PDF'
-  /** The acceptance certificate, plus the signed copy when the candidate uploaded a scan or HR recorded a paper copy. */
+  /** The acceptance certificate, plus the signed offer letter (signed on the link, uploaded, or recorded by HR). */
   | 'DYNAMIC_OFFER_ACCEPTANCE_PDF'
   | 'DYNAMIC_VEHICLE_INVOICE_PDF'
   | 'DYNAMIC_PAYMENT_RECEIPT_PDF'
@@ -65,7 +65,7 @@ const OFFER_SENT_PREVIOUS_BODIES = [
 const OFFER_ACCEPTED_BODY = letter(
   'Dear {{candidate_name}},',
   '<p>Thank you for accepting our offer for the position of <strong>{{designation}}</strong> ({{job_title}}). Your acceptance was recorded on {{accepted_on}}.</p>'
-  + '<p>Your offer acceptance certificate is attached to this email for your records.</p>'
+  + '<p>Your signed offer letter and acceptance certificate are attached to this email for your records.</p>'
   + '<ul><li>Application reference: {{application_ref}}</li><li>Joining date: {{joining_date}}</li></ul>'
   + '<p>Our HR team will contact you about the joining formalities and the documents to bring on your first day.</p>',
   'Best regards,<br/>Talent Acquisition Team<br/>JCB Exchange',

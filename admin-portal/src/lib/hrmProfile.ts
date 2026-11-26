@@ -108,6 +108,46 @@ export const validateWeeklyOffs = (offs: HrmWeeklyOffs): string | null => {
 export const describeShiftTimes = (shift: { startTime: string; endTime: string; isNightShift?: boolean }) =>
   `${shift.startTime} – ${shift.endTime}${shift.isNightShift ? ' (next day)' : ''}`;
 
+// ---- text rules (the server checks the same: backend/src/modules/hrm/textRules.ts) ----
+
+/** Control and direction-override characters removed, runs of spaces collapsed, ends trimmed. */
+export const cleanText = (value: string) => value.replace(/[\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
+
+const HAS_LETTER = /\p{L}/u;
+// Letters of any language with their vowel signs and joiners, plus the punctuation names and places use.
+const PERSON_NAME = /^[\p{L}\p{M}\u200C\u200D .'’-]+$/u;
+const RELATION = /^[\p{L}\p{M}\u200C\u200D .'’()/-]+$/u;
+// Digits and commas occur in real names ("North 24 Parganas"); a letter is still needed.
+const PLACE_NAME = /^[\p{L}\p{M}\p{N}\u200C\u200D .,'’()&-]+$/u;
+const ACCOUNT_HOLDER = /^[\p{L}\p{M}\u200C\u200D .'’&/-]+$/u;
+const BANK_NAME = /^[\p{L}\p{M}\p{N}\u200C\u200D .'’()&-]+$/u;
+
+const textProblem = (value: string, max: number, allowed: RegExp, message: string) => {
+  const text = cleanText(value);
+  if (!text) return null;
+  if (text.length > max) return `At most ${max} characters.`;
+  return allowed.test(text) && HAS_LETTER.test(text) ? null : message;
+};
+/** An empty value is fine here: whether the field is required is checked by its form. */
+export const personNameProblem = (value: string, max = 160) => textProblem(value, max, PERSON_NAME, 'Use letters only (spaces, dots, hyphens and apostrophes are fine).');
+export const relationProblem = (value: string) => textProblem(value, 60, RELATION, 'Use letters only, for example Father or Brother-in-law.');
+export const placeNameProblem = (value: string) => textProblem(value, 80, PLACE_NAME, 'Enter the name of the place.');
+export const accountHolderProblem = (value: string) => textProblem(value, 160, ACCOUNT_HOLDER, 'Use the name as the bank prints it (letters only).');
+export const bankNameProblem = (value: string) => textProblem(value, 120, BANK_NAME, 'Use letters and numbers only.');
+export const addressLineProblem = (value: string) => {
+  const text = cleanText(value);
+  if (!text) return null;
+  if (text.length > 200) return 'At most 200 characters.';
+  if (/[<>]/.test(text)) return 'Remove the < and > characters.';
+  return /[\p{L}\p{N}]/u.test(text) ? null : 'Write the address in words or numbers.';
+};
+export const documentTitleProblem = (value: string) => {
+  const text = cleanText(value);
+  if (!text) return 'Give the document a title.';
+  if (text.length > 160) return 'The title can be at most 160 characters.';
+  return /[<>]/.test(text) ? 'Remove the < and > characters from the title.' : null;
+};
+
 // ---- personal details ----
 
 export type AddressForm = { line1: string; line2: string; city: string; state: string; pincode: string };
@@ -153,45 +193,68 @@ export const toPersonalForm = (employee: Pick<HrmEmployee, 'dateOfBirth' | 'gend
 };
 
 const MOBILE_PATTERN = /^(?=.{8,15}$)\+?[0-9]+$/;
-const PIN_PATTERN = /^\d{6}$/;
+/** Indian PIN codes never start with 0. */
+const PIN_PATTERN = /^[1-9]\d{5}$/;
+export const MIN_EMPLOYEE_AGE = 14;
 
 /** An address is either fully empty (not given) or complete: line 1, city, state and a 6-digit PIN. */
 const checkAddress = (prefix: string, address: AddressForm, errors: PersonalErrors) => {
   if (addressIsEmpty(address)) return;
-  if (!address.line1.trim()) errors[`${prefix}.line1`] = 'Enter the address line.';
-  else if (address.line1.trim().length > 200) errors[`${prefix}.line1`] = 'At most 200 characters.';
-  if (address.line2.trim().length > 200) errors[`${prefix}.line2`] = 'At most 200 characters.';
-  if (!address.city.trim()) errors[`${prefix}.city`] = 'Enter the city.';
-  else if (address.city.trim().length > 80) errors[`${prefix}.city`] = 'At most 80 characters.';
-  if (!address.state.trim()) errors[`${prefix}.state`] = 'Enter the state.';
-  else if (address.state.trim().length > 80) errors[`${prefix}.state`] = 'At most 80 characters.';
-  if (!PIN_PATTERN.test(address.pincode.trim())) errors[`${prefix}.pincode`] = 'Enter a 6-digit PIN code.';
+  const set = (key: string, problem: string | null) => { if (problem) errors[`${prefix}.${key}`] = problem; };
+  set('line1', cleanText(address.line1) ? addressLineProblem(address.line1) : 'Enter the address line.');
+  set('line2', addressLineProblem(address.line2));
+  set('city', cleanText(address.city) ? placeNameProblem(address.city) : 'Enter the city.');
+  set('state', cleanText(address.state) ? placeNameProblem(address.state) : 'Enter the state.');
+  set('pincode', PIN_PATTERN.test(address.pincode.trim()) ? null : 'Enter a valid 6-digit PIN code.');
 };
 
-export const validatePersonalForm = (form: PersonalForm, todayIso: string): PersonalErrors => {
+/** The latest date of birth of somebody old enough to be employed, as YYYY-MM-DD. */
+export const latestBirthDate = (todayIso: string) => `${Number(todayIso.slice(0, 4)) - MIN_EMPLOYEE_AGE}${todayIso.slice(4)}`;
+
+/** With `saved` (the details as stored) only the parts being changed are checked. */
+export const validatePersonalForm = (form: PersonalForm, todayIso: string, saved?: PersonalForm): PersonalErrors => {
   const errors: PersonalErrors = {};
   if (form.dateOfBirth) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(form.dateOfBirth) || Number.isNaN(new Date(`${form.dateOfBirth}T00:00:00Z`).getTime())) errors.dateOfBirth = 'Enter a valid date.';
     else if (form.dateOfBirth > todayIso) errors.dateOfBirth = 'The date of birth cannot be in the future.';
     else if (form.dateOfBirth < '1900-01-01') errors.dateOfBirth = 'Enter a valid date of birth.';
+    else if (form.dateOfBirth > latestBirthDate(todayIso)) errors.dateOfBirth = `The employee must be at least ${MIN_EMPLOYEE_AGE} years old.`;
   }
-  if (form.fatherOrSpouseName.trim().length > 160) errors.fatherOrSpouseName = 'At most 160 characters.';
+  const father = personNameProblem(form.fatherOrSpouseName);
+  if (father) errors.fatherOrSpouseName = father;
   checkAddress('currentAddress', form.currentAddress, errors);
   if (!form.permanentSameAsCurrent) checkAddress('permanentAddress', form.permanentAddress, errors);
-  const contact = [form.emergencyName, form.emergencyRelation, form.emergencyMobile].map((value) => value.trim());
+  const contact = [form.emergencyName, form.emergencyRelation, form.emergencyMobile].map(cleanText);
   if (contact.some(Boolean)) {
-    if (!contact[0]) errors.emergencyName = 'Enter the contact name.';
-    else if (contact[0].length > 160) errors.emergencyName = 'At most 160 characters.';
-    if (!contact[1]) errors.emergencyRelation = 'Enter the relation (for example Father).';
-    else if (contact[1].length > 60) errors.emergencyRelation = 'At most 60 characters.';
-    if (!MOBILE_PATTERN.test(contact[2]!.replace(/[\s-]/g, ''))) errors.emergencyMobile = 'Enter a valid mobile number (8–15 digits, optional +).';
+    const name = contact[0] ? personNameProblem(contact[0]) : 'Enter the contact name.';
+    if (name) errors.emergencyName = name;
+    const relation = contact[1] ? relationProblem(contact[1]) : 'Enter the relation (for example Father).';
+    if (relation) errors.emergencyRelation = relation;
+    if (!MOBILE_PATTERN.test(contact[2]!.replace(/[\s()-]/g, ''))) errors.emergencyMobile = 'Enter a valid mobile number (8–15 digits, optional +).';
   }
-  return errors;
+  return saved ? errorsOfChanges(errors, form, saved) : errors;
+};
+
+/** Details saved earlier do not block an unrelated edit: what is unchanged is not sent, so it is not checked. */
+const errorsOfChanges = (errors: PersonalErrors, form: PersonalForm, saved: PersonalForm): PersonalErrors => {
+  const patch = buildPersonalPatch(form, saved);
+  const sent = (key: string) => {
+    if (key === 'dateOfBirth') return 'dateOfBirth' in patch;
+    if (key === 'fatherOrSpouseName') return 'fatherOrSpouseName' in patch;
+    // "Same as current" sends the current address as the permanent one too.
+    if (key.startsWith('currentAddress.')) return 'currentAddress' in patch || (form.permanentSameAsCurrent && 'permanentAddress' in patch);
+    if (key.startsWith('permanentAddress.')) return 'permanentAddress' in patch;
+    return 'emergencyContact' in patch;
+  };
+  return Object.fromEntries(Object.entries(errors).filter(([key]) => sent(key)));
 };
 
 const addressValue = (address: AddressForm): HrmAddress | null => addressIsEmpty(address) ? null : {
-  line1: address.line1.trim(), line2: address.line2.trim() || null, city: address.city.trim(), state: address.state.trim(), pincode: address.pincode.trim(),
+  line1: cleanText(address.line1), line2: cleanText(address.line2) || null, city: cleanText(address.city), state: cleanText(address.state), pincode: address.pincode.trim(),
 };
+const contactValue = (form: PersonalForm): HrmEmergencyContact | null => [form.emergencyName, form.emergencyRelation, form.emergencyMobile].some((value) => cleanText(value))
+  ? { name: cleanText(form.emergencyName), relation: cleanText(form.emergencyRelation), mobile: form.emergencyMobile.replace(/[\s()-]/g, '') }
+  : null;
 const sameJson = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /** Only what changed compared with the stored record (the PATCH also needs `version`). */
@@ -199,20 +262,15 @@ export const buildPersonalPatch = (form: PersonalForm, stored: PersonalForm): Hr
   const patch: HrmPersonalDetailsPatch = {};
   if (form.dateOfBirth !== stored.dateOfBirth) patch.dateOfBirth = form.dateOfBirth || null;
   if (form.gender !== stored.gender) patch.gender = form.gender || null;
-  if (form.fatherOrSpouseName.trim() !== stored.fatherOrSpouseName.trim()) patch.fatherOrSpouseName = form.fatherOrSpouseName.trim() || null;
+  if (cleanText(form.fatherOrSpouseName) !== cleanText(stored.fatherOrSpouseName)) patch.fatherOrSpouseName = cleanText(form.fatherOrSpouseName) || null;
   if (form.maritalStatus !== stored.maritalStatus) patch.maritalStatus = form.maritalStatus || null;
   if (form.bloodGroup !== stored.bloodGroup) patch.bloodGroup = form.bloodGroup || null;
   const current = addressValue(form.currentAddress);
   if (!sameJson(current, addressValue(stored.currentAddress))) patch.currentAddress = current;
   const permanent = form.permanentSameAsCurrent ? current : addressValue(form.permanentAddress);
   if (!sameJson(permanent, addressValue(stored.permanentAddress))) patch.permanentAddress = permanent;
-  const contact: HrmEmergencyContact | null = form.emergencyName.trim() || form.emergencyRelation.trim() || form.emergencyMobile.trim()
-    ? { name: form.emergencyName.trim(), relation: form.emergencyRelation.trim(), mobile: form.emergencyMobile.replace(/[\s-]/g, '') }
-    : null;
-  const storedContact = stored.emergencyName.trim() || stored.emergencyRelation.trim() || stored.emergencyMobile.trim()
-    ? { name: stored.emergencyName.trim(), relation: stored.emergencyRelation.trim(), mobile: stored.emergencyMobile.replace(/[\s-]/g, '') }
-    : null;
-  if (!sameJson(contact, storedContact)) patch.emergencyContact = contact;
+  const contact = contactValue(form);
+  if (!sameJson(contact, contactValue(stored))) patch.emergencyContact = contact;
   return patch;
 };
 
@@ -300,6 +358,22 @@ export const documentStatusClass = (status: string) =>
       : status === 'REJECTED' ? 'bg-rose-50 text-rose-700 ring-rose-600/20'
         : 'bg-slate-100 text-slate-600 ring-slate-500/20';
 
+type Posting = { status?: string; effectiveFrom: string; effectiveTo?: string | null };
+
+/** True when the posting has not started yet (a joiner, or a transfer entered for a later date). */
+export const startsLater = (assignment: Pick<Posting, 'effectiveFrom'>, today = indiaDay()) => assignment.effectiveFrom.slice(0, 10) > today;
+
+/**
+ * The posting shown at the top of a profile: the one in force today. Only when there is none (nobody placed yet, a
+ * joiner before the joining date) the next one to start.
+ */
+export const currentAssignmentOf = <T extends Posting>(assignments: readonly T[] | undefined, today = indiaDay()): T | null => {
+  const live = (assignments ?? []).filter((row) => row.status === 'ACTIVE' || row.status === 'PLANNED');
+  const byStart = [...live].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+  const inForce = [...byStart].reverse().find((row) => row.status === 'ACTIVE' && !startsLater(row, today) && (!row.effectiveTo || row.effectiveTo.slice(0, 10) >= today));
+  return inForce ?? byStart.find((row) => startsLater(row, today)) ?? null;
+};
+
 /** The checklist item -> where HR completes it on the profile. */
 export const CHECKLIST_TARGET: Record<string, { card: 'personal' | 'assignment' | 'kyc' | 'documents' | 'salary' | 'shift' | 'login'; category?: HrmDocumentCategory }> = {
   PERSONAL: { card: 'personal' },
@@ -355,27 +429,6 @@ export const mergePersonalForm = (current: PersonalForm, baseline: PersonalForm,
     if (!kept.includes(PERSONAL_FIELD_LABELS[key])) kept.push(PERSONAL_FIELD_LABELS[key]);
   }
   return { merged, kept };
-};
-
-// ---- the profile's Status select ----
-
-/** The only status moves the profile itself makes; everything else has its own flow. */
-export const PROFILE_EDITABLE_STATUSES = ['ACTIVE', 'ON_LEAVE', 'NOTICE_PERIOD'] as const;
-const JOINING_STATUSES = ['DRAFT', 'PRE_ONBOARDING', 'ONBOARDING'];
-
-/**
- * What the profile's Status field offers for the current status: the three working states can be switched among
- * themselves; joining states change through Confirm / Cancel joining, and suspend / exit / reactivate through
- * Deactivate / Reactivate (the server refuses those here).
- */
-export const profileStatusControl = (current: string): { editable: boolean; options: string[]; hint: string } => {
-  if ((PROFILE_EDITABLE_STATUSES as readonly string[]).includes(current)) {
-    return { editable: true, options: [...PROFILE_EDITABLE_STATUSES], hint: 'To suspend or exit someone use Deactivate; a suspended person is brought back with Reactivate.' };
-  }
-  if (JOINING_STATUSES.includes(current)) {
-    return { editable: false, options: [current], hint: 'Changes through Confirm joining (when they join) or Cancel joining (if they do not).' };
-  }
-  return { editable: false, options: [current], hint: 'Changes through Deactivate / Reactivate.' };
 };
 
 /** Clear text for the server's status-change refusals; null for any other error. */

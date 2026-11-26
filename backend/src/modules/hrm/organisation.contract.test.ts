@@ -45,6 +45,16 @@ test('update-unit and head-office-setup input are strict', () => {
   assert.doesNotThrow(() => parseHrmInput(schemas.updateOrganisationUnit, { isActive: false }));
   assert.throws(() => parseHrmInput(schemas.updateOrganisationUnit, {}), (error: unknown) => error instanceof HrmValidationError);
   assert.throws(() => parseHrmInput(schemas.updateOrganisationUnit, { code: 'X' }), (error: unknown) => error instanceof HrmValidationError);
-  assert.deepEqual(parseHrmInput(schemas.headOfficeSetup, { departments: [' Sales ', 'Finance'] }).departments, ['Sales', 'Finance']);
-  assert.throws(() => parseHrmInput(schemas.headOfficeSetup, { departments: Array.from({ length: 31 }, (_, index) => `Dept ${index}`) }), (error: unknown) => error instanceof HrmValidationError);
+  const place = { stateId: 1, cityId: 2 };
+  assert.deepEqual(parseHrmInput(schemas.headOfficeSetup, { ...place, departments: [' Sales ', 'Finance'] }).departments, ['Sales', 'Finance']);
+  // Names are cleaned (control / bidi characters out) and must hold a letter or number, never markup.
+  assert.equal(parseHrmInput(schemas.updateOrganisationUnit, { name: '  Finance\u202e   Team\u0007 ' }).name, 'Finance Team');
+  for (const name of ['<b>HR</b>', '---', 'x']) {
+    assert.throws(() => parseHrmInput(schemas.updateOrganisationUnit, { name }), (error: unknown) => error instanceof HrmValidationError, name);
+  }
+  assert.equal(parseHrmInput(schemas.updateOrganisationUnit, { name: 'मानव संसाधन' }).name, 'मानव संसाधन');
+  // The place is chosen by the administrator: nothing is assumed.
+  assert.throws(() => parseHrmInput(schemas.headOfficeSetup, { departments: [] }), (error: unknown) => error instanceof HrmValidationError);
+  assert.throws(() => parseHrmInput(schemas.updateOrganisationUnit, { stateId: 1 }), (error: unknown) => error instanceof HrmValidationError);
+  assert.throws(() => parseHrmInput(schemas.headOfficeSetup, { ...place, departments: Array.from({ length: 31 }, (_, index) => `Dept ${index}`) }), (error: unknown) => error instanceof HrmValidationError);
 });

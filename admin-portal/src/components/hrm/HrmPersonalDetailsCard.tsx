@@ -12,6 +12,7 @@ import {
   mergePersonalForm,
   GENDER_LABELS,
   indiaToday,
+  latestBirthDate,
   MARITAL_LABELS,
   toPersonalForm,
   validatePersonalForm,
@@ -105,7 +106,7 @@ function PersonalDetailsDialog({ employee, stored, lockDateOfBirth, onClose, onS
 
   const save = async () => {
     if (saving) return;
-    const found = validatePersonalForm(form, today);
+    const found = validatePersonalForm(form, today, baseline);
     setErrors(found);
     setServerError('');
     if (Object.keys(found).length) return;
@@ -161,7 +162,7 @@ function PersonalDetailsDialog({ employee, stored, lockDateOfBirth, onClose, onS
     >
       <div className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Date of birth" error={errors.dateOfBirth} hint={lockDateOfBirth ? 'On your own record this is changed by another HR user.' : undefined}><input disabled={saving || lockDateOfBirth} type="date" max={today} min="1900-01-01" value={form.dateOfBirth} onChange={(event) => set('dateOfBirth', event.target.value)} className={inputClass(Boolean(errors.dateOfBirth))} /></Field>
+          <Field label="Date of birth" error={errors.dateOfBirth} hint={lockDateOfBirth ? 'On your own record this is changed by another HR user.' : undefined}><input disabled={saving || lockDateOfBirth} type="date" max={latestBirthDate(today)} min="1900-01-01" value={form.dateOfBirth} onChange={(event) => set('dateOfBirth', event.target.value)} className={inputClass(Boolean(errors.dateOfBirth))} /></Field>
           <Field label="Gender"><select disabled={saving} value={form.gender} onChange={(event) => set('gender', event.target.value as HrmGender | '')} className={inputClass(false)}><option value="">Not given</option>{(Object.keys(GENDER_LABELS) as HrmGender[]).map((value) => <option key={value} value={value}>{GENDER_LABELS[value]}</option>)}</select></Field>
           <Field label="Father / spouse name" error={errors.fatherOrSpouseName}><input disabled={saving} value={form.fatherOrSpouseName} maxLength={160} onChange={(event) => set('fatherOrSpouseName', event.target.value)} className={inputClass(Boolean(errors.fatherOrSpouseName))} /></Field>
           <Field label="Marital status"><select disabled={saving} value={form.maritalStatus} onChange={(event) => set('maritalStatus', event.target.value as HrmMaritalStatus | '')} className={inputClass(false)}><option value="">Not given</option>{(Object.keys(MARITAL_LABELS) as HrmMaritalStatus[]).map((value) => <option key={value} value={value}>{MARITAL_LABELS[value]}</option>)}</select></Field>

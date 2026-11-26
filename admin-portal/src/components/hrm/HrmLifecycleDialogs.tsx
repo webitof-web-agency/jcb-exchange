@@ -7,7 +7,9 @@ import api from '@/lib/api';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import {
   hrmApi,
+  type HrmCharge,
   type HrmLifecycleContext,
+  type HrmManagerAccessContext,
   type HrmMoveResult,
   type HrmOrganisation,
   type HrmOrganisationUnit,
@@ -51,7 +53,12 @@ import {
 } from '@/lib/hrmLifecycle';
 import { getHrmErrorMessage } from '@/lib/hrmUi';
 import HrmEmployeePicker, { type PickedEmployee } from './HrmEmployeePicker';
+import HrmManagerSelect from './HrmManagerSelect';
+import { DefaultStar } from './HrmHeadOfficeField';
+import { toManagerParams, type ManagerPick, type ManagerQuery } from '@/lib/hrmManagers';
 import HrmModal from './HrmModal';
+import HrmManagerAccessFields, { EndChargeTicks } from './HrmManagerAccessFields';
+import { createManagerAccessForm, endableCharges, toManagerAccessPayload } from '@/lib/hrmManagerAccess';
 
 /* ------------------------------ shared pieces ------------------------------ */
 
@@ -192,6 +199,38 @@ const loadOrganisation = async () => (await hrmApi.getOrganisation()).data.organ
 const loadContext = async (employeeId: string) => (await hrmApi.getLifecycleContext(employeeId)).data.context;
 const loadActiveDesignations = async () => (await hrmApi.listDesignations()).data.designations.filter((designation) => designation.isActive);
 
+/** Other people's running or upcoming additional charges of an office (ended when it gets its own manager). */
+function useOfficeCharges(officeId: string) {
+  const loaded = useLoaded<HrmCharge[]>(useCallback(async () => {
+    const response = await hrmApi.listCharges({ officeUnitId: officeId });
+    return response.data.charges.filter((charge) => charge.state === 'ACTIVE' || charge.state === 'UPCOMING');
+  }, [officeId]), 'Unable to load the additional charges of this office.');
+  return {
+    charges: loaded.state.status === 'ready' ? loaded.state.data : [],
+    // Saving waits for the list, so a running charge is never kept without anybody seeing it.
+    ready: loaded.state.status === 'ready',
+    error: loaded.state.status === 'error' ? loaded.state.message : '',
+    reload: loaded.reload,
+  };
+}
+
+function OfficeChargesError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return message ? (
+    <p role="alert" className="text-xs font-medium text-rose-600">{message} <button type="button" onClick={onRetry} className="font-semibold underline">Try again</button></p>
+  ) : null;
+}
+
+function EndOfficeChargesTick({ charges, officeName, checked, onChange }: { charges: HrmCharge[]; officeName: string; checked: boolean; onChange: (value: boolean) => void }) {
+  if (!charges.length) return null;
+  const names = [...new Set(charges.map((charge) => charge.employee.name))].join(', ');
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 p-3">
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-0.5 h-4 w-4 rounded accent-amber-500" />
+      <span><span className="block text-sm font-semibold text-slate-900">End the additional charge of {names}</span><span className="block text-xs leading-4 text-slate-500">{officeName} gets its own manager, so the charge (and its access) ends the day before the new manager starts.</span></span>
+    </label>
+  );
+}
+
 const KEEP_DESIGNATION = '__keep__';
 
 /**
@@ -275,8 +314,8 @@ function CityRetry({ error, onRetry }: { error: string; onRetry: () => void }) {
   return error ? <button type="button" onClick={onRetry} className="mt-1 text-xs font-semibold text-amber-700 underline">Try again</button> : null;
 }
 
-function nationalManagerAsPicked(manager: NationalManager | null | undefined): PickedEmployee | null {
-  return manager ? { id: manager.id, name: manager.name, employeeCode: manager.employeeCode, designation: 'National Operations Manager', location: '', officeUnitId: null, isOfficeManager: false } : null;
+function nationalManagerAsPicked(manager: NationalManager | null | undefined): ManagerPick | null {
+  return manager ? { id: manager.id, name: manager.name, employeeCode: manager.employeeCode, designation: 'National Operations Manager' } : null;
 }
 
 const MANAGER_MODE_LABELS = (keepLabel: string): Array<{ id: ManagerMode; label: string }> => [
@@ -285,14 +324,26 @@ const MANAGER_MODE_LABELS = (keepLabel: string): Array<{ id: ManagerMode; label:
   { id: 'none', label: 'No reporting manager' },
 ];
 
-/** Who the person reports to: the server default, a chosen person (with a quick pick for the National Operations Manager) or nobody. */
+/** The shared reporting manager dropdown, reading the list for this person and place. */
+function ManagerDropdown({ query, ...props }: { query: ManagerQuery } & Omit<React.ComponentProps<typeof HrmManagerSelect>, 'load' | 'loadKey'>) {
+  return (
+    <HrmManagerSelect
+      {...props}
+      load={async (search) => (await hrmApi.getManagerOptions(toManagerParams(query, search))).data}
+      loadKey={JSON.stringify(toManagerParams(query))}
+    />
+  );
+}
+
+/** Who the person reports to: the server default, a chosen person or nobody. */
 function ReportingManagerField({
-  idPrefix, choice, picked, onChange, keepLabel, nationalManager, selfId, excludeIds, error,
+  idPrefix, choice, picked, onChange, keepLabel, query, error, auto,
 }: {
-  idPrefix: string; choice: ManagerChoice; picked: PickedEmployee | null; onChange: (choice: ManagerChoice, picked: PickedEmployee | null) => void;
-  keepLabel: string; nationalManager: NationalManager | null; selfId?: string; excludeIds?: readonly string[]; error?: string | undefined;
+  idPrefix: string; choice: ManagerChoice; picked: ManagerPick | null; onChange: (choice: ManagerChoice, picked: ManagerPick | null) => void;
+  keepLabel: string; query: ManagerQuery; error?: string | undefined;
+  /** The manager shown was filled in from the suggestion. */
+  auto?: boolean;
 }) {
-  const quickPick = nationalManager && nationalManager.id !== selfId && !(choice.mode === 'set' && choice.employeeId === nationalManager.id) ? nationalManager : null;
   return (
     <fieldset className="min-w-0">
       <legend className="mb-1.5 text-sm font-medium text-slate-700">Reporting manager</legend>
@@ -311,20 +362,17 @@ function ReportingManagerField({
         ))}
       </div>
       {choice.mode === 'set' ? (
-        <div className="mt-2 space-y-2">
-          <HrmEmployeePicker
+        <div className="mt-2">
+          <ManagerDropdown
             id={`${idPrefix}-manager`}
-            ariaLabel="Reporting manager"
+            query={query}
             value={picked}
             invalid={Boolean(error)}
-            excludeIds={[...(excludeIds ?? []), ...(selfId ? [selfId] : [])]}
-            onChange={(employee) => onChange(setManager(employee?.id ?? ''), employee)}
+            auto={Boolean(auto)}
+            autoHint={`Choose “${keepLabel}” if their manager should not change.`}
+            allowRemove={false}
+            onChange={(manager) => onChange(setManager(manager?.id ?? ''), manager)}
           />
-          {quickPick ? (
-            <button type="button" onClick={() => onChange(setManager(quickPick.id), nationalManagerAsPicked(quickPick))} className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100">
-              Use National Operations Manager · {quickPick.name}
-            </button>
-          ) : null}
         </div>
       ) : null}
       {error ? <p role="alert" className="mt-1 text-xs font-medium text-rose-600">{error}</p> : null}
@@ -343,7 +391,7 @@ function DestinationFields({
 }) {
   const unit = offices.find((office) => office.id === officeId);
   const kind = destinationKindOf(unit);
-  const officeOptions = useMemo(() => offices.map((office) => ({ id: office.id, name: describeOfficeOption(office) })), [offices]);
+  const officeOptions = useMemo(() => offices.map((office) => ({ id: office.id, name: describeOfficeOption(office), ...(office.isDefault ? { icon: <DefaultStar /> } : {}) })), [offices]);
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Field id={`${idPrefix}-office`} label={officeLabel} required error={errors.office}>
@@ -389,10 +437,18 @@ export function TransferDialog({
     try { return await loadContext(employee.id); } catch { return null; }
   }, [employee.id]), 'Unable to load the employee.');
   const [form, setForm] = useState(() => createTransferForm(today, defaultOfficeUnitId && defaultOfficeUnitId !== currentOfficeUnitId ? defaultOfficeUnitId : ''));
-  const [managerPicked, setManagerPicked] = useState<PickedEmployee | null>(null);
+  const [managerPicked, setManagerPicked] = useState<ManagerPick | null>(null);
+  /** 'auto' = filled in for the destination; 'user' = HR decided, so nothing is filled in any more. */
+  const [managerSource, setManagerSource] = useState<'default' | 'auto' | 'user'>('default');
+  // Also read by a suggestion that is still on its way when HR decides.
+  const managerDecided = useRef(false);
   const [errors, setErrors] = useState<TransferErrors>({});
   const [submitError, setSubmitError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [accessForm, setAccessForm] = useState(createManagerAccessForm);
+  const [accessContext, setAccessContext] = useState<HrmManagerAccessContext | null>(null);
+  const [endChargeIds, setEndChargeIds] = useState<string[]>([]);
+  const [accessReady, setAccessReady] = useState(true);
 
   const org = organisation.state.status === 'ready' ? organisation.state.data : null;
   const offices = useMemo(() => selectableOffices(org?.units ?? [], currentOfficeUnitId), [org, currentOfficeUnitId]);
@@ -404,7 +460,42 @@ export function TransferDialog({
   // A person without any assignment (for example added from a recruitment offer) has nothing to transfer yet.
   const noAssignment = context.state.status === 'ready' && context.state.data?.employee.hasAssignment === false;
   const losesManagerRole = stopsBeingManager({ managesOffice, destinationKind: kind, keepManagerRole: form.keepManagerRole });
-  const nationalManager = singleNationalManager(org?.nationalOperationsManagers);
+  // A manager who keeps the role in another state can be given the role and that state's access in the same step.
+  const staysManager = kind === 'STATE' && managesOffice && form.keepManagerRole;
+  const heldCharges = context.state.status === 'ready' ? context.state.data?.charges ?? [] : [];
+  const otherCharges = endableCharges(heldCharges, form.toOfficeUnitId);
+  const takesOverCharge = heldCharges.some((charge) => charge.officeUnitId === form.toOfficeUnitId);
+  const managerQuery: ManagerQuery = {
+    employeeId: employee.id,
+    ...(kind === 'HEAD_OFFICE' ? { headOffice: true } : kind === 'STATE' ? { stateId: destination?.state?.id } : {}),
+    managerRole: staysManager,
+  };
+  const suggestionKey = destination ? JSON.stringify(toManagerParams(managerQuery)) : '';
+
+  // A move usually means a new manager: the destination's one is filled in (it can be changed or kept as it was).
+  useEffect(() => {
+    if (managerDecided.current || !suggestionKey) return undefined;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const keep = () => {
+        setForm((current) => (current.manager.mode === 'keep' ? current : { ...current, manager: KEEP_MANAGER }));
+        setManagerPicked(null);
+        setManagerSource('default');
+      };
+      keep();
+      try {
+        const { data } = await hrmApi.getManagerOptions(JSON.parse(suggestionKey) as Record<string, string>);
+        if (cancelled || managerDecided.current || !data.preselect || data.preselect.id === data.currentManagerId) return;
+        const suggestion = data.preselect;
+        setForm((current) => ({ ...current, manager: setManager(suggestion.id) }));
+        setManagerPicked(suggestion);
+        setManagerSource('auto');
+      } catch {
+        // No suggestion: the current manager is kept, and HR can still choose one.
+      }
+    }, 0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [suggestionKey]);
 
   const update = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -414,14 +505,20 @@ export function TransferDialog({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (saving || !org || noAssignment) return;
+    if (saving || !org || noAssignment || !accessReady) return;
     const found = validateTransferForm(form, { today, destinationKind: kind, employeeId: employee.id });
     setErrors(found);
     if (Object.keys(found).length) return;
     setSaving(true);
     setSubmitError('');
     try {
-      const response = await hrmApi.transferEmployee(employee.id, toTransferPayload(form, { destinationKind: kind, managesOffice }));
+      const access = staysManager ? toManagerAccessPayload(accessForm, accessContext, 'posting') : undefined;
+      const ending = otherCharges.map((charge) => charge.id).filter((id) => endChargeIds.includes(id));
+      const response = await hrmApi.transferEmployee(employee.id, {
+        ...toTransferPayload(form, { destinationKind: kind, managesOffice }),
+        ...(access ? { access } : {}),
+        ...(ending.length ? { endChargeIds: ending } : {}),
+      });
       onDone(response.data);
     } catch (error) {
       setSubmitError(getHrmErrorMessage(error, 'Unable to transfer the employee. Nothing was changed.'));
@@ -440,7 +537,7 @@ export function TransferDialog({
       submitLabel="Transfer"
       busyLabel="Transferring…"
       icon={ArrowRightLeft}
-      submitDisabled={!org || noAssignment}
+      submitDisabled={!org || noAssignment || !accessReady}
       onClose={onClose}
     >
       {noAssignment ? (
@@ -464,7 +561,7 @@ export function TransferDialog({
             cityError={cities.error}
             onRetryCities={() => cities.retry(destination?.state?.id)}
             errors={{ office: errors.toOfficeUnitId, city: errors.cityId }}
-            onOffice={(id) => { setForm((current) => ({ ...current, toOfficeUnitId: id, cityId: '' })); setErrors((current) => ({ ...current, toOfficeUnitId: undefined, cityId: undefined })); setSubmitError(''); }}
+            onOffice={(id) => { setAccessForm(createManagerAccessForm()); setForm((current) => ({ ...current, toOfficeUnitId: id, cityId: '' })); setErrors((current) => ({ ...current, toOfficeUnitId: undefined, cityId: undefined })); setSubmitError(''); }}
             onCity={(id) => update('cityId', id)}
             onDepartment={(id) => update('orgUnitId', id)}
           />
@@ -482,10 +579,10 @@ export function TransferDialog({
             choice={form.manager}
             picked={managerPicked}
             keepLabel="Keep the current one"
-            nationalManager={nationalManager}
-            selfId={employee.id}
+            query={managerQuery}
+            auto={managerSource === 'auto'}
             error={errors.manager}
-            onChange={(choice, picked) => { update('manager', choice); setManagerPicked(picked); }}
+            onChange={(choice, picked) => { managerDecided.current = true; setManagerSource('user'); update('manager', choice); setManagerPicked(picked); }}
           />
           {kind === 'STATE' && managesOffice ? (
             <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 p-3">
@@ -496,6 +593,11 @@ export function TransferDialog({
           {managesOffice && context.state.status === 'ready' && context.state.data ? (
             <Notice tone="warning">{employee.name} manages {context.state.data.managerOf.map((office) => office.name).join(', ')}. If they were the only manager, that office will have no manager after the transfer.</Notice>
           ) : null}
+          {staysManager ? (
+            <HrmManagerAccessFields employeeId={employee.id} officeUnitId={form.toOfficeUnitId} value={accessForm} onChange={setAccessForm} onContext={setAccessContext} onReady={setAccessReady} mode="posting" futureDated={form.effectiveFrom > today} />
+          ) : null}
+          {takesOverCharge ? <Notice tone="info">They hold an additional charge of this office: it ends, because the office becomes their posting.</Notice> : null}
+          <EndChargeTicks charges={otherCharges} selected={endChargeIds} onChange={setEndChargeIds} title="Additional charges" hint="Ticked charges end the day before the transfer. The others continue." />
           <Field id="hrm-transfer-reason" label="Reason" error={errors.reason} hint="Optional. Kept in the assignment history.">
             <textarea id="hrm-transfer-reason" value={form.reason} onChange={(event) => update('reason', event.target.value)} rows={2} maxLength={500} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100" />
           </Field>
@@ -523,26 +625,24 @@ function OutcomeAndLogin({ outcome, onOutcome, disableLogin, onDisableLogin, sho
 
 /** Deactivates an employee (exit or suspension), moving the people who report to them and optionally closing their login. */
 export function DeactivateDialog({
-  employee, onClose, onDone,
+  employee, onClose, onDone, initialOutcome,
 }: {
   employee: { id: string; name: string; employeeCode: string };
   onClose: () => void;
   onDone: () => void;
+  /** Preselects Exited or Suspended (chosen in "Change status"). */
+  initialOutcome?: ExitOutcome;
 }) {
   const [todayUtc] = useState(() => toServerDay(new Date())); // the server (IST) day
   const context = useLoaded(useCallback(() => loadContext(employee.id), [employee.id]), 'Unable to load the employee.');
-  const organisation = useLoaded<HrmOrganisation | null>(useCallback(async () => {
-    try { return await loadOrganisation(); } catch { return null; }
-  }, []), 'Unable to load the organisation.');
-  const [form, setForm] = useState(() => createDeactivateForm(todayUtc));
-  const [reassignPicked, setReassignPicked] = useState<PickedEmployee | null>(null);
+  const [form, setForm] = useState(() => ({ ...createDeactivateForm(todayUtc), ...(initialOutcome ? { outcome: initialOutcome } : {}) }));
+  const [reassignPicked, setReassignPicked] = useState<ManagerPick | null>(null);
   const [errors, setErrors] = useState<DeactivateErrors>({});
   const [submitError, setSubmitError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const info = context.state.status === 'ready' ? context.state.data : null;
   const directReports = info?.directReports ?? [];
-  const nationalManager = singleNationalManager(organisation.state.status === 'ready' ? organisation.state.data?.nationalOperationsManagers : undefined);
   const outcomeWord = form.outcome === 'EXITED' ? 'Deactivate' : 'Suspend';
 
   const update = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
@@ -561,7 +661,11 @@ export function DeactivateDialog({
     setSubmitError('');
     try {
       const response = await hrmApi.deactivateEmployee(employee.id, toDeactivatePayload(form, { hasLogin: info.employee.hasLogin, directReports: directReports.length }));
-      toast.success(describeDeactivation(response.data, form.outcome, Object.fromEntries(info.managerOf.map((office) => [office.id, office.name]))));
+      const officeNames = Object.fromEntries([
+        ...(info.charges ?? []).map((charge) => [charge.officeUnitId, charge.officeName]),
+        ...info.managerOf.map((office) => [office.id, office.name]),
+      ]);
+      toast.success(describeDeactivation(response.data, form.outcome, officeNames));
       onDone();
     } catch (error) {
       setSubmitError(getHrmErrorMessage(error, 'Unable to deactivate the employee. Nothing was changed.'));
@@ -590,6 +694,11 @@ export function DeactivateDialog({
           {info.managerOf.length ? (
             <Notice tone="danger"><strong>{info.employee.name} manages {info.managerOf.map((office) => office.name).join(', ')}.</strong> {info.managerOf.length === 1 ? 'That office' : 'Those offices'} will have no manager unless another manager is appointed.</Notice>
           ) : null}
+          {info.charges?.length ? (
+            <Notice tone="warning">
+              Additional charge of {info.charges.map((charge) => charge.officeName).join(', ')}: {form.outcome === 'EXITED' ? 'it ends on the effective date, with its access. An office left without anybody shows as vacant.' : 'it stays, but does not count while they are suspended.'}
+            </Notice>
+          ) : null}
           <OutcomeAndLogin idPrefix="hrm-deactivate" outcome={form.outcome} onOutcome={(value) => update('outcome', value)} disableLogin={form.disableLogin} onDisableLogin={(value) => update('disableLogin', value)} showLogin={info.employee.hasLogin} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field id="hrm-deactivate-date" label="Effective date" required error={errors.effectiveDate} hint="Today, or a past date up to 90 days back.">
@@ -601,12 +710,9 @@ export function DeactivateDialog({
           </div>
           {directReports.length ? (
             <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-              <p className="text-sm font-bold text-slate-900">Who do these {directReports.length} {directReports.length === 1 ? 'person' : 'people'} report to from now on?</p>
-              <p className="text-xs leading-5 text-slate-600">{directReports.slice(0, 5).map((person) => `${person.name} (${person.employeeCode})`).join(', ')}{directReports.length > 5 ? ` and ${directReports.length - 5} more` : ''} currently report to {info.employee.name}.</p>
-              <HrmEmployeePicker id="hrm-deactivate-reassign" ariaLabel="New reporting manager" value={reassignPicked} invalid={Boolean(errors.reassignToId)} excludeIds={[employee.id]} onChange={(picked) => { setReassignPicked(picked); update('reassignToId', picked?.id ?? ''); }} />
-              {nationalManager && nationalManager.id !== employee.id && reassignPicked?.id !== nationalManager.id ? (
-                <button type="button" onClick={() => { setReassignPicked(nationalManagerAsPicked(nationalManager)); update('reassignToId', nationalManager.id); }} className="rounded-lg border border-amber-200 bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100">Use National Operations Manager · {nationalManager.name}</button>
-              ) : null}
+              <p className="text-sm font-bold text-slate-900">{directReports.length === 1 ? 'Who does this person report to from now on?' : `Who do these ${directReports.length} people report to from now on?`}</p>
+              <p className="text-xs leading-5 text-slate-600">{directReports.slice(0, 5).map((person) => `${person.name} (${person.employeeCode})`).join(', ')}{directReports.length > 5 ? ` and ${directReports.length - 5} more` : ''} currently {directReports.length === 1 ? 'reports' : 'report'} to {info.employee.name}.</p>
+              <ManagerDropdown id="hrm-deactivate-reassign" ariaLabel="New reporting manager" query={{ employeeId: employee.id, purpose: 'successor' }} value={reassignPicked} invalid={Boolean(errors.reassignToId)} onChange={(manager) => { setReassignPicked(manager); update('reassignToId', manager?.id ?? ''); }} />
               {errors.reassignToId ? <p role="alert" className="text-xs font-medium text-rose-600">{errors.reassignToId}</p> : null}
             </div>
           ) : null}
@@ -633,15 +739,25 @@ export function AppointManagerDialog({
   const organisation = useLoaded<HrmOrganisation | null>(useCallback(async () => (needsState ? loadOrganisation() : null), [needsState]), 'Unable to load the office.');
   const [form, setForm] = useState(() => createAppointForm(today, 'State Manager', nationalManager?.id ?? ''));
   const [picked, setPicked] = useState<PickedEmployee | null>(null);
-  const [managerPicked, setManagerPicked] = useState<PickedEmployee | null>(() => nationalManagerAsPicked(nationalManager));
+  const [managerPicked, setManagerPicked] = useState<ManagerPick | null>(() => nationalManagerAsPicked(nationalManager));
   const [errors, setErrors] = useState<AppointErrors>({});
   const [submitError, setSubmitError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [accessForm, setAccessForm] = useState(createManagerAccessForm);
+  const [accessContext, setAccessContext] = useState<HrmManagerAccessContext | null>(null);
+  const [endChargeIds, setEndChargeIds] = useState<string[]>([]);
+  const [endOfficeCharges, setEndOfficeCharges] = useState(true);
+  const officeCharges = useOfficeCharges(office.id);
+  const [accessReady, setAccessReady] = useState(true);
 
   const resolvedStateId = office.stateId ?? (organisation.state.status === 'ready' ? organisation.state.data?.units.find((unit) => unit.id === office.id)?.state?.id ?? null : null);
   const cities = useCities([resolvedStateId]);
   const alreadyInOffice = picked?.officeUnitId === office.id;
   const blocked = needsState && organisation.state.status !== 'ready';
+  const othersCharges = officeCharges.charges.filter((charge) => charge.employee.id !== picked?.id);
+  const otherHeldCharges = picked ? endableCharges(accessContext?.charges, office.id) : [];
+  const takesOverCharge = Boolean(picked && officeCharges.charges.some((charge) => charge.employee.id === picked.id));
+  const waiting = !accessReady || !officeCharges.ready;
 
   const update = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -651,6 +767,8 @@ export function AppointManagerDialog({
 
   const choosePerson = (employee: PickedEmployee | null) => {
     setPicked(employee);
+    setAccessForm(createManagerAccessForm());
+    setEndChargeIds([]);
     setForm((current) => ({
       ...current,
       employeeId: employee?.id ?? '',
@@ -663,14 +781,21 @@ export function AppointManagerDialog({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (saving || blocked) return;
+    if (saving || blocked || waiting) return;
     const found = validateAppointForm(form, { today, alreadyInOffice });
     setErrors(found);
     if (Object.keys(found).length) return;
     setSaving(true);
     setSubmitError('');
     try {
-      const response = await hrmApi.appointOfficeManager(office.id, toAppointPayload(form));
+      const access = toManagerAccessPayload(accessForm, accessContext, 'posting');
+      const ending = otherHeldCharges.map((charge) => charge.id).filter((id) => endChargeIds.includes(id));
+      const response = await hrmApi.appointOfficeManager(office.id, {
+        ...toAppointPayload(form),
+        ...(access ? { access } : {}),
+        ...(othersCharges.length && endOfficeCharges ? { endOfficeCharges: true } : {}),
+        ...(ending.length ? { endChargeIds: ending } : {}),
+      });
       onDone(response.data);
     } catch (error) {
       setSubmitError(getHrmErrorMessage(error, 'Unable to appoint the manager. Nothing was changed.'));
@@ -689,7 +814,7 @@ export function AppointManagerDialog({
       submitLabel="Appoint manager"
       busyLabel="Appointing…"
       icon={UserPlus}
-      submitDisabled={blocked}
+      submitDisabled={blocked || waiting}
       onClose={onClose}
     >
       {blocked ? <LoadGate state={organisation.state} onRetry={organisation.reload} label="Loading the office…" /> : (
@@ -726,12 +851,16 @@ export function AppointManagerDialog({
             choice={form.manager}
             picked={managerPicked}
             keepLabel="Default"
-            nationalManager={nationalManager}
-            {...(picked ? { selfId: picked.id } : {})}
+            query={{ employeeId: picked?.id, stateId: resolvedStateId, managerRole: true }}
             error={errors.manager}
             onChange={(choice, pickedManager) => { update('manager', choice); setManagerPicked(pickedManager); }}
           />
           <p className="-mt-3 text-xs leading-5 text-slate-500">{nationalManager ? `State Managers report to ${nationalManager.name} (National Operations Manager) by default.` : 'No single National Operations Manager is set, so the person keeps their current reporting manager unless you choose one.'}</p>
+          <HrmManagerAccessFields employeeId={picked?.id ?? null} officeUnitId={office.id} value={accessForm} onChange={setAccessForm} onContext={setAccessContext} onReady={setAccessReady} mode="posting" futureDated={form.effectiveFrom > today} />
+          {takesOverCharge ? <Notice tone="info">They hold an additional charge of this office: it ends, because the office becomes their posting.</Notice> : null}
+          <OfficeChargesError message={officeCharges.error} onRetry={officeCharges.reload} />
+          <EndOfficeChargesTick charges={othersCharges} officeName={office.name} checked={endOfficeCharges} onChange={setEndOfficeCharges} />
+          <EndChargeTicks charges={otherHeldCharges} selected={endChargeIds} onChange={setEndChargeIds} title="Their other additional charges" hint="Ticked charges end the day before they start here. The others continue." />
           <Field id="hrm-appoint-reason" label="Reason" error={errors.reason} hint="Optional. Kept in the assignment history.">
             <textarea id="hrm-appoint-reason" value={form.reason} onChange={(event) => update('reason', event.target.value)} rows={2} maxLength={500} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100" />
           </Field>
@@ -754,7 +883,7 @@ export function ReplaceManagerDialog({
   canDeactivate?: boolean;
   onClose: () => void;
   /** `officeNames` lets the caller name a state that the replacement managed until now (it is now without a manager). */
-  onDone: (result: { reportsMoved: number; vacatedOfficeId: string | null; officeNames: Record<string, string> }) => void;
+  onDone: (result: { reportsMoved: number; vacatedOfficeId: string | null; officeNames: Record<string, string>; access?: HrmMoveResult['access']; chargesEnded?: HrmMoveResult['chargesEnded']; outgoingRoleChanged?: boolean; alsoVacatedOfficeIds?: string[] }) => void;
 }) {
   const [today] = useState(() => toServerDay(new Date()));
   const nationalManager = singleNationalManager(nationalOperationsManagers);
@@ -762,10 +891,18 @@ export function ReplaceManagerDialog({
   const [form, setForm] = useState(() => createReplaceForm(today));
   const designationRef = useRef<HTMLDivElement | null>(null);
   const [incoming, setIncoming] = useState<PickedEmployee | null>(null);
-  const [managerPicked, setManagerPicked] = useState<PickedEmployee | null>(null);
+  const [managerPicked, setManagerPicked] = useState<ManagerPick | null>(null);
   const [errors, setErrors] = useState<ReplaceErrors>({});
   const [submitError, setSubmitError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [accessForm, setAccessForm] = useState(createManagerAccessForm);
+  const [accessContext, setAccessContext] = useState<HrmManagerAccessContext | null>(null);
+  const [outgoingForm, setOutgoingForm] = useState(createManagerAccessForm);
+  const [outgoingContext, setOutgoingContext] = useState<HrmManagerAccessContext | null>(null);
+  const [endChargeIds, setEndChargeIds] = useState<string[]>([]);
+  const [endOfficeCharges, setEndOfficeCharges] = useState(true);
+  const officeCharges = useOfficeCharges(office.id);
+  const [accessReady, setAccessReady] = useState(true);
 
   const org = organisation.state.status === 'ready' ? organisation.state.data : null;
   const officeUnit = org?.units.find((unit) => unit.id === office.id);
@@ -776,6 +913,9 @@ export function ReplaceManagerDialog({
   const transferKind = destinationKindOf(transferUnit);
   const cities = useCities([stateId, form.outgoingAction === 'TRANSFER' && transferKind === 'STATE' ? transferUnit?.state?.id : null]);
   const incomingAlreadyInOffice = incoming?.officeUnitId === office.id;
+  const othersCharges = officeCharges.charges.filter((charge) => charge.employee.id !== incoming?.id);
+  const waiting = !accessReady || !officeCharges.ready;
+  const incomingCharges = incoming ? endableCharges(accessContext?.charges, office.id) : [];
   const keepLabel = `Same as ${outgoing.name}'s manager${nationalManager ? ' (or the National Operations Manager)' : ''}`;
 
   const update = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
@@ -786,6 +926,8 @@ export function ReplaceManagerDialog({
 
   const chooseIncoming = (employee: PickedEmployee | null) => {
     setIncoming(employee);
+    setAccessForm(createManagerAccessForm());
+    setEndChargeIds([]);
     setForm((current) => ({
       ...current,
       incomingEmployeeId: employee?.id ?? '',
@@ -797,17 +939,33 @@ export function ReplaceManagerDialog({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (saving || !org) return;
+    if (saving || !org || waiting) return;
     const found = validateReplaceForm(form, { today, outgoingEmployeeId: outgoing.id, incomingAlreadyInOffice, transferKind });
     setErrors(found);
     if (Object.keys(found).length) return;
     setSaving(true);
     setSubmitError('');
     try {
-      const response = await hrmApi.replaceOfficeManager(office.id, toReplacePayload(form, { outgoingEmployeeId: outgoing.id, transferKind }));
+      const access = toManagerAccessPayload(accessForm, accessContext, 'posting');
+      // Only the role of the person stepping down can change here (their state access ends with the role).
+      const outgoingChange = form.outgoingAction === 'DEACTIVATE' ? undefined : toManagerAccessPayload({ grant: false, roleId: outgoingForm.roleId }, outgoingContext, 'posting');
+      const ending = incomingCharges.map((charge) => charge.id).filter((id) => endChargeIds.includes(id));
+      const response = await hrmApi.replaceOfficeManager(office.id, {
+        ...toReplacePayload(form, { outgoingEmployeeId: outgoing.id, transferKind }),
+        ...(access ? { access } : {}),
+        ...(outgoingChange && outgoingChange.customRoleId !== undefined ? { outgoingRoleId: outgoingChange.customRoleId } : {}),
+        ...(othersCharges.length && endOfficeCharges ? { endOfficeCharges: true } : {}),
+        ...(ending.length ? { endChargeIds: ending } : {}),
+      });
+      // A deactivated manager's own charges end too, and may leave other offices vacant.
+      const left = response.data.outgoing;
       onDone({
         reportsMoved: response.data.reportsMoved,
         vacatedOfficeId: response.data.vacatedOfficeId ?? null,
+        access: response.data.access,
+        chargesEnded: [...(response.data.chargesEnded ?? []), ...(left?.chargesEnded ?? [])],
+        alsoVacatedOfficeIds: left?.vacatedOfficeIds ?? [],
+        outgoingRoleChanged: Boolean(outgoingChange && outgoingChange.customRoleId !== undefined),
         officeNames: Object.fromEntries(org.units.filter((unit) => unit.kind === 'STATE' || unit.kind === 'HEAD_OFFICE').map((unit) => [unit.id, unit.name])),
       });
     } catch (error) {
@@ -831,7 +989,7 @@ export function ReplaceManagerDialog({
       submitLabel="Replace manager"
       busyLabel="Replacing…"
       icon={UserCog}
-      submitDisabled={!org}
+      submitDisabled={!org || waiting}
       onClose={onClose}
     >
       {!org ? <LoadGate state={organisation.state} onRetry={organisation.reload} label="Loading offices…" /> : (
@@ -864,11 +1022,14 @@ export function ReplaceManagerDialog({
             choice={form.manager}
             picked={managerPicked}
             keepLabel={keepLabel}
-            nationalManager={nationalManager}
-            {...(incoming ? { selfId: incoming.id } : {})}
+            query={{ employeeId: incoming?.id, stateId, managerRole: true }}
             error={errors.manager}
             onChange={(choice, pickedManager) => { update('manager', choice); setManagerPicked(pickedManager); }}
           />
+          <HrmManagerAccessFields employeeId={incoming?.id ?? null} officeUnitId={office.id} value={accessForm} onChange={setAccessForm} onContext={setAccessContext} onReady={setAccessReady} mode="posting" title={incoming ? `Login role & access of ${incoming.name}` : 'Login role & access'} />
+          <OfficeChargesError message={officeCharges.error} onRetry={officeCharges.reload} />
+          <EndOfficeChargesTick charges={othersCharges} officeName={office.name} checked={endOfficeCharges} onChange={setEndOfficeCharges} />
+          <EndChargeTicks charges={incomingCharges} selected={endChargeIds} onChange={setEndChargeIds} title="The new manager's other additional charges" hint="Ticked charges end the day before they start here. The others continue." />
           <Notice tone="info">People in {office.name} who reported to {outgoing.name} will report to the new manager from now on.</Notice>
 
           <ChoiceCards name="hrm-replace-outgoing" legend={`What happens to ${outgoing.name}?`} options={outgoingActionOptions(canDeactivate)} value={form.outgoingAction} onChange={(value) => update('outgoingAction', value)} />
@@ -900,6 +1061,9 @@ export function ReplaceManagerDialog({
                 onDepartment={(id) => update('transferOrgUnitId', id)}
               />
             </div>
+          ) : null}
+          {form.outgoingAction !== 'DEACTIVATE' ? (
+            <HrmManagerAccessFields employeeId={outgoing.id} officeUnitId={null} value={outgoingForm} onChange={setOutgoingForm} onContext={setOutgoingContext} mode="posting" showAccess={false} title={`Login role of ${outgoing.name}`} />
           ) : null}
           {form.outgoingAction === 'DEACTIVATE' ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-3">

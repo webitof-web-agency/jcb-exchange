@@ -15,6 +15,7 @@ import {
   Save,
   Code,
 } from 'lucide-react';
+import useRecruitmentReach from '@/components/recruitment/useRecruitmentReach';
 
 interface DepartmentItem {
   id: string;
@@ -37,8 +38,11 @@ interface EmailTemplateItem {
 export default function AdminRecruitmentSettingsPage() {
   const { t } = useTranslation();
   const currentUser = useAuthStore((state) => state.user);
-  const canCreateDepartment = canUseRecruitmentPermission(currentUser, recruitmentPermissions.departmentsCreate);
-  const canUpdateSettings = canUseRecruitmentPermission(currentUser, recruitmentPermissions.departmentsUpdate);
+  // Company-wide settings: only all-India recruiters change them (the server checks too).
+  const reach = useRecruitmentReach();
+  const allIndia = !reach || reach.allIndia;
+  const canCreateDepartment = allIndia && canUseRecruitmentPermission(currentUser, recruitmentPermissions.departmentsCreate);
+  const canUpdateSettings = allIndia && canUseRecruitmentPermission(currentUser, recruitmentPermissions.departmentsUpdate);
   const [activeTab, setActiveTab] = useState<'departments' | 'templates'>('departments');
 
   // Departments State

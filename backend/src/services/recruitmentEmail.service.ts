@@ -6,6 +6,7 @@ import { decryptTransactionalEmailCredential } from './transactionalEmailCredent
 import { verifyOfferResponseToken } from '../utils/offerResponseToken';
 import { offerValidUntilDay } from '../utils/offerRules';
 import { maskOfferLinks } from '../utils/offerShortCode';
+import { signedLetterUrlOf } from '../utils/offerAcceptanceEvidence';
 import { ensureOfferShortLink, resolveOfferLinkForDelivery, type OfferLinkForDelivery } from './offerShortLink.service';
 import {
   sendTransactionalEmailMessage,
@@ -449,14 +450,11 @@ export const signedCopyContentType = (document: { fileName?: string | null; mime
   return (extension && SIGNED_COPY_TYPES[extension]) || null;
 };
 
-/** Only these carry a separate signed copy; a typed or drawn signature is part of the certificate itself. */
-const SIGNED_COPY_METHODS = new Set(['UPLOADED_SCAN', 'OFFLINE_HR']);
-
 const resolveOfferAcceptanceAttachments = async (offerId: string) => {
   const offer = await prisma.offer.findUnique({
     where: { id: offerId },
     select: {
-      status: true, acceptanceMethod: true, acceptanceCertificateUrl: true, signatureFileUrl: true,
+      status: true, acceptanceMethod: true, acceptanceCertificateUrl: true, signatureFileUrl: true, signedLetterUrl: true,
       application: { select: { applicationRef: true } },
     },
   });
@@ -467,12 +465,14 @@ const resolveOfferAcceptanceAttachments = async (offerId: string) => {
   const attachments: TransactionalEmailAttachment[] = [
     await driveAttachment(offer.acceptanceCertificateUrl, `Offer_Acceptance_${ref}.pdf`, 'application/pdf', 'The offer acceptance certificate'),
   ];
-  if (offer.acceptanceMethod && SIGNED_COPY_METHODS.has(offer.acceptanceMethod) && offer.signatureFileUrl) {
+  // The signed offer letter: signed on the link, uploaded by the candidate, or recorded by HR.
+  const signedLetterUrl = signedLetterUrlOf(offer);
+  if (signedLetterUrl) {
     // Name and type come from the document row, as for HR's download of the same file (PDF or image).
-    const document = await prisma.candidateDocument.findFirst({ where: { fileUrl: offer.signatureFileUrl }, select: { fileName: true, mimeType: true } });
+    const document = await prisma.candidateDocument.findFirst({ where: { fileUrl: signedLetterUrl }, select: { fileName: true, mimeType: true } });
     const contentType = signedCopyContentType(document);
     if (document && contentType) {
-      attachments.push(await driveAttachment(offer.signatureFileUrl, document.fileName, contentType, 'The signed offer copy'));
+      attachments.push(await driveAttachment(signedLetterUrl, document.fileName, contentType, 'The signed offer copy'));
     } else {
       console.warn(`[offer email] signed copy of offer ${offerId} has no known file type; sending the certificate only.`);
     }

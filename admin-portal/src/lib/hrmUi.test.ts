@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { formatHrmStatus, getHrmModulePath, getHrmModuleTab, hasHrmPermission } from './hrmUi';
+import { formatHrmStatus, getHrmModulePath, hasHrmPermission } from './hrmUi';
 
 test('HRM visibility uses additive permissions and preserves super-admin access', () => {
   assert.equal(hasHrmPermission(['hrm.employees.read'], ['hrm.employees.read']), true);
@@ -20,10 +20,4 @@ test('HRM statuses are rendered as readable labels', () => {
 test('HRM module links preserve the portal, employee record, and selected workspace', () => {
   assert.equal(getHrmModulePath('employee', 'employee-123', 'attendance'), '/employee/hrm/employee-123?module=attendance');
   assert.equal(getHrmModulePath('admin', 'employee/123', 'performance'), '/admin/hrm/employee%2F123?module=performance');
-});
-
-test('HRM module links only open a supported workspace', () => {
-  assert.equal(getHrmModuleTab('leave'), 'leave');
-  assert.equal(getHrmModuleTab('kyc'), 'kyc');
-  assert.equal(getHrmModuleTab('unknown'), 'overview');
 });

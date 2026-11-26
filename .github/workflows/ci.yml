@@ -16,6 +16,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docker-publish-config:
+    name: Docker publishing config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test .github/tests/docker-publish-config.test.mjs
+
   backend:
     name: API (backend)
     runs-on: ubuntu-latest

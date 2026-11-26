@@ -53,21 +53,23 @@ test('outcome and reason texts', () => {
 });
 
 test('shift form checks mirror the server', () => {
-  assert.deepEqual(validateShiftForm({ ...emptyShiftForm(), code: 'GEN', name: 'General' }), {});
-  assert.match(validateShiftForm({ ...emptyShiftForm(), code: 'N', name: 'x' }).code ?? '', /2–30/);
-  assert.match(validateShiftForm({ ...emptyShiftForm(), code: 'NIGHT', name: 'Night', startTime: '22:00', endTime: '06:00' }).endTime ?? '', /Night shift/);
-  assert.deepEqual(validateShiftForm({ ...emptyShiftForm(), code: 'NIGHT', name: 'Night', startTime: '22:00', endTime: '06:00', isNightShift: true, halfDayMinutes: '200', fullDayMinutes: '420' }), {});
-  assert.match(validateShiftForm({ ...emptyShiftForm(), code: 'S', name: 'x', startTime: '09:00', endTime: '10:00', breakMinutes: '60', halfDayMinutes: '', fullDayMinutes: '' }).breakMinutes ?? '', /break/);
-  assert.match(validateShiftForm({ ...emptyShiftForm(), code: 'SS', name: 'x', halfDayMinutes: '500', fullDayMinutes: '480' }).halfDayMinutes ?? '', /less than/);
-  assert.match(validateShiftForm({ ...emptyShiftForm(), code: 'SS', name: 'x', fullDayMinutes: '600' }).fullDayMinutes ?? '', /more than/);
-  assert.match(validateShiftForm({ ...emptyShiftForm(), code: 'SS', name: 'x', startTime: '9:30' }).startTime ?? '', /HH:MM/);
+  assert.deepEqual(validateShiftForm({ ...emptyShiftForm(), name: 'General' }), {});
+  assert.match(validateShiftForm({ ...emptyShiftForm(), name: ' ' }).name ?? '', /name/);
+  assert.match(validateShiftForm({ ...emptyShiftForm(), name: 'Night', startTime: '22:00', endTime: '06:00' }).endTime ?? '', /Night shift/);
+  assert.deepEqual(validateShiftForm({ ...emptyShiftForm(), name: 'Night', startTime: '22:00', endTime: '06:00', isNightShift: true, halfDayMinutes: '200', fullDayMinutes: '420' }), {});
+  assert.match(validateShiftForm({ ...emptyShiftForm(), name: 'x', startTime: '09:00', endTime: '10:00', breakMinutes: '60', halfDayMinutes: '', fullDayMinutes: '' }).breakMinutes ?? '', /break/);
+  assert.match(validateShiftForm({ ...emptyShiftForm(), name: 'x', halfDayMinutes: '500', fullDayMinutes: '480' }).halfDayMinutes ?? '', /less than/);
+  assert.match(validateShiftForm({ ...emptyShiftForm(), name: 'x', fullDayMinutes: '600' }).fullDayMinutes ?? '', /more than/);
+  assert.match(validateShiftForm({ ...emptyShiftForm(), name: 'x', startTime: '9:30' }).startTime ?? '', /HH:MM/);
   assert.equal(shiftLengthMinutes('09:30', '18:30', false), 540);
   assert.equal(shiftLengthMinutes('22:00', '06:00', true), 480);
   assert.equal(formatMinutes(90), '1h 30m');
   assert.equal(formatMinutes(45), '45m');
   assert.equal(formatMinutes(null), '—');
-  const payload = shiftPayloadFromForm({ ...emptyShiftForm(), code: 'gen', name: ' General ', halfDayMinutes: '' });
-  assert.deepEqual([payload.code, payload.name, payload.halfDayMinutes, payload.fullDayMinutes], ['GEN', 'General', null, 480]);
+  const payload = shiftPayloadFromForm({ ...emptyShiftForm(), name: ' General ', halfDayMinutes: '' });
+  // The code is not part of the form: the server generates it.
+  assert.equal('code' in payload, false);
+  assert.deepEqual([payload.name, payload.halfDayMinutes, payload.fullDayMinutes], ['General', null, 480]);
   assert.equal(shiftFormFrom(payload).halfDayMinutes, '');
 });
 

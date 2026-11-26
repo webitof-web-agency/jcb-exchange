@@ -12,6 +12,7 @@ import { handOfferToHrm } from './offerHandoff.service';
 import { findEmployeeMatches } from './employeeOnboarding.service';
 import { istToday } from '../istDate';
 import { endScopesOnExit } from '../accessProvisioning';
+import { endChargesInTx } from '../chargeLifecycle';
 
 type Actor = { userId: string; role: string; ipAddress?: string | null };
 
@@ -347,6 +348,8 @@ export const cancelJoining = async (actor: Actor, caseId: string, rawInput: unkn
       await tx.hrmShiftAssignment.updateMany({ where: { employeeId: employee.id, createdAt: { gte: new Date(startOfCase.getTime() - 60_000) }, status: 'ACTIVE' }, data: { status: 'CANCELLED' } });
       // Leave asked for during this joining is closed too (nobody approves leave for a joining that did not happen).
       await tx.hrmLeaveRequest.updateMany({ where: { employeeId: employee.id, createdAt: { gte: new Date(startOfCase.getTime() - 60_000) }, status: { in: ['DRAFT', 'SUBMITTED'] } }, data: { status: 'CANCELLED', decisionReason: 'Joining cancelled.', version: { increment: 1 } } });
+      // Additional charges given while they were joining (with their access) are over.
+      await endChargesInTx(tx, actor, { where: { employeeId: employee.id }, lastDay: new Date(istToday().getTime() - 86_400_000), reason: 'Joining cancelled' });
       // A record created together with this case never joined: archive it. An older record (re-hire) left before.
       const createdForThisCase = employee.createdAt.getTime() >= startOfCase.getTime() - 60_000;
       if (createdForThisCase) {
@@ -384,6 +387,19 @@ export const cancelJoining = async (actor: Actor, caseId: string, rawInput: unkn
         for (const row of snapshot?.salaries ?? []) await tx.hrmCompensationRevision.update({ where: { id: row.id }, data: { status: row.status as 'APPROVED', effectiveTo: asDate(row.effectiveTo) } });
         for (const row of snapshot?.shifts ?? []) await tx.hrmShiftAssignment.update({ where: { id: row.id }, data: { status: row.status as 'ACTIVE', effectiveTo: asDate(row.effectiveTo) } });
         for (const row of snapshot?.scopes ?? []) await tx.hrmAccessScope.update({ where: { id: row.id }, data: { activeTo: asDate(row.activeTo) } });
+        // Access given during this joining (for example with an appointment before the first day) ends as well.
+        if (employee.userId) {
+          const kept = (snapshot?.scopes ?? []).map((row) => row.id);
+          const given = await tx.hrmAccessScope.findMany({
+            where: { userId: employee.userId, createdAt: { gte: new Date(startOfCase.getTime() - 60_000) }, id: { notIn: kept }, OR: [{ activeTo: null }, { activeTo: { gte: istToday() } }] },
+            select: { id: true, activeFrom: true },
+          });
+          for (const row of given) {
+            const yesterday = new Date(istToday().getTime() - 86_400_000);
+            const end = row.activeFrom.getTime() > yesterday.getTime() ? new Date(row.activeFrom.getTime() - 86_400_000) : yesterday;
+            await tx.hrmAccessScope.update({ where: { id: row.id }, data: { activeTo: end } });
+          }
+        }
         employeeOutcome = 'EXITED_AGAIN';
       }
       await audit(actor, 'HRM_EMPLOYEE', employee.id, 'JOINING_CANCELLED', { caseId, outcome: employeeOutcome, reason: input.reason }, tx);

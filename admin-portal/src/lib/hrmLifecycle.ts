@@ -6,6 +6,7 @@ import type {
   HrmReplaceManagerPayload,
   HrmTransferPayload,
 } from './hrmApi';
+import { describeAccessResult, describeEndedCharges } from './hrmManagerAccess';
 import { indiaDay } from './hrmDay';
 
 /**
@@ -122,7 +123,8 @@ export type DestinationKind = 'HEAD_OFFICE' | 'STATE';
 export const selectableOffices = (units: readonly HrmOrganisationUnit[], excludeId?: string | null) =>
   units
     .filter((unit) => unit.isActive && (unit.kind === 'HEAD_OFFICE' || unit.kind === 'STATE') && unit.id !== excludeId)
-    .sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'HEAD_OFFICE' ? -1 : 1));
+    // Head offices first, the default one at the top.
+    .sort((a, b) => (a.kind !== b.kind ? (a.kind === 'HEAD_OFFICE' ? -1 : 1) : Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)) || a.name.localeCompare(b.name)));
 
 export const describeOfficeOption = (unit: Pick<HrmOrganisationUnit, 'name' | 'kind' | 'state'>) => {
   if (unit.kind === 'HEAD_OFFICE') return `${unit.name} · Head office`;
@@ -378,13 +380,13 @@ const plural = (count: number, one: string, many = `${one}s`) => `${count} ${cou
 const officeName = (id: string, officeNames: Record<string, string>) => officeNames[id] ?? 'A state office';
 
 /** Toast after a transfer or appointment; warns when the move left a state office without a manager. */
-export const describeMoveResult = (result: Pick<HrmMoveResult, 'vacatedOfficeId'>, officeNames: Record<string, string> = {}, action = 'Change saved') => {
-  const base = `${action}.`;
+export const describeMoveResult = (result: Pick<HrmMoveResult, 'vacatedOfficeId' | 'access' | 'chargesEnded'>, officeNames: Record<string, string> = {}, action = 'Change saved') => {
+  const base = `${action}.${describeAccessResult(result.access)}${describeEndedCharges(result.chargesEnded)}`;
   return result.vacatedOfficeId ? `${base} ${officeName(result.vacatedOfficeId, officeNames)} now has no manager.` : base;
 };
 
 export const describeDeactivation = (
-  result: { employeeCode: string; reportsMoved: number; loginDisabled: boolean; vacatedOfficeIds: readonly string[] },
+  result: { employeeCode: string; reportsMoved: number; loginDisabled: boolean; vacatedOfficeIds: readonly string[]; chargesEnded?: ReadonlyArray<{ officeName: string }> },
   outcome: ExitOutcome,
   officeNames: Record<string, string> = {},
 ) => {
@@ -393,7 +395,7 @@ export const describeDeactivation = (
   if (result.loginDisabled) parts.push('login disabled');
   const vacated = result.vacatedOfficeIds.map((id) => officeName(id, officeNames));
   const warning = vacated.length ? ` ${vacated.join(', ')} now ${vacated.length === 1 ? 'has' : 'have'} no manager.` : '';
-  return `${parts.join(' · ')}.${warning}`;
+  return `${parts.join(' · ')}.${describeEndedCharges(result.chargesEnded)}${warning}`;
 };
 
 /**
@@ -401,14 +403,16 @@ export const describeDeactivation = (
  * and the toast says so (`vacatedOfficeId`, named through `officeNames`).
  */
 export const describeReplaceResult = (
-  result: { reportsMoved: number; vacatedOfficeId?: string | null | undefined },
+  result: { reportsMoved: number; vacatedOfficeId?: string | null | undefined; access?: HrmMoveResult['access'] | undefined; chargesEnded?: HrmMoveResult['chargesEnded'] | undefined; outgoingRoleChanged?: boolean | undefined; alsoVacatedOfficeIds?: readonly string[] | undefined },
   officeLabel: string,
   officeNames: Record<string, string> = {},
 ) => {
   const base = result.reportsMoved
     ? `${officeLabel} has a new manager. ${plural(result.reportsMoved, 'person', 'people')} now report${result.reportsMoved === 1 ? 's' : ''} to them.`
     : `${officeLabel} has a new manager.`;
-  return result.vacatedOfficeId ? `${base} ${officeName(result.vacatedOfficeId, officeNames)} now has no manager.` : base;
+  const done = `${base}${describeAccessResult(result.access)}${result.outgoingRoleChanged ? ' The outgoing manager\u2019s role was changed.' : ''}${describeEndedCharges(result.chargesEnded)}`;
+  const vacated = [...new Set([...(result.vacatedOfficeId ? [result.vacatedOfficeId] : []), ...(result.alsoVacatedOfficeIds ?? [])])].map((id) => officeName(id, officeNames));
+  return vacated.length ? `${done} ${vacated.join(', ')} now ${vacated.length === 1 ? 'has' : 'have'} no manager.` : done;
 };
 
 /** Short line under the National Operations Manager tile. */
@@ -419,7 +423,8 @@ export const describeNationalManagers = (managers: ReadonlyArray<{ name: string 
 };
 
 /** The Vacant / Covered chip of an office. Offices that are switched off show neither. */
-export const officeCoverageLabel = (office: { kind: string; isActive: boolean }, managerCount: number) => {
+export const officeCoverageLabel = (office: { kind: string; isActive: boolean }, managerCount: number, chargeCount = 0) => {
   if (office.kind !== 'STATE' || !office.isActive) return null;
-  return managerCount === 0 ? 'Vacant' : 'Covered';
+  if (managerCount > 0) return 'Covered';
+  return chargeCount > 0 ? 'Covered (additional charge)' : 'Vacant';
 };

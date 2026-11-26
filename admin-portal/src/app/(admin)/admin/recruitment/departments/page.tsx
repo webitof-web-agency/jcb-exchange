@@ -7,6 +7,7 @@ import BrandLoader from '@/components/ui/BrandLoader';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuthStore } from '@/store/authStore';
 import { canUseRecruitmentPermission, recruitmentPermissions } from '@/lib/recruitmentPermissions';
+import useRecruitmentReach from '@/components/recruitment/useRecruitmentReach';
 
 interface Department {
   id: string;
@@ -34,9 +35,12 @@ const getApiErrorMessage = (err: unknown, fallback: string) => {
 export default function AdminDepartmentsPage() {
   const { t } = useTranslation();
   const currentUser = useAuthStore((state) => state.user);
-  const canCreate = canUseRecruitmentPermission(currentUser, recruitmentPermissions.departmentsCreate);
-  const canUpdate = canUseRecruitmentPermission(currentUser, recruitmentPermissions.departmentsUpdate);
-  const canDelete = canUseRecruitmentPermission(currentUser, recruitmentPermissions.departmentsDelete);
+  // Departments are shared by the whole company: only all-India recruiters change them (the server checks too).
+  const reach = useRecruitmentReach();
+  const allIndia = !reach || reach.allIndia;
+  const canCreate = allIndia && canUseRecruitmentPermission(currentUser, recruitmentPermissions.departmentsCreate);
+  const canUpdate = allIndia && canUseRecruitmentPermission(currentUser, recruitmentPermissions.departmentsUpdate);
+  const canDelete = allIndia && canUseRecruitmentPermission(currentUser, recruitmentPermissions.departmentsDelete);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

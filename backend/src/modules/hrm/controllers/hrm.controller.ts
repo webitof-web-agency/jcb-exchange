@@ -6,6 +6,7 @@ import * as service from '../services/hrm.service';
 import * as onboarding from '../services/employeeOnboarding.service';
 import * as organisation from '../services/organisation.service';
 import * as lifecycle from '../services/officeLifecycle.service';
+import * as managerOptions from '../services/managerOptions.service';
 import * as designations from '../services/designation.service';
 import * as employeeLogin from '../services/employeeLogin.service';
 import * as onboardingCases from '../services/onboarding.service';
@@ -14,6 +15,9 @@ import * as compensation from '../services/compensation.service';
 import * as shifts from '../services/shift.service';
 import * as joining from '../services/joining.service';
 import * as reports from '../services/reports.service';
+import * as charges from '../services/additionalCharge.service';
+import * as managerAccess from '../services/managerAccess.service';
+import * as accessReview from '../services/accessReview.service';
 import { requestIp } from '../audit';
 import { streamFileFromDrive } from '../../../services/googleDrive.service';
 
@@ -40,7 +44,7 @@ const handle = (operation: (req: Request) => Promise<unknown>) => async (req: Re
   }
 };
 
-const DIRECTORY_QUERY_KEYS = ['status', 'search', 'page', 'limit', 'sort', 'order', 'orgUnitId', 'designation', 'employmentType', 'kyc', 'archived'] as const;
+const DIRECTORY_QUERY_KEYS = ['status', 'search', 'page', 'limit', 'sort', 'order', 'orgUnitId', 'designation', 'employmentType', 'kyc', 'manager', 'archived'] as const;
 
 /** Only plain string query values are forwarded; the service validates them. Empty values are ignored. */
 export const listEmployees = handle(async (req) => service.listEmployees(actor(req), Object.fromEntries(
@@ -63,6 +67,8 @@ export const listLinkableUsers = handle(async (req) => onboarding.listLinkableUs
     return typeof value === 'string' && value.trim() ? [[key, key === 'search' ? value.slice(0, 120) : value]] : [];
   }),
 )));
+export const getManagerOptions = handle(async (req) => managerOptions.getHrmManagerOptions(actor(req), req.query));
+export const changeReportingManager = handle(async (req) => lifecycle.changeReportingManager(actor(req), param(req, 'id'), req.body));
 export const transferEmployee = handle(async (req) => lifecycle.transferEmployee(actor(req), param(req, 'id'), req.body));
 export const deactivateEmployee = handle(async (req) => lifecycle.deactivateEmployee(actor(req), param(req, 'id'), req.body));
 export const reactivateEmployee = handle(async (req) => lifecycle.reactivateEmployee(actor(req), param(req, 'id')));
@@ -188,6 +194,31 @@ export const getHeadcountCsv = async (req: Request, res: Response, next: NextFun
     return next(error);
   }
 };
+/** Only plain string query values are forwarded; the services validate them. */
+const textQuery = (req: Request) => Object.fromEntries(Object.entries(req.query).filter(([, value]) => typeof value === 'string' && value.trim() !== ''));
+
+export const listCharges = handle(async (req) => charges.listCharges(actor(req), textQuery(req)));
+export const getChargeOptions = handle(async (req) => charges.getChargeOptions(actor(req), param(req, 'id')));
+export const createCharge = handle(async (req) => charges.createCharge(actor(req), param(req, 'id'), req.body));
+export const changeChargeEnd = handle(async (req) => charges.changeChargeEnd(actor(req), param(req, 'id'), req.body));
+export const endCharge = handle(async (req) => charges.endCharge(actor(req), param(req, 'id'), req.body));
+export const getManagerAccessContext = handle(async (req) => ({
+  context: await managerAccess.getManagerAccessContext(actor(req), param(req, 'id'), typeof req.query.officeUnitId === 'string' && req.query.officeUnitId.trim() ? req.query.officeUnitId.trim().slice(0, 100) : null),
+}));
+export const getAccessReview = handle(async (req) => accessReview.getAccessReview(textQuery(req)));
+export const getAccessReviewCsv = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const file = await accessReview.getAccessReviewCsv(textQuery(req));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    res.status(200).send(file.csv);
+  } catch (error) {
+    if (error instanceof HrmHttpError) return res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
+    return next(error);
+  }
+};
+
 export const retiredAccessScopes = (_req: Request, res: Response) => res.status(410).json({
   success: false,
   code: 'USE_ACCESS_CARD',

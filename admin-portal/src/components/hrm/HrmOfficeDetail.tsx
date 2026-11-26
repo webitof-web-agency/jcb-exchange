@@ -12,6 +12,7 @@ import { formatHrmDate, formatHrmStatus, getHrmErrorMessage, getHrmStatusClass }
 import { describeUpcomingManagers, type UpcomingManager } from '@/lib/hrmOnboardingPage';
 import { AppointManagerDialog, DeactivateDialog, ReplaceManagerDialog, TransferDialog } from './HrmLifecycleDialogs';
 import HrmModal from './HrmModal';
+import HrmChargesCard from './HrmChargesCard';
 
 type Portal = 'admin' | 'employee';
 type Person = { id: string; name: string; employeeCode: string };
@@ -128,9 +129,10 @@ export default function HrmOfficeDetailPage({ officeId, portal }: { officeId: st
     return () => window.clearTimeout(timer);
   }, [searchInput, search]);
 
-  const isVacant = Boolean(detail?.vacant);
+  // A state office without a manager of its own (also one covered by a charge) shows who is joining.
+  const needsManager = Boolean(detail && detail.office.kind === 'STATE' && detail.office.isActive && !detail.managers.length);
   useEffect(() => {
-    if (!isVacant) return undefined;
+    if (!needsManager) return undefined;
     let cancelled = false;
     hrmApi.getOrganisation().then((response) => {
       if (cancelled) return;
@@ -138,7 +140,7 @@ export default function HrmOfficeDetailPage({ officeId, portal }: { officeId: st
       setUpcoming(unit?.upcomingManagers ?? []);
     }).catch(() => { if (!cancelled) setUpcoming([]); });
     return () => { cancelled = true; };
-  }, [isVacant, officeId, reloadKey]);
+  }, [needsManager, officeId, reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -179,7 +181,7 @@ export default function HrmOfficeDetailPage({ officeId, portal }: { officeId: st
 
   if (!detail) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-4 p-4 sm:p-6">
+      <div className="w-full space-y-4">
         <Link href={`/${portal}/hrm/organisation`} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-amber-700"><ArrowLeft className="h-4 w-4" />Organisation</Link>
         {loading ? <Skeleton /> : (
           <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
@@ -196,7 +198,8 @@ export default function HrmOfficeDetailPage({ officeId, portal }: { officeId: st
   const teamPage = detail.teamPage ?? { page: 1, limit: TEAM_PAGE_SIZE, total: team.length, totalPages: 1, search: '' };
   const teamPages = totalPagesOf(teamPage);
   const isState = office.kind === 'STATE';
-  const coverage = officeCoverageLabel(office, managers.length);
+  const chargeHolders = detail.chargeHolders ?? [];
+  const coverage = officeCoverageLabel(office, managers.length, chargeHolders.length);
   const national = describeNationalManagers(detail.nationalOperationsManagers);
   // The dialogs search employees, read lifecycle details and the designation list: all of that needs hrm.employees.read.
   // When the server hid the team for lack of it, no button is offered that would open a dialog that cannot work.
@@ -220,7 +223,7 @@ export default function HrmOfficeDetailPage({ officeId, portal }: { officeId: st
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5 p-4 sm:p-6">
+    <div className="w-full space-y-4">
       <Link href={`/${portal}/hrm/organisation`} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-amber-700"><ArrowLeft className="h-4 w-4" />Organisation</Link>
 
       {error ? (
@@ -239,8 +242,8 @@ export default function HrmOfficeDetailPage({ officeId, portal }: { officeId: st
               <p className="mt-0.5 text-sm text-slate-500">{isState ? 'State office' : 'Head office'}{place ? ` · ${place}` : ''} · <span className="font-mono text-xs">{office.code}</span></p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Chip tone={office.isActive ? 'green' : 'grey'}>{office.isActive ? 'Active' : 'Switched off'}</Chip>
-                {coverage ? <Chip tone={coverage === 'Vacant' ? 'red' : 'green'}>{coverage}</Chip> : null}
-                {isVacant && upcoming.length ? <span className="text-xs font-medium text-sky-700">{describeUpcomingManagers(upcoming)}</span> : null}
+                {coverage ? <Chip tone={coverage === 'Vacant' ? 'red' : coverage === 'Covered' ? 'green' : 'amber'}>{coverage}</Chip> : null}
+                {needsManager && upcoming.length ? <span className="text-xs font-medium text-sky-700">{describeUpcomingManagers(upcoming)}</span> : null}
                 {loading ? <span className="inline-flex items-center gap-1 text-xs text-slate-400"><Loader2 className="h-3.5 w-3.5 animate-spin" />Refreshing…</span> : null}
               </div>
             </div>
@@ -252,7 +255,7 @@ export default function HrmOfficeDetailPage({ officeId, portal }: { officeId: st
 
       <div className={`grid grid-cols-2 gap-3 ${isState ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
         <Tile label="Staff" value={detail.teamHidden ? '—' : counts.staff} hint={detail.teamHidden ? 'Needs hrm.employees.read' : 'Working from this office'} />
-        {isState ? <Tile label="Managers" value={counts.managers} hint={counts.managers === 0 ? 'Nobody manages this state yet' : counts.managers === 1 ? 'One manager' : 'More than one manager'} tone={counts.managers === 0 ? 'warning' : 'neutral'} /> : null}
+        {isState ? <Tile label="Managers" value={counts.managers} hint={counts.managers === 0 ? (chargeHolders.length ? `Additional charge: ${chargeHolders.map((holder) => holder.name).join(', ')}` : 'Nobody manages this state yet') : counts.managers === 1 ? 'One manager' : 'More than one manager'} tone={counts.managers === 0 ? 'warning' : 'neutral'} /> : null}
         <Tile label="On leave" value={detail.teamHidden ? '—' : counts.onLeave} />
         <Tile label="National Operations Manager" value={national.value} hint={national.hint} />
       </div>
@@ -290,12 +293,16 @@ export default function HrmOfficeDetailPage({ officeId, portal }: { officeId: st
           ) : (
             <div className="px-6 py-10 text-center">
               <UserCog className="mx-auto h-8 w-8 text-amber-300" />
-              <p className="mt-3 text-sm font-semibold text-slate-800">No manager – appoint one</p>
-              <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-500">{office.isActive ? `${office.name} has nobody managing it. Pick an existing employee; they report to the National Operations Manager by default.` : 'Switch the office on before appointing a manager.'}</p>
+              <p className="mt-3 text-sm font-semibold text-slate-800">{chargeHolders.length ? 'No manager of its own' : 'No manager – appoint one'}</p>
+              <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-500">{!office.isActive ? 'Switch the office on before appointing a manager.' : chargeHolders.length ? `${chargeHolders.map((holder) => holder.name).join(', ')} looks after it as an additional charge. Appoint a manager when the office gets its own.` : `${office.name} has nobody managing it. Pick an existing employee (they report to the National Operations Manager by default), or give somebody an additional charge below.`}</p>
               {canMove ? <button type="button" onClick={() => setDialog({ type: 'appoint' })} className={`${primaryButton} mt-4`}><UserPlus className="h-4 w-4" />Appoint manager</button> : null}
             </div>
           )}
         </section>
+      ) : null}
+
+      {isState ? (
+        <HrmChargesCard subject={{ kind: 'office', id: office.id, name: office.name }} portal={portal} canGive={canMove} refreshKey={reloadKey} onChanged={reload} />
       ) : null}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="hrm-office-team">

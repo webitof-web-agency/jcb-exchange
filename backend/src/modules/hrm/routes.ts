@@ -4,6 +4,7 @@ import { requireAllIndiaHrm, requireFinancePayrollRead, requireHrmPermission } f
 const orgMasters = requireAllIndiaHrm('The organisation structure');
 const designationMasters = requireAllIndiaHrm('The designation list');
 const shiftMasters = requireAllIndiaHrm('The shift list');
+const accessReviewers = requireAllIndiaHrm('The access review');
 import { HRM_PERMISSIONS } from './security';
 import * as controller from './controllers/hrm.controller';
 import { hrmMutationRateLimit } from '../../middlewares/rateLimit.middleware';
@@ -29,6 +30,9 @@ router.get('/employees/:id', requireHrmPermission(HRM_PERMISSIONS.EMPLOYEES_READ
 router.patch('/employees/:id', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.EMPLOYEES_MANAGE), controller.updateEmployee);
 router.post('/employees/:id/reset-password', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.EMPLOYEES_MANAGE), controller.resetEmployeeLoginPassword);
 router.post('/employees/:id/link-login', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.EMPLOYEES_MANAGE), controller.linkLoginToEmployee);
+// The one list behind every "Reporting manager" choice.
+router.get('/manager-options', requireHrmPermission(HRM_PERMISSIONS.ASSIGNMENTS_MANAGE, HRM_PERMISSIONS.EMPLOYEES_MANAGE), controller.getManagerOptions);
+router.post('/employees/:id/reporting-manager', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.ASSIGNMENTS_MANAGE), controller.changeReportingManager);
 router.get('/employees/:id/lifecycle-context', requireHrmPermission(HRM_PERMISSIONS.EMPLOYEES_READ), controller.getLifecycleContext);
 router.post('/employees/:id/transfer', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.ASSIGNMENTS_MANAGE), controller.transferEmployee);
 router.post('/employees/:id/deactivate', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.EMPLOYEES_MANAGE), controller.deactivateEmployee);
@@ -111,6 +115,18 @@ router.get('/employees/:id/access', requireHrmPermission(HRM_PERMISSIONS.EMPLOYE
 router.post('/employees/:id/access-scopes', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.SCOPE_MANAGE), controller.grantEmployeeScope);
 router.post('/access-scopes/:id/end', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.SCOPE_MANAGE), controller.endEmployeeScope);
 router.patch('/employees/:id/login-role', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.EMPLOYEES_MANAGE), controller.changeLoginRole);
+
+// Additional charge: one manager looking after more than one state office
+router.get('/additional-charges', requireHrmPermission(HRM_PERMISSIONS.EMPLOYEES_READ, HRM_PERMISSIONS.ORG_READ, HRM_PERMISSIONS.ORG_MANAGE, HRM_PERMISSIONS.ASSIGNMENTS_MANAGE), controller.listCharges);
+router.get('/employees/:id/charge-options', requireHrmPermission(HRM_PERMISSIONS.ASSIGNMENTS_MANAGE), controller.getChargeOptions);
+router.post('/organisation/offices/:id/charges', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.ASSIGNMENTS_MANAGE), controller.createCharge);
+router.patch('/additional-charges/:id', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.ASSIGNMENTS_MANAGE), controller.changeChargeEnd);
+router.post('/additional-charges/:id/end', hrmMutationRateLimit, requireHrmPermission(HRM_PERMISSIONS.ASSIGNMENTS_MANAGE), controller.endCharge);
+// "Login role & access" choices of the appointment dialogs
+router.get('/employees/:id/manager-access', requireHrmPermission(HRM_PERMISSIONS.ASSIGNMENTS_MANAGE), controller.getManagerAccessContext);
+// Access review: who can see which state, and what looks wrong
+router.get('/access-review', requireHrmPermission(HRM_PERMISSIONS.SCOPE_MANAGE), accessReviewers, controller.getAccessReview);
+router.get('/access-review.csv', requireHrmPermission(HRM_PERMISSIONS.SCOPE_MANAGE), accessReviewers, controller.getAccessReviewCsv);
 
 // Reports (Phase 6): scope-limited aggregates for directors / HR
 router.get('/reports/summary', requireHrmPermission(HRM_PERMISSIONS.EMPLOYEES_READ), controller.getReportSummary);

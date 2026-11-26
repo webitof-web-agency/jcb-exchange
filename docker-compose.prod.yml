@@ -8,10 +8,7 @@
 
 services:
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/jcbexchange/jcbexchange-backend:latest}
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ${BACKEND_IMAGE:-ghcr.io/${GHCR_OWNER:-webitof-web-agency}/jcbexchange-backend:latest}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -48,14 +45,7 @@ services:
           memory: 3G
 
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/jcbexchange/jcbexchange-frontend:latest}
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.jcbexchange.com/api}
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://jcbexchange.com}
-        NEXT_PUBLIC_PARTNER_PORTAL_URL: ${NEXT_PUBLIC_PARTNER_PORTAL_URL:-https://admin.jcbexchange.com}
+    image: ${FRONTEND_IMAGE:-ghcr.io/${GHCR_OWNER:-webitof-web-agency}/jcbexchange-frontend:latest}
     restart: unless-stopped
     depends_on:
       backend:
@@ -85,15 +75,7 @@ services:
           memory: 2G
 
   admin-portal:
-    image: ${ADMIN_PORTAL_IMAGE:-ghcr.io/jcbexchange/jcbexchange-admin-portal:latest}
-    build:
-      context: ./admin-portal
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
-        NEXT_PUBLIC_PUBLIC_SITE_URL: ${NEXT_PUBLIC_PUBLIC_SITE_URL:-https://jcbexchange.com}
-        NEXT_PUBLIC_FRONTEND_URL: ${NEXT_PUBLIC_FRONTEND_URL:-https://jcbexchange.com}
-        NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES: ${NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES:-15}
+    image: ${ADMIN_PORTAL_IMAGE:-ghcr.io/${GHCR_OWNER:-webitof-web-agency}/jcbexchange-admin-portal:latest}
     restart: unless-stopped
     depends_on:
       backend:

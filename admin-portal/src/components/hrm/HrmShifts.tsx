@@ -55,7 +55,7 @@ function ShiftDialog({ shift, onClose, onDone }: { shift: HrmShift | null; onClo
   return (
     <HrmModal
       title={shift ? `Edit ${shift.name}` : 'Add shift'}
-      description="Timings in Indian time. Attendance is judged against the shift a person has on that day."
+      description={`${shift ? `Code ${shift.code}.` : 'The code is generated automatically.'} Timings are in Indian time; attendance is judged against the shift a person has on that day.`}
       onClose={onClose}
       busy={saving}
       lockDismiss={saving || dirty}
@@ -64,8 +64,7 @@ function ShiftDialog({ shift, onClose, onDone }: { shift: HrmShift | null; onClo
       footer={<><button type="button" onClick={onClose} disabled={saving} className="inline-flex min-h-10 items-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button><button type="button" onClick={() => void submit()} disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Save</button></>}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        {text('code', 'Code', { placeholder: 'GEN', maxLength: 30 })}
-        {text('name', 'Name', { placeholder: 'General shift', maxLength: 80 })}
+        <div className="sm:col-span-2">{text('name', 'Name', { placeholder: 'General shift', maxLength: 80 })}</div>
         {text('startTime', 'Starts at', { type: 'time' })}
         {text('endTime', 'Ends at', { type: 'time' })}
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 sm:col-span-2"><input type="checkbox" checked={form.isNightShift} onChange={(event) => set('isNightShift', event.target.checked)} disabled={saving} className="h-4 w-4 accent-amber-500" /> Night shift (ends the next day)</label>

@@ -131,7 +131,8 @@ export default function HrmSalaryCard({
         </>
       ) : null}
 
-      {proposing ? <ProposeSalaryDialog employeeId={employeeId} baseline={latestApproved} onClose={() => onProposingChange(false)} onDone={async () => { onProposingChange(false); await changed(); }} /> : null}
+      {/* Opened only once the salary is loaded, so the form starts from the salary in force. */}
+      {proposing && history ? <ProposeSalaryDialog employeeId={employeeId} baseline={latestApproved} onClose={() => onProposingChange(false)} onDone={async () => { onProposingChange(false); await changed(); }} /> : null}
       {deciding ? <DecideSalaryDialog revision={deciding.revision} action={deciding.action} onClose={() => setDeciding(null)} onDone={async () => { setDeciding(null); await changed(); }} /> : null}
     </section>
   );

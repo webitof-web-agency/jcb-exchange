@@ -93,14 +93,8 @@ test('after a version conflict only the fields changed in the dialog keep their 
   assert.deepEqual(mergePersonalForm(baseline, baseline, fresh), { merged: fresh, kept: [] });
 });
 
-test('the profile status field only switches between the working states', async () => {
-  const { profileStatusControl, describeStatusChangeRefusal } = await import('./hrmProfile');
-  assert.deepEqual(profileStatusControl('ACTIVE').options, ['ACTIVE', 'ON_LEAVE', 'NOTICE_PERIOD']);
-  assert.equal(profileStatusControl('ON_LEAVE').editable, true);
-  assert.equal(profileStatusControl('PRE_ONBOARDING').editable, false);
-  assert.match(profileStatusControl('ONBOARDING').hint, /Confirm joining/);
-  assert.match(profileStatusControl('EXITED').hint, /Deactivate/);
-  assert.deepEqual(profileStatusControl('SUSPENDED').options, ['SUSPENDED']);
+test('a refused status change is explained', async () => {
+  const { describeStatusChangeRefusal } = await import('./hrmProfile');
   assert.match(describeStatusChangeRefusal({ response: { data: { code: 'USE_CONFIRM_JOINING' } } }) ?? '', /Confirm joining/);
   assert.match(describeStatusChangeRefusal({ response: { data: { code: 'USE_LIFECYCLE' } } }) ?? '', /Deactivate/);
   assert.equal(describeStatusChangeRefusal(new Error('x')), null);

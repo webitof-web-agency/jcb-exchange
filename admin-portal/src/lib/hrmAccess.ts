@@ -123,6 +123,8 @@ export const canSeeHrmMenu = (viewer: HrmViewer) =>
 
 const JOINING_STATUSES = new Set(['DRAFT', 'PRE_ONBOARDING', 'ONBOARDING']);
 const LEFT_STATUSES = new Set(['EXITED', 'TERMINATED']);
+/** People who can hold an additional charge (the server's working statuses). */
+const CHARGE_STATUSES = new Set(['ONBOARDING', 'ACTIVE', 'ON_LEAVE', 'NOTICE_PERIOD']);
 
 export type HrmProfileFacts = {
   archived: boolean;
@@ -208,6 +210,10 @@ export const getHrmProfileAbilities = (viewer: HrmViewer, facts: HrmProfileFacts
     assignShift: working && !own && has('hrm.attendance.manage'),
     transfer: working && !own && canAssign && has('hrm.org.read'),
     addAssignment: working && !own && canAssign && canManageEmployees && !facts.hasOpenAssignment,
+    /** Who they report to, on its own: it needs an assignment to build on. */
+    changeManager: working && !own && canAssign && facts.hasOpenAssignment,
+    /** A state office on top of their posting: only somebody already working (never your own record). */
+    giveCharge: working && !own && canAssign && CHARGE_STATUSES.has(facts.status),
     /** The server refuses deactivating your own account (even a Super Admin) and a joiner with an open case. */
     deactivate: working && !facts.ownLogin && canAssign && canManageEmployees && !joinerWithOpenCase,
     /** Shown instead of Deactivate for a joiner whose onboarding is still open. */
@@ -256,8 +262,10 @@ export const NO_GRANTABLE_ROLE_MESSAGE = 'No role you can give — ask a Super A
  */
 export const canEndHrmScope = (
   abilities: { canManageScopes: boolean; allIndia: boolean; ownStateIds?: readonly number[] | null },
-  scope: { scopeType: string; state?: { id: number } | null; stateId?: number | null },
+  scope: { scopeType: string; source?: string; state?: { id: number } | null; stateId?: number | null },
 ) => {
+  // The access of an additional charge ends with the charge, not here.
+  if (scope.source === 'CHARGE') return false;
   if (!abilities.canManageScopes) return false;
   if (abilities.allIndia) return true;
   if (scope.scopeType === 'DIRECT_REPORTS' || scope.scopeType === 'OWN') return true;

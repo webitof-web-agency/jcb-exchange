@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { HrmEmployee } from './hrmApi';
-import {
+import { describeEmployeeOption,
   DEFAULT_DIRECTORY_FILTERS,
   employeesToCsv,
   getInitials,
@@ -87,3 +87,19 @@ test('CSV export escapes values, neutralises formulas and never includes raw KYC
   assert.ok(row?.includes('"Sales, Senior"'));
   assert.ok(row?.endsWith('Verified,Pending,Pending'));
 });
+
+test('an employee picker says exactly who is chosen: manager badge, job, code, office and role', () => {
+  assert.deepEqual(describeEmployeeOption({ employeeCode: 'EMP-0002', designation: 'State Manager', department: 'Sales', officeName: 'Gujarat State Office', officeType: 'REGION', isOfficeManager: true, directReports: 3, hasLogin: true, loginRole: 'State Manager', status: 'ACTIVE' }), {
+    badge: 'State Manager', reports: '3 reports', states: null, job: 'State Manager · Sales', detail: 'EMP-0002 · Gujarat State Office · Role: State Manager', status: null,
+  });
+  const two = describeEmployeeOption({ employeeCode: 'EMP-0007', isOfficeManager: true, officeType: 'REGION', additionalCharges: 2 });
+  assert.deepEqual([two.badge, two.states], ['State Manager', '+2 states']);
+  const acting = describeEmployeeOption({ employeeCode: 'EMP-0008', additionalCharges: 1, directReports: 4 });
+  assert.deepEqual([acting.badge, acting.states], ['Additional charge', '1 state']);
+  const lead = describeEmployeeOption({ employeeCode: 'EMP-0003', designation: 'Team Lead', location: 'Raipur, Chhattisgarh', directReports: 1, hasLogin: false, status: 'ON_LEAVE' });
+  assert.deepEqual([lead.badge, lead.reports, lead.detail, lead.status], ['Manager', '1 report', 'EMP-0003 · Raipur, Chhattisgarh · No login', 'ON_LEAVE']);
+  // A list that does not know about logins leaves the role out.
+  const plain = describeEmployeeOption({ employeeCode: 'EMP-0004' });
+  assert.deepEqual([plain.badge, plain.job, plain.detail], [null, 'No designation yet', 'EMP-0004']);
+});
+

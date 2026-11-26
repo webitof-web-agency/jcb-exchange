@@ -139,13 +139,13 @@ export const formatMinutes = (minutes: number | null | undefined) => {
 };
 
 export type ShiftForm = {
-  code: string; name: string; startTime: string; endTime: string; breakMinutes: string; graceMinutes: string;
+  name: string; startTime: string; endTime: string; breakMinutes: string; graceMinutes: string;
   halfDayMinutes: string; fullDayMinutes: string; isNightShift: boolean; isActive: boolean;
 };
 export type ShiftFormErrors = Partial<Record<keyof ShiftForm, string>>;
 
 export const emptyShiftForm = (): ShiftForm => ({
-  code: '', name: '', startTime: '09:30', endTime: '18:30', breakMinutes: '60', graceMinutes: '15',
+  name: '', startTime: '09:30', endTime: '18:30', breakMinutes: '60', graceMinutes: '15',
   halfDayMinutes: '240', fullDayMinutes: '480', isNightShift: false, isActive: true,
 });
 
@@ -154,7 +154,6 @@ const wholeNumber = (value: string) => (value.trim() === '' ? null : /^\d+$/.tes
 /** Same checks as the server (shiftRules.ts + the schema limits). */
 export const validateShiftForm = (form: ShiftForm): ShiftFormErrors => {
   const errors: ShiftFormErrors = {};
-  if (!/^[A-Za-z0-9_-]{2,30}$/.test(form.code.trim())) errors.code = 'Use 2–30 letters, numbers, - or _.';
   if (!form.name.trim()) errors.name = 'Enter a name.';
   else if (form.name.trim().length > 80) errors.name = 'Keep the name under 80 characters.';
   if (!TIME.test(form.startTime)) errors.startTime = 'Use HH:MM (24-hour).';
@@ -181,7 +180,6 @@ export const validateShiftForm = (form: ShiftForm): ShiftFormErrors => {
 };
 
 export const shiftPayloadFromForm = (form: ShiftForm): HrmShiftPayload => ({
-  code: form.code.trim().toUpperCase(),
   name: form.name.trim(),
   startTime: form.startTime,
   endTime: form.endTime,
@@ -194,7 +192,7 @@ export const shiftPayloadFromForm = (form: ShiftForm): HrmShiftPayload => ({
 });
 
 export const shiftFormFrom = (shift: HrmShiftPayload): ShiftForm => ({
-  code: shift.code, name: shift.name, startTime: shift.startTime, endTime: shift.endTime,
+  name: shift.name, startTime: shift.startTime, endTime: shift.endTime,
   breakMinutes: String(shift.breakMinutes ?? 0), graceMinutes: String(shift.graceMinutes ?? 0),
   halfDayMinutes: shift.halfDayMinutes === null || shift.halfDayMinutes === undefined ? '' : String(shift.halfDayMinutes),
   fullDayMinutes: shift.fullDayMinutes === null || shift.fullDayMinutes === undefined ? '' : String(shift.fullDayMinutes),

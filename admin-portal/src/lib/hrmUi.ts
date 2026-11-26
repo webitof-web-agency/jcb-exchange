@@ -38,12 +38,6 @@ export const HRM_MODULES: ReadonlyArray<{
   { id: 'exit', label: 'Exit & full and final', description: 'Resignation, last working day and exit records.', managePermission: 'hrm.exit.manage', permissions: HRM_SECTION_PERMISSIONS.exit },
 ];
 
-export const getHrmModuleTab = (value?: string | null): HrmModuleTab => (
-  value === 'kyc' || value === 'attendance' || value === 'leave' || value === 'compensation' || value === 'performance' || value === 'exit'
-    ? value
-    : 'overview'
-);
-
 export const getHrmModulePath = (
   portal: 'admin' | 'employee',
   employeeId: string,

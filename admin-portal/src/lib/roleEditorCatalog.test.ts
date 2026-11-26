@@ -72,6 +72,8 @@ test('recruitment section offers Candidates and Recruitment Settings', () => {
   const ids = (name: string) => groups.find((group) => group.groupName === name)?.permissions.map((permission) => permission.id);
   assert.deepEqual(ids('Candidates'), ['recruitment.candidates.read', 'recruitment.candidates.update']);
   assert.deepEqual(ids('Recruitment Settings'), ['recruitment.settings.read', 'recruitment.settings.update']);
+  // All-India recruitment is its own tick, so a State Manager role can leave it out.
+  assert.deepEqual(ids('Recruitment Access'), ['recruitment.scope.all']);
 });
 
 test('only Super Admin / ALL_ACCESS may give permissions they do not hold', () => {

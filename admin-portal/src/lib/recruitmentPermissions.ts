@@ -41,6 +41,8 @@ export const recruitmentPermissions = {
   candidatesUpdate: 'recruitment.candidates.update',
   settingsRead: 'recruitment.settings.read',
   settingsUpdate: 'recruitment.settings.update',
+  /** Without it a login sees only the states of its HRM access scopes. */
+  scopeAll: 'recruitment.scope.all',
 } as const;
 
 export type RecruitmentPermission = (typeof recruitmentPermissions)[keyof typeof recruitmentPermissions];

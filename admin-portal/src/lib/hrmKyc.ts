@@ -1,4 +1,5 @@
 import type { HrmDocument, HrmKycDocumentType } from './hrmApi';
+import { accountHolderProblem, bankNameProblem, cleanText } from './hrmProfile';
 
 /** The verified PAN / Aadhaar currently on file for an employee (archived or rejected ones are ignored). */
 export const getActiveKycDocument = (
@@ -45,10 +46,12 @@ export const normalizeIfsc = (value: string) => value.replace(/[^a-zA-Z0-9]/g, '
 /** Field errors for the bank account form; an empty object means the form can be saved. */
 export const validateBankAccountForm = (form: BankAccountForm): Partial<Record<keyof BankAccountForm, string>> => {
   const errors: Partial<Record<keyof BankAccountForm, string>> = {};
-  const holder = form.accountHolderName.trim();
-  if (holder.length < 2) errors.accountHolderName = 'Enter the account holder name as printed in the bank records.';
-  const bankName = form.bankName.trim();
-  if (bankName && bankName.length < 2) errors.bankName = 'Bank name looks too short.';
+  const holder = cleanText(form.accountHolderName);
+  const holderProblem = holder.length < 2 ? 'Enter the account holder name as printed in the bank records.' : accountHolderProblem(holder);
+  if (holderProblem) errors.accountHolderName = holderProblem;
+  const bankName = cleanText(form.bankName);
+  const bankProblem = bankName && bankName.length < 2 ? 'Bank name looks too short.' : bankNameProblem(bankName);
+  if (bankProblem) errors.bankName = bankProblem;
   const accountNumber = normalizeAccountNumber(form.accountNumber);
   if (accountNumber.length < 6 || accountNumber.length > 20) errors.accountNumber = 'Enter a valid account number (6 to 20 digits).';
   if (!errors.accountNumber && normalizeAccountNumber(form.confirmAccountNumber) !== accountNumber) {
@@ -60,8 +63,8 @@ export const validateBankAccountForm = (form: BankAccountForm): Partial<Record<k
 
 /** Payload for the HRM bank-account endpoint (digits and IFSC normalised, confirmation dropped). */
 export const toBankAccountPayload = (form: BankAccountForm) => ({
-  accountHolderName: form.accountHolderName.trim(),
-  bankName: form.bankName.trim() || null,
+  accountHolderName: cleanText(form.accountHolderName),
+  bankName: cleanText(form.bankName) || null,
   accountNumber: normalizeAccountNumber(form.accountNumber),
   ifsc: normalizeIfsc(form.ifsc),
   isPrimary: form.isPrimary,

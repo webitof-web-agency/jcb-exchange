@@ -5,7 +5,6 @@ import {
   buildLoginDetailsText,
   createEmptyOnboardForm,
   describeLostSelections,
-  describeNationalManager,
   describeStateOffice,
   extractFieldErrors,
   fieldForServerMessage,
@@ -14,7 +13,6 @@ import {
   getStateManagerDefaults,
   isOnboardFormDirty,
   isValidEmail,
-  locationAfterSwitch,
   maxDateOfBirth,
   maxJoiningDate,
   normaliseLoginSearch,
@@ -80,36 +78,29 @@ test('payload is trimmed, numeric ids are numbers and head office sends no state
   assert.deepEqual([state.stateId, state.cityId, state.customRoleId], [4040, 133590, 'role-1']);
 });
 
-test('the reporting manager is never part of the add payloads (the server applies the default)', () => {
+test('with no reporting manager chosen nothing is sent, so the server applies its default', () => {
   assert.equal('managerEmployeeId' in toOnboardPayload(valid), false);
   assert.equal('managerEmployeeId' in toOnboardPayload({ ...valid, locationType: 'STATE_OFFICE', stateId: '1', cityId: '2', isOfficeManager: true }), false);
   assert.equal('managerEmployeeId' in toOnboardExistingPayload({ ...valid, userId: 'user-1' }), false);
   assert.equal('managerEmployeeId' in createEmptyOnboardForm('2026-11-24'), false);
 });
 
-const RAIPUR = { stateId: 4040, cityId: 133590 };
-
-test('a head office employee starts on the head office place and may pick another one, state and city together', () => {
-  const head = createEmptyOnboardForm('2026-11-24', 'HEAD_OFFICE', RAIPUR);
-  assert.deepEqual([head.stateId, head.cityId], ['4040', '133590']);
-  const filled: OnboardForm = { ...head, fullName: 'Asha', mobile: '9876543210', email: 'a@b.co', password: 'Strong@123', designation: 'Executive', orgUnitId: 'dept-1' };
+test('a head office employee names the head office; the state and city come from that office', () => {
+  const head = createEmptyOnboardForm('2026-11-24', 'HEAD_OFFICE', 'ho-1');
+  assert.deepEqual([head.headOfficeUnitId, head.stateId, head.cityId], ['ho-1', '', '']);
+  // A state picked before switching to the head office is never sent.
+  const filled: OnboardForm = { ...head, fullName: 'Asha', mobile: '9876543210', email: 'a@b.co', password: 'Strong@123', designation: 'Executive', orgUnitId: 'dept-1', stateId: '4041', cityId: '99' };
   assert.deepEqual(validateOnboardForm(filled, { headOfficeAvailable: true }), {});
-  assert.deepEqual(validateOnboardForm({ ...filled, stateId: '4041', cityId: '' }, { headOfficeAvailable: true }), { cityId: 'Select both the state and the city.' });
-  assert.deepEqual(validateOnboardForm({ ...filled, stateId: '', cityId: '133590' }, { headOfficeAvailable: true }), { stateId: 'Select both the state and the city.' });
-  // Neither chosen is fine: the server uses the head office's own place.
-  assert.deepEqual(validateOnboardForm({ ...filled, stateId: '', cityId: '' }, { headOfficeAvailable: true }), {});
+  assert.equal(validateOnboardForm(filled, { headOfficeAvailable: true, headOfficeMessage: 'It has no state and city.' }).headOfficeUnitId, 'It has no state and city.');
   const payload = toOnboardPayload(filled);
-  assert.deepEqual([payload.locationType, payload.stateId, payload.cityId], ['HEAD_OFFICE', 4040, 133590]);
-  const another = toOnboardPayload({ ...filled, stateId: '4041', cityId: '99' });
-  assert.deepEqual([another.stateId, another.cityId], [4041, 99]);
-  assert.deepEqual([toOnboardPayload({ ...filled, stateId: '', cityId: '' }).stateId, toOnboardExistingPayload({ ...filled, userId: 'u', stateId: '4041', cityId: '99' }).cityId], [null, 99]);
-});
-
-test('switching the work location resets the place sensibly', () => {
-  assert.deepEqual(locationAfterSwitch({ stateId: '4041', cityId: '7' }, 'HEAD_OFFICE', RAIPUR), { stateId: '4040', cityId: '133590' });
-  assert.deepEqual(locationAfterSwitch({ stateId: '4040', cityId: '133590' }, 'STATE_OFFICE', RAIPUR), { stateId: '', cityId: '' });
-  assert.deepEqual(locationAfterSwitch({ stateId: '4041', cityId: '7' }, 'STATE_OFFICE', RAIPUR), { stateId: '4041', cityId: '7' });
-  assert.deepEqual(locationAfterSwitch({ stateId: '4041', cityId: '7' }, 'HEAD_OFFICE', null), { stateId: '', cityId: '' });
+  assert.deepEqual([payload.locationType, payload.headOfficeUnitId, payload.stateId, payload.cityId], ['HEAD_OFFICE', 'ho-1', null, null]);
+  assert.equal(toOnboardExistingPayload({ ...filled, userId: 'u' }).headOfficeUnitId, 'ho-1');
+  // None chosen: the server uses the default head office.
+  assert.equal('headOfficeUnitId' in toOnboardPayload({ ...filled, headOfficeUnitId: '' }), false);
+  // A state office never names a head office.
+  const state = toOnboardPayload({ ...filled, locationType: 'STATE_OFFICE' });
+  assert.deepEqual(['headOfficeUnitId' in state, state.stateId, state.cityId], [false, 4041, 99]);
+  assert.equal(fieldForServerMessage('The selected head office was not found or is switched off.', 'NEW'), 'headOfficeUnitId');
 });
 
 test('names are matched ignoring case and spacing, and the selection follows renames and removals', () => {
@@ -258,8 +249,7 @@ test('existing-login payload carries the login id and never a name, email or pas
   assert.equal('mobile' in payload, false);
   for (const key of ['fullName', 'email', 'password', 'customRoleId']) assert.equal(key in payload, false, key);
   assert.equal(toOnboardExistingPayload({ ...form, mobile: '+91 98765-43210' }).mobile, '9876543210');
-  assert.equal(toOnboardExistingPayload({ ...form, locationType: 'HEAD_OFFICE', stateId: '', cityId: '' }).stateId, null);
-  assert.equal(toOnboardExistingPayload({ ...form, locationType: 'HEAD_OFFICE' }).stateId, 4040);
+  assert.equal(toOnboardExistingPayload({ ...form, locationType: 'HEAD_OFFICE' }).stateId, null);
   assert.equal('isOfficeManager' in toOnboardExistingPayload({ ...form, locationType: 'HEAD_OFFICE' }), false);
 });
 
@@ -268,16 +258,6 @@ test('ticking State Manager fills the designation only where none is chosen', ()
   assert.deepEqual(getStateManagerDefaults({ designation: '' }, defaults), { designation: 'State Manager' });
   assert.deepEqual(getStateManagerDefaults({ designation: ' Zonal Head ' }, defaults), {});
   assert.deepEqual(getStateManagerDefaults({ designation: '' }, { designation: '' }), {});
-});
-
-test('the form explains who a State Manager reports to, and asks only when there are several', () => {
-  assert.deepEqual(describeNationalManager([{ name: 'Ravi Patel' }]), { tone: 'ok', text: 'Reports to Ravi Patel (National Operations Manager) by default.' });
-  const none = describeNationalManager([]);
-  assert.equal(none.tone, 'warn');
-  assert.match(none.text, /No National Operations Manager is set yet/);
-  const several = describeNationalManager([{ name: 'A' }, { name: 'B' }]);
-  assert.equal(several.tone, 'warn');
-  assert.match(several.text, /several National Operations Managers. Choose below/);
 });
 
 test('login details text carries the credentials and the change-password reminder', () => {
@@ -376,27 +356,37 @@ test('a phone number typed with +91, 91 or a leading 0 is searched by its plain 
   assert.equal(normaliseLoginSearch(''), '');
 });
 
-test('a State Manager needs a chosen National Operations Manager only when there are several', () => {
+test('a State Manager needs a manager chosen only when there are several National Operations Managers', () => {
   const stateManager: OnboardForm = {
     ...createEmptyOnboardForm('2026-11-24'),
     fullName: 'Asha Rao', mobile: '9876543210', email: 'asha@example.com', password: 'Strong#Pass1',
     designation: 'State Manager', orgUnitId: 'dept-1', locationType: 'STATE_OFFICE', stateId: '4040', cityId: '133590', isOfficeManager: true,
   };
-  assert.equal(validateOnboardForm(stateManager, { headOfficeAvailable: true, nationalManagerCount: 1 }).nationalManagerId, undefined);
-  assert.equal(validateOnboardForm(stateManager, { headOfficeAvailable: true, nationalManagerCount: 0 }).nationalManagerId, undefined);
-  assert.match(validateOnboardForm(stateManager, { headOfficeAvailable: true, nationalManagerCount: 2 }).nationalManagerId ?? '', /National Operations Manager/);
-  assert.equal(validateOnboardForm({ ...stateManager, nationalManagerId: 'nom-2' }, { headOfficeAvailable: true, nationalManagerCount: 2 }).nationalManagerId, undefined);
-
-  assert.equal(toOnboardPayload({ ...stateManager, nationalManagerId: 'nom-2' }).managerEmployeeId, 'nom-2');
-  assert.equal('managerEmployeeId' in toOnboardPayload(stateManager), false, 'one or none: the server decides');
-  // Not a State Manager (or head office): a stale choice is never sent.
-  assert.equal('managerEmployeeId' in toOnboardPayload({ ...stateManager, isOfficeManager: false, nationalManagerId: 'nom-2' }), false);
-  assert.equal(toOnboardExistingPayload({ ...stateManager, userId: 'u1', nationalManagerId: 'nom-1' }).managerEmployeeId, 'nom-1');
+  const errorWith = (nationalManagerCount: number, managerId?: string) => validateOnboardForm(stateManager, { headOfficeAvailable: true, nationalManagerCount, managerId }).managerEmployeeId;
+  assert.equal(errorWith(1), undefined);
+  assert.equal(errorWith(0), undefined);
+  assert.match(errorWith(2) ?? '', /reports to/);
+  assert.equal(errorWith(2, 'nom-2'), undefined);
 });
 
-test('the server\'s managerEmployeeId error lands on the National Operations Manager field', () => {
+test('the add payloads carry the chosen reporting manager, null when HR removed it, nothing otherwise', () => {
+  const chosen = { manager: { id: 'm1', name: 'Meghraj' }, source: 'user' as const };
+  const suggested = { manager: { id: 'm2', name: 'Anita' }, source: 'auto' as const };
+  const removed = { manager: null, source: 'user' as const };
+  const untouched = { manager: null, source: 'empty' as const };
+  assert.equal(toOnboardPayload(valid, chosen).managerEmployeeId, 'm1');
+  assert.equal(toOnboardPayload(valid, suggested).managerEmployeeId, 'm2');
+  assert.equal(toOnboardPayload(valid, removed).managerEmployeeId, null);
+  assert.equal('managerEmployeeId' in toOnboardPayload(valid, untouched), false);
+  assert.equal(toOnboardExistingPayload({ ...valid, userId: 'u1' }, chosen).managerEmployeeId, 'm1');
+  assert.equal(toOnboardExistingPayload({ ...valid, userId: 'u1' }, removed).managerEmployeeId, null);
+});
+
+test('the server\'s reporting manager errors land on the Reporting manager box', () => {
   const error = { response: { data: { details: [{ path: ['managerEmployeeId'], message: 'Choose who this State Manager reports to.' }] } } };
-  const { fields, unmapped } = extractFieldErrors(error, ['nationalManagerId', 'designation']);
-  assert.equal(fields.nationalManagerId, 'Choose who this State Manager reports to.');
+  const { fields, unmapped } = extractFieldErrors(error, ['managerEmployeeId', 'designation']);
+  assert.equal(fields.managerEmployeeId, 'Choose who this State Manager reports to.');
   assert.deepEqual(unmapped, []);
+  assert.equal(fieldForServerMessage('The selected reporting manager is not available.', 'NEW'), 'managerEmployeeId');
+  assert.equal(fieldForServerMessage('The selected reporting manager is not available.', 'EXISTING'), 'managerEmployeeId');
 });

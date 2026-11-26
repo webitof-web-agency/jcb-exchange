@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { AlertCircle, Building2, CheckCircle2, ChevronDown, Copy, Eye, EyeOff, KeyRound, Landmark, Link2, Loader2, MapPin, Plus, Settings2, ShieldAlert, Sparkles, UserRound, X } from 'lucide-react';
 import api from '@/lib/api';
+import { cleanUnitName, unitNameProblem } from '@/lib/hrmOrganisation';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import { bodyScrollLock } from '@/lib/bodyScrollLock';
 import { hrmApi, type HrmEmployeeFormOptions, type HrmLinkableUser, type HrmLocationType, type HrmOnboardResult } from '@/lib/hrmApi';
@@ -13,38 +14,38 @@ import {
   buildLoginDetailsText,
   createEmptyOnboardForm,
   describeLostSelections,
-  describeNationalManager,
   describeStateOffice,
   EARLIEST_JOINING_DATE,
   extractFieldErrors,
   fieldForServerMessage,
   findByName,
   generateTemporaryPassword,
-  getStateManagerDefaults,
   isOnboardFormDirty,
-  locationAfterSwitch,
   maxDateOfBirth,
   maxJoiningDate,
   normaliseName,
   normalizeMobile,
   reconcileDepartment,
   reconcileDesignation,
-  revertStateManagerDefaults,
   sanitiseMobileInput,
   stateOptionLabel,
   toDateInputValue,
   toOnboardExistingPayload,
   toOnboardPayload,
   validateOnboardForm,
-  type DefaultLocation,
   type ListChange,
   type OnboardErrors,
+  type OnboardField,
   type OnboardForm,
   type OnboardMode,
 } from '@/lib/hrmOnboarding';
 import { formatHrmDate, formatHrmStatus, getHrmErrorMessage } from '@/lib/hrmUi';
 import HrmLoginPicker, { type LoginNote } from './HrmLoginPicker';
-import { ManageDepartmentsDialog, ManageDesignationsDialog } from './HrmManageListDialogs';
+import HrmManagerSelect from './HrmManagerSelect';
+import HrmHeadOfficeField from './HrmHeadOfficeField';
+import { defaultHeadOffice, headOfficePlace, headOfficeProblem, selectedHeadOffice } from '@/lib/hrmHeadOffice';
+import { EMPTY_MANAGER_SELECTION, chosenManager, forgetSuggestedManager, suggestedManager, toManagerParams, type ManagerQuery, type ManagerSelection } from '@/lib/hrmManagers';
+import { ManageDesignationsDialog } from './HrmManageListDialogs';
 
 type Portal = 'admin' | 'employee';
 type OptionsState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; options: HrmEmployeeFormOptions };
@@ -56,25 +57,18 @@ type CreatedSummary = {
   existingLogin: boolean;
   department: string;
   location: string;
-  officeRole: string | null;
+  manager: string | null;
 };
 
 const NO_ROLE = '__none__';
-const FIELD_ORDER: Array<keyof OnboardForm> = ['userId', 'fullName', 'mobile', 'email', 'password', 'joiningDate', 'designation', 'orgUnitId', 'locationType', 'stateId', 'cityId', 'nationalManagerId', 'preferredName', 'dateOfBirth', 'personalEmail'];
-const DETAIL_FIELDS: Array<keyof OnboardForm> = ['preferredName', 'dateOfBirth', 'personalEmail'];
+const FIELD_ORDER: OnboardField[] = ['userId', 'fullName', 'mobile', 'email', 'password', 'joiningDate', 'designation', 'orgUnitId', 'locationType', 'headOfficeUnitId', 'stateId', 'cityId', 'managerEmployeeId', 'preferredName', 'dateOfBirth', 'personalEmail'];
+const DETAIL_FIELDS: OnboardField[] = ['preferredName', 'dateOfBirth', 'personalEmail'];
 /** The fields that have a box in each mode: a server message for any other path goes to the banner. */
-const COMMON_FIELDS: Array<keyof OnboardForm> = ['mobile', 'joiningDate', 'designation', 'orgUnitId', 'locationType', 'stateId', 'cityId', 'nationalManagerId', 'preferredName', 'dateOfBirth', 'personalEmail'];
-const MODE_FIELDS: Record<OnboardMode, Array<keyof OnboardForm>> = {
+const COMMON_FIELDS: OnboardField[] = ['mobile', 'joiningDate', 'designation', 'orgUnitId', 'locationType', 'headOfficeUnitId', 'stateId', 'cityId', 'managerEmployeeId', 'preferredName', 'dateOfBirth', 'personalEmail'];
+const MODE_FIELDS: Record<OnboardMode, OnboardField[]> = {
   NEW: ['fullName', 'email', 'password', ...COMMON_FIELDS],
   EXISTING: ['userId', ...COMMON_FIELDS],
 };
-
-/** Cities of a state from the location master (the same source every other state/city picker uses). */
-const fetchCities = async (stateId: string): Promise<CityOption[]> => (await api.get<CityOption[]>(`/locations/cities/${stateId}`)).data || [];
-
-/** The head office's own place from the form options, as the form stores it. */
-const defaultLocationOf = (options: HrmEmployeeFormOptions | null): DefaultLocation =>
-  (options?.headOffice && options.headOfficeUnit ? { stateId: options.headOffice.stateId, cityId: options.headOffice.cityId } : null);
 
 const inputClass = (error?: string) =>
   `h-10 w-full rounded-lg border bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 disabled:bg-slate-50 ${error ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:border-amber-400 focus:ring-amber-100'}`;
@@ -164,6 +158,7 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
   const [modeChoice, setModeChoice] = useState<OnboardMode | null>(null);
   const [selectedLogin, setSelectedLogin] = useState<HrmLinkableUser | null>(null);
   const [errors, setErrors] = useState<OnboardErrors>({});
+  const [manager, setManager] = useState<ManagerSelection>(EMPTY_MANAGER_SELECTION);
   const [submitError, setSubmitError] = useState('');
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<CreatedSummary | null>(null);
@@ -171,8 +166,6 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
   const [moreOpen, setMoreOpen] = useState(false);
   const [dobMax, setDobMax] = useState('');
   const [joiningMax, setJoiningMax] = useState('');
-  /** The designation that ticking "State Manager" filled in, so unticking can take exactly that back. */
-  const autoFilledDesignation = useRef<string | null>(null);
   const [addedDepartments, setAddedDepartments] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [newDepartment, setNewDepartment] = useState<string | null>(null);
   const [addingDepartment, setAddingDepartment] = useState(false);
@@ -181,7 +174,7 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
   const [newDesignation, setNewDesignation] = useState<string | null>(null);
   const [addingDesignation, setAddingDesignation] = useState(false);
   const [designationError, setDesignationError] = useState('');
-  const [manage, setManage] = useState<'departments' | 'designations' | null>(null);
+  const [manage, setManage] = useState<'designations' | null>(null);
   const [cities, setCities] = useState<Record<string, CityOption[]>>({});
   const [citiesLoadingFor, setCitiesLoadingFor] = useState('');
   const [cityError, setCityError] = useState('');
@@ -200,20 +193,10 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
         setOptionsState({ status: 'ready', options });
         setDobMax(maxDateOfBirth());
         setJoiningMax(maxJoiningDate());
-        const defaultLocation = defaultLocationOf(options);
-        const initial = createEmptyOnboardForm(toDateInputValue(new Date()), defaultLocation ? 'HEAD_OFFICE' : 'STATE_OFFICE', defaultLocation);
+        const office = defaultHeadOffice(options.headOffices);
+        const initial = createEmptyOnboardForm(toDateInputValue(new Date()), office ? 'HEAD_OFFICE' : 'STATE_OFFICE', office?.id ?? '');
         setForm((current) => current ?? initial);
         setBaseline((current) => current ?? initial);
-        // The head office place is preselected, so its cities are needed for the City box right away.
-        if (defaultLocation) {
-          const stateKey = String(defaultLocation.stateId);
-          try {
-            const list = await fetchCities(stateKey);
-            if (!cancelled) setCities((current) => (current[stateKey] ? current : { ...current, [stateKey]: list }));
-          } catch {
-            if (!cancelled) setCityError('Cities could not be loaded. Choose the state again to retry.');
-          }
-        }
       } catch (error) {
         if (!cancelled) setOptionsState({ status: 'error', message: getHrmErrorMessage(error, 'Unable to load the employee form.') });
       }
@@ -223,7 +206,8 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
 
   // Escape and a click outside must never throw away a one-time password or a form that was filled in: they close the
   // dialog only while nothing is at stake (the X and Cancel buttons always can).
-  const formDirty = Boolean(form && baseline && isOnboardFormDirty(form, baseline));
+  // A manager HR picked (or removed) is work too; one filled in from the suggestion is not.
+  const formDirty = Boolean(form && baseline && isOnboardFormDirty(form, baseline)) || manager.source === 'user';
   const lockDismiss = saving || (created ? Boolean(created.password) : formDirty);
 
   // Escape closes (unless saving or locked), Tab stays inside the dialog.
@@ -288,13 +272,7 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
     () => (options?.states ?? []).map((state) => ({ id: state.id, name: stateOptionLabel(state) })),
     [options?.states],
   );
-  // A head office employee's place does not need a state office, so those states carry no "No office yet" label.
-  const plainStateOptions = useMemo(() => (options?.states ?? []).map((state) => ({ id: state.id, name: state.name })), [options?.states]);
   const typeOptions = useMemo(() => EMPLOYMENT_TYPE_OPTIONS.map((value) => ({ id: value, name: formatHrmStatus(value) })), []);
-
-  // There is no reporting-manager box: the server makes a State Manager report to the National Operations Manager.
-  const nationalNote = useMemo(() => describeNationalManager(options?.nationalOperationsManagers ?? []), [options?.nationalOperationsManagers]);
-  const defaultLocation = useMemo(() => defaultLocationOf(options), [options]);
 
   const update = <K extends keyof OnboardForm>(key: K, value: OnboardForm[K]) => {
     if (key === 'orgUnitId' || key === 'designation') setListsNotice('');
@@ -383,52 +361,17 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
 
   const chooseLocation = (locationType: HrmLocationType) => {
     if (form && form.locationType === locationType) return;
-    // Only a state office has a manager, so the flag does not travel to the head office, and what ticking it filled in
-    // (the State Manager designation) goes back with it. The head office starts on its own place again; a state office
-    // starts empty.
-    const revert = locationType === 'HEAD_OFFICE' && form?.isOfficeManager ? revertStateManagerDefaults(form, autoFilledDesignation.current) : {};
-    if (locationType === 'HEAD_OFFICE') autoFilledDesignation.current = null;
-    setForm((current) => (current ? {
-      ...current,
-      locationType,
-      ...locationAfterSwitch(current, locationType, defaultLocation),
-      ...(locationType === 'HEAD_OFFICE' ? { isOfficeManager: false, nationalManagerId: '', ...revert } : {}),
-    } : current));
-    setErrors((current) => ({ ...current, locationType: undefined, stateId: undefined, cityId: undefined }));
+    setForm((current) => (current ? { ...current, locationType } : current));
+    setErrors((current) => ({ ...current, locationType: undefined, headOfficeUnitId: undefined, stateId: undefined, cityId: undefined }));
     setCityError('');
     setSubmitError('');
-    if (locationType === 'HEAD_OFFICE' && defaultLocation) void loadCities(String(defaultLocation.stateId));
-  };
-
-  const toggleOfficeManager = (checked: boolean) => {
-    if (!form) return;
-    if (checked) {
-      // Remember what the tick filled in, so unticking can take exactly that back (and never a designation the person chose).
-      const defaults = getStateManagerDefaults(form, { designation: options?.stateManagerDesignation ?? '' });
-      autoFilledDesignation.current = defaults.designation ?? null;
-      setForm((current) => (current ? { ...current, isOfficeManager: true, ...defaults } : current));
-    } else {
-      const revert = revertStateManagerDefaults(form, autoFilledDesignation.current);
-      autoFilledDesignation.current = null;
-      setForm((current) => (current ? { ...current, isOfficeManager: false, nationalManagerId: '', ...revert } : current));
-    }
-    setErrors((current) => ({ ...current, designation: undefined, nationalManagerId: undefined }));
-    setSubmitError('');
-  };
-
-  /** Puts the head office back on its own place (Raipur, Chhattisgarh). */
-  const useDefaultLocation = () => {
-    if (!defaultLocation) return;
-    setForm((current) => (current ? { ...current, stateId: String(defaultLocation.stateId), cityId: String(defaultLocation.cityId) } : current));
-    setErrors((current) => ({ ...current, stateId: undefined, cityId: undefined }));
-    setCityError('');
-    void loadCities(String(defaultLocation.stateId));
   };
 
   const addDepartment = async () => {
     if (addingDepartmentRef.current) return;
-    const name = (newDepartment ?? '').replace(/\s+/g, ' ').trim();
-    if (name.length < 2) { setDepartmentError('Enter the department name.'); return; }
+    const name = cleanUnitName(newDepartment ?? '');
+    const problem = unitNameProblem(name);
+    if (problem) { setDepartmentError(problem); return; }
     const existing = departments.find((department) => department.name.toLowerCase() === name.toLowerCase());
     if (existing) { update('orgUnitId', existing.id); setNewDepartment(null); return; }
     addingDepartmentRef.current = true;
@@ -487,9 +430,19 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
   const stateOffice = form?.locationType === 'STATE_OFFICE' ? describeStateOffice(selectedState, Boolean(options?.abilities.canManageOrg)) : { error: null, note: null };
   const stateOfficeMessage = stateOffice.error;
   const stateOfficeNote = stateOffice.note;
-  const headOfficeAvailable = Boolean(options?.headOffice && options?.headOfficeUnit);
+  const headOffices = options?.headOffices ?? [];
+  const headOfficeAvailable = headOffices.length > 0;
+  /** The head office chosen in the form (the default until HR picks another). */
+  const headOffice = selectedHeadOffice(headOffices, form?.headOfficeUnitId ?? '');
 
-  const focusField = (key: keyof OnboardForm) => {
+  // Who they can report to depends on where they will work. A State Manager reports to the National Operations Manager.
+  const managesState = Boolean(form && form.locationType === 'STATE_OFFICE' && (form.isOfficeManager
+    || (options?.stateManagerDesignation && normaliseName(form.designation).toLowerCase() === normaliseName(options.stateManagerDesignation).toLowerCase())));
+  // No city here: whatever the city, "State office" puts the person in that state's office.
+  const managerQuery: ManagerQuery = form?.locationType === 'HEAD_OFFICE' ? { headOffice: true, managerRole: false } : { stateId: form?.stateId, managerRole: managesState };
+  const managerReady = Boolean(form && (form.locationType === 'HEAD_OFFICE' ? headOfficeAvailable : form.stateId));
+
+  const focusField = (key: OnboardField) => {
     const id = key === 'userId' ? 'hrm-add-login-search' : `hrm-add-${key}`;
     window.setTimeout(() => document.getElementById(id)?.focus(), 0);
   };
@@ -497,7 +450,7 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!form || !options || saving) return;
-    const found = validateOnboardForm(form, { headOfficeAvailable, mode, stateOfficeMessage, nationalManagerCount: options.nationalOperationsManagers?.length ?? 0 });
+    const found = validateOnboardForm(form, { headOfficeAvailable, headOfficeMessage: headOfficeProblem(headOffice), mode, stateOfficeMessage, nationalManagerCount: options.nationalOperationsManagers?.length ?? 0, managerId: manager.manager?.id });
     setErrors(found);
     const firstInvalid = FIELD_ORDER.find((key) => found[key]);
     if (firstInvalid) {
@@ -510,9 +463,11 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
     setSubmitError('');
     try {
       const existingLogin = mode === 'EXISTING';
+      // Exactly the head office the form showed is sent, also when it was never touched.
+      const sent = form.locationType === 'HEAD_OFFICE' ? { ...form, headOfficeUnitId: headOffice?.id ?? '' } : form;
       const response = existingLogin
-        ? await hrmApi.onboardExistingLogin(toOnboardExistingPayload(form))
-        : await hrmApi.onboardEmployee(toOnboardPayload(form));
+        ? await hrmApi.onboardExistingLogin(toOnboardExistingPayload(sent, manager))
+        : await hrmApi.onboardEmployee(toOnboardPayload(sent, manager));
       const stateName = options.states.find((state) => String(state.id) === form.stateId)?.name;
       const cityName = cities[form.stateId]?.find((city) => String(city.id) === form.cityId)?.name;
       setCreated({
@@ -521,9 +476,9 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
         existingLogin,
         department: departments.find((department) => department.id === form.orgUnitId)?.name ?? '—',
         location: form.locationType === 'HEAD_OFFICE'
-          ? `Head Office · ${[cityName, stateName].filter(Boolean).join(', ') || (options.headOffice ? `${options.headOffice.cityName}, ${options.headOffice.stateName}` : '—')}`
+          ? [headOffice?.name ?? 'Head office', headOfficePlace(headOffice)].filter(Boolean).join(' · ')
           : [cityName, stateName].filter(Boolean).join(', ') || '—',
-        officeRole: form.locationType === 'STATE_OFFICE' && form.isOfficeManager ? 'Manager of the state office' : null,
+        manager: manager.manager?.name ?? null,
       });
       setForm((current) => (current ? { ...current, password: '' } : current));
       onCreated(response.data);
@@ -567,13 +522,13 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
     setNewDesignation(null);
     setDesignationError('');
     setCityError('');
-    autoFilledDesignation.current = null;
     setListsNotice('');
     setListsError('');
     // A fresh form keeps the work location type, and a head office employee starts on the head office place again.
-    const fresh = createEmptyOnboardForm(toDateInputValue(new Date()), form?.locationType ?? 'HEAD_OFFICE', defaultLocation);
+    const fresh = createEmptyOnboardForm(toDateInputValue(new Date()), form?.locationType ?? 'HEAD_OFFICE', defaultHeadOffice(headOffices)?.id ?? '');
     setForm(fresh);
     setBaseline(fresh);
+    setManager(EMPTY_MANAGER_SELECTION);
     setReloadKey((value) => value + 1);
   };
 
@@ -586,18 +541,15 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
   const selectedStateId = form?.stateId ?? '';
   const citiesLoading = Boolean(selectedStateId) && citiesLoadingFor === selectedStateId;
   const cityOptions = useMemo(() => (cities[selectedStateId] ?? []).map((city) => ({ id: city.id, name: city.name })), [cities, selectedStateId]);
-  const headOfficeLabel = options?.headOffice ? `${options.headOffice.cityName}, ${options.headOffice.stateName}` : '';
   const locationTypes: Array<{ id: HrmLocationType; title: string; description: string; disabled?: boolean }> = [
     {
       id: 'HEAD_OFFICE',
       title: 'Head Office',
-      description: !options?.headOffice ? 'Raipur is not in the location master' : !options.headOfficeUnit ? 'Set up the head office on the Organisation page first' : `Default: ${headOfficeLabel}`,
+      description: !headOfficeAvailable ? 'Set up the head office on the Organisation page first' : headOfficePlace(headOffice) || headOffice!.name,
       disabled: !headOfficeAvailable,
     },
     { id: 'STATE_OFFICE', title: 'State office', description: 'Choose state and city' },
   ];
-  // Head office employees may sit in another city; the default is Raipur and can be restored in one click.
-  const headOfficeIsDefault = Boolean(defaultLocation && form && form.stateId === String(defaultLocation.stateId) && form.cityId === String(defaultLocation.cityId));
   const selectedDesignation = form ? findByName(designations, form.designation) : undefined;
 
   return (
@@ -651,8 +603,8 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
                 ['Department', created.department],
                 ['Designation', created.result.assignment.designation],
                 ['Work location', created.location],
-                ...(created.officeRole ? [['Office role', created.officeRole]] : []),
                 ['Joining date', formatHrmDate(created.result.employee.joinedOn)],
+                ['Reports to', created.manager ?? 'Not set'],
                 ['Permission role', created.result.user.role?.name ?? 'No permission role assigned'],
               ].map(([label, value]) => (
                 <div key={label}><dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt><dd className="mt-0.5 font-medium text-slate-900">{value}</dd></div>
@@ -791,7 +743,6 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
                       newDepartment === null ? (
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
                           <button type="button" onClick={() => { setNewDepartment(''); setDepartmentError(''); }} className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-800"><Plus className="h-3 w-3" /> New department</button>
-                          <button type="button" onClick={() => setManage('departments')} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-slate-900"><Settings2 className="h-3 w-3" /> Manage departments</button>
                         </div>
                       ) : (
                         <div className="mt-2">
@@ -819,7 +770,7 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
               </section>
 
               <section className="space-y-4">
-                <SectionTitle icon={MapPin} title="Work location" description="Head Office defaults to Raipur. Other employees sit in a state office." />
+                <SectionTitle icon={MapPin} title="Work location" description="At a head office, or in a state office." />
                 <div id="hrm-add-locationType" tabIndex={-1} role="radiogroup" aria-label="Work location" className="grid gap-2 sm:grid-cols-2">
                   {locationTypes.map((type) => {
                     const selected = form.locationType === type.id;
@@ -833,56 +784,36 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
                   })}
                 </div>
                 {errors.locationType ? <p role="alert" className="text-xs font-medium text-rose-600">{errors.locationType}</p> : null}
-                {form.locationType === 'STATE_OFFICE' || headOfficeAvailable ? (
-                  <>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {form.locationType === 'STATE_OFFICE' ? (
-                        <Field id="hrm-add-stateId" label="State" required error={errors.stateId || stateOfficeMessage || undefined} hint={stateOfficeNote ?? (options?.abilities.canManageOrg ? 'Every state is listed. A state without an office gets one when you save.' : 'Every state is listed.')}>
-                          <SearchableSelect id="hrm-add-stateId" options={stateOptions} value={form.stateId} displayValue={selectedState?.name ?? ''} onChange={(option) => changeState(String(option.id))} placeholder="Select state" className="w-full" />
-                        </Field>
-                      ) : (
-                        <Field id="hrm-add-stateId" label="State" required error={errors.stateId} hint={`Default: ${headOfficeLabel}.`}>
-                          <SearchableSelect id="hrm-add-stateId" options={plainStateOptions} value={form.stateId} displayValue={selectedState?.name ?? ''} onChange={(option) => changeState(String(option.id))} placeholder="Select state" className="w-full" />
-                        </Field>
-                      )}
-                      <Field id="hrm-add-cityId" label="City" required error={errors.cityId || cityError || undefined}>
-                        <SearchableSelect id="hrm-add-cityId" options={cityOptions} value={form.cityId} displayValue={cityOptions.find((city) => String(city.id) === form.cityId)?.name ?? ''} onChange={(option) => update('cityId', String(option.id))} placeholder={form.stateId ? (citiesLoading ? 'Loading cities…' : 'Select city') : 'Select state first'} disabled={!form.stateId} loading={citiesLoading} className="w-full" />
-                      </Field>
-                    </div>
-                    {form.locationType === 'HEAD_OFFICE' && !headOfficeIsDefault && defaultLocation ? (
-                      <button type="button" onClick={useDefaultLocation} className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-800"><MapPin className="h-3 w-3" /> Use the head office place ({headOfficeLabel})</button>
-                    ) : null}
-                    {form.locationType === 'STATE_OFFICE' ? (
-                      <>
-                        <label className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition ${form.isOfficeManager ? 'border-amber-300 bg-amber-50/60' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                          <input id="hrm-add-isOfficeManager" type="checkbox" checked={form.isOfficeManager} onChange={(event) => toggleOfficeManager(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 rounded accent-amber-500" />
-                          <span className="min-w-0">
-                            <span className="block text-sm font-semibold text-slate-900">Manager of this state office (State Manager)</span>
-                            <span className="block text-xs leading-5 text-slate-500">A state can have more than one manager. State Managers report to the National Operations Manager by default.</span>
-                          </span>
-                        </label>
-                        {form.isOfficeManager ? (
-                          <p role="note" className={`rounded-lg px-3 py-2 text-xs leading-5 ${nationalNote.tone === 'ok' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{nationalNote.text}</p>
-                        ) : null}
-                        {form.isOfficeManager && (options?.nationalOperationsManagers?.length ?? 0) > 1 ? (
-                          <Field id="hrm-add-nationalManagerId" label="Reports to (National Operations Manager)" required error={errors.nationalManagerId}>
-                            <select
-                              id="hrm-add-nationalManagerId"
-                              value={form.nationalManagerId}
-                              onChange={(event) => update('nationalManagerId', event.target.value)}
-                              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
-                            >
-                              <option value="">Choose…</option>
-                              {(options?.nationalOperationsManagers ?? []).map((manager) => (
-                                <option key={manager.id} value={manager.id}>{manager.name} ({manager.employeeCode})</option>
-                              ))}
-                            </select>
-                          </Field>
-                        ) : null}
-                      </>
-                    ) : null}
-                  </>
+                {form.locationType === 'STATE_OFFICE' ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field id="hrm-add-stateId" label="State" required error={errors.stateId || stateOfficeMessage || undefined} hint={stateOfficeNote ?? (options?.abilities.canManageOrg ? 'Every state is listed. A state without an office gets one when you save.' : 'Every state is listed.')}>
+                      <SearchableSelect id="hrm-add-stateId" options={stateOptions} value={form.stateId} displayValue={selectedState?.name ?? ''} onChange={(option) => changeState(String(option.id))} placeholder="Select state" className="w-full" />
+                    </Field>
+                    <Field id="hrm-add-cityId" label="City" required error={errors.cityId || cityError || undefined}>
+                      <SearchableSelect id="hrm-add-cityId" options={cityOptions} value={form.cityId} displayValue={cityOptions.find((city) => String(city.id) === form.cityId)?.name ?? ''} onChange={(option) => update('cityId', String(option.id))} placeholder={form.stateId ? (citiesLoading ? 'Loading cities…' : 'Select city') : 'Select state first'} disabled={!form.stateId} loading={citiesLoading} className="w-full" />
+                    </Field>
+                  </div>
+                ) : headOfficeAvailable ? (
+                  <div>
+                    <label htmlFor="hrm-add-headOfficeUnitId" className="mb-1 block text-sm font-medium text-slate-700">Head office<span className="text-rose-500"> *</span></label>
+                    <HrmHeadOfficeField id="hrm-add-headOfficeUnitId" offices={headOffices} value={form.headOfficeUnitId} onChange={(office) => update('headOfficeUnitId', office.id)} error={errors.headOfficeUnitId} disabled={saving} />
+                  </div>
                 ) : null}
+                <Field id="hrm-add-managerEmployeeId" label="Reporting manager" error={errors.managerEmployeeId} hint="Optional. Left empty, the profile shows “Reports to: Not set”; you can set it there later.">
+                  {managerReady ? (
+                    <HrmManagerSelect
+                      id="hrm-add-managerEmployeeId"
+                      value={manager.manager}
+                      auto={manager.source === 'auto'}
+                      invalid={Boolean(errors.managerEmployeeId)}
+                      onChange={(next) => { setManager(chosenManager(next)); setErrors((current) => ({ ...current, managerEmployeeId: undefined })); setSubmitError(''); }}
+                      load={async (search) => (await hrmApi.getManagerOptions(toManagerParams(managerQuery, search))).data}
+                      loadKey={JSON.stringify(toManagerParams(managerQuery))}
+                      onLoadStart={() => setManager(forgetSuggestedManager)}
+                      onLoaded={(list) => setManager((current) => suggestedManager(current, list.preselect))}
+                    />
+                  ) : <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500">{form.locationType === 'HEAD_OFFICE' ? 'Set up the head office first, or choose State office.' : 'Select the state first.'}</p>}
+                </Field>
               </section>
 
               <section>
@@ -921,7 +852,6 @@ export default function HrmAddEmployeeDialog({ portal, allIndia, onClose, onCrea
       </div>
     </div>
     {/* Rendered beside the form (not inside it) so clicks and keys in these dialogs never reach the form's own handlers. */}
-    {manage === 'departments' ? <ManageDepartmentsDialog onClose={() => setManage(null)} onChanged={handleListChange} /> : null}
     {manage === 'designations' ? <ManageDesignationsDialog onClose={() => setManage(null)} onChanged={handleListChange} /> : null}
     </>
   );

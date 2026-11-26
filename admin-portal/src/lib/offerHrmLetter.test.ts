@@ -24,7 +24,7 @@ test('offer validity date defaults to the letter date plus 7 days', () => {
 test('a stored offer row gives back its placement and breakup', () => {
   assert.equal(storedPlacementFromOffer({ hrmOrgUnitId: null }), null);
   assert.deepEqual(storedPlacementFromOffer({ hrmOrgUnitId: 'd', locationType: 'STATE_OFFICE', stateId: 3, cityId: 4, isOfficeManager: true }), {
-    hrmOrgUnitId: 'd', locationType: 'STATE_OFFICE', stateId: 3, cityId: 4, isOfficeManager: true, employmentType: null, reportingManagerEmployeeId: null,
+    hrmOrgUnitId: 'd', locationType: 'STATE_OFFICE', headOfficeUnitId: null, stateId: 3, cityId: 4, isOfficeManager: true, employmentType: null, reportingManagerEmployeeId: null,
   });
   assert.deepEqual(storedComponentsFrom([{ code: 'BASIC', name: 'Basic', componentType: 'EARNING', monthlyAmount: '1000' }, { bad: true }, null]), [
     { code: 'BASIC', name: 'Basic', componentType: 'EARNING', monthlyAmount: 1000 },

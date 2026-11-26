@@ -3,6 +3,7 @@ import cron, { type ScheduledTask } from 'node-cron';
 import { AiBriefingStatus, Role, UserStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { loadAiPermissionScope } from '../middlewares/aiAccess.middleware';
+import { getRecruitmentReach } from '../services/recruitmentReach.service';
 import { aiReadOnlyToolsService, type AiToolContext, type AiToolExecutionResult } from '../services/ai/aiReadOnlyTools.service';
 import { aiGatewayService } from '../services/ai/aiGatewayInstance';
 import { getAiRuntimeStatus } from '../services/ai/aiGateway.service';
@@ -29,6 +30,7 @@ export type DailyBriefingRecipient = {
   userId: string;
   role: DailyBriefingRole;
   permissions: string[];
+  recruitmentRestricted?: boolean;
 };
 
 type BriefingRow = {
@@ -123,7 +125,8 @@ const eligibleRecipients = async (): Promise<DailyBriefingRecipient[]> => {
       ? ['ALL_ACCESS']
       : await loadAiPermissionScope(user.id);
     if (role === 'EMPLOYEE' && !permissions.includes('ALL_ACCESS') && !permissions.includes('ai.use')) continue;
-    recipients.push({ userId: user.id, role, permissions });
+    const recruitment = await getRecruitmentReach({ userId: user.id, role });
+    recipients.push({ userId: user.id, role, permissions, ...(recruitment.all ? {} : { recruitmentRestricted: true }) });
   }
   return recipients;
 };

@@ -32,6 +32,7 @@ const styles = StyleSheet.create({
   signatureBox: { width: '46%' },
   signatureLine: { borderBottomWidth: 1, borderBottomColor: '#4b5563', height: 22, marginBottom: 5 },
   acceptanceHeading: { fontFamily: 'Helvetica-Bold', fontSize: 12, marginTop: 8, marginBottom: 9 },
+  employeeSignature: { marginTop: 24, marginBottom: 4 },
   breakupRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#374151' },
   breakupHead: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#374151', fontFamily: 'Helvetica-Bold', backgroundColor: '#f3f4f6' },
   breakupName: { width: '52%', padding: 5, borderRightWidth: 1, borderRightColor: '#374151' },
@@ -160,14 +161,18 @@ export default function OfferLetterPdfDocument({
           </View>
         </View>
 
-        <Text style={styles.acceptanceHeading}>ACCEPTANCE OF OFFER</Text>
-        <Text style={styles.paragraph}>
-          I, {data.employeeName || '[Employee Name]'}, hereby accept the offer of employment made by {data.companyName || '[Company Name]'} and agree to abide by the terms and conditions contained in this Offer Letter and the applicable policies of the Company.
-        </Text>
-        <Text>Employee Name: {data.employeeName || '__________________________'}</Text>
-        <Text>Signature: _______________________________</Text>
-        <Text>Date: {formatOfferDate(data.acceptanceDate) || '____________________________________'}</Text>
-        <Text>Place: {data.acceptancePlace || '____________________________________'}</Text>
+        {/* Kept together on one page, with room above the "Signature" line: signing on the offer link places the
+            signature there (the server finds the line by its text, see backend/src/utils/offerLetterFields.ts). */}
+        <View wrap={false}>
+          <Text style={styles.acceptanceHeading}>ACCEPTANCE OF OFFER</Text>
+          <Text style={styles.paragraph}>
+            I, {data.employeeName || '[Employee Name]'}, hereby accept the offer of employment made by {data.companyName || '[Company Name]'} and agree to abide by the terms and conditions contained in this Offer Letter and the applicable policies of the Company.
+          </Text>
+          <Text>Employee Name: {data.employeeName || '__________________________'}</Text>
+          <Text style={styles.employeeSignature}>Signature: _______________________________</Text>
+          <Text>Date: {formatOfferDate(data.acceptanceDate) || '____________________________________'}</Text>
+          <Text>Place: {data.acceptancePlace || '____________________________________'}</Text>
+        </View>
       </Page>
     </Document>
   );

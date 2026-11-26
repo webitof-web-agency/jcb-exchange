@@ -185,6 +185,7 @@ test('access scopes: end and give only what the viewer could give', () => {
   assert.equal(canEndHrmScope(stateHr, { scopeType: 'DIRECT_REPORTS' }), true);
   assert.equal(canEndHrmScope({ ...stateHr, canManageScopes: false }, { scopeType: 'DIRECT_REPORTS' }), false);
   assert.equal(canEndHrmScope({ canManageScopes: true, allIndia: true }, { scopeType: 'ALL_INDIA' }), true);
+  assert.equal(canEndHrmScope({ canManageScopes: true, allIndia: true }, { scopeType: 'STATE', source: 'CHARGE', state: { id: 22 } }), false);
   const states = [{ id: 22, name: 'Chhattisgarh' }, { id: 27, name: 'Maharashtra' }];
   assert.deepEqual(grantableStates(states, stateHr).map((state) => state.id), [22]);
   assert.deepEqual(grantableStates(states, { allIndia: true }).map((state) => state.id), [22, 27]);
@@ -216,4 +217,13 @@ test('a 403 is recognised as "no access"', () => {
 test('the server day is the Indian calendar day', () => {
   assert.equal(indiaDay(new Date('2026-11-25T18:29:00.000Z')), '2026-11-25');
   assert.equal(indiaDay(new Date('2026-11-25T18:30:00.000Z')), '2026-11-26');
+});
+
+test('change manager needs an open assignment, the permission and somebody else’s record', () => {
+  assert.equal(getHrmProfileAbilities(hr, facts()).changeManager, true);
+  assert.equal(getHrmProfileAbilities(hr, facts({ hasOpenAssignment: false })).changeManager, false);
+  assert.equal(getHrmProfileAbilities(hr, facts({ ownLogin: true })).changeManager, false);
+  assert.equal(getHrmProfileAbilities(hr, facts({ status: 'EXITED' })).changeManager, false);
+  assert.equal(getHrmProfileAbilities(hr, facts({ archived: true })).changeManager, false);
+  assert.equal(getHrmProfileAbilities(employee('hrm.employees.read', 'hrm.employees.manage'), facts()).changeManager, false);
 });

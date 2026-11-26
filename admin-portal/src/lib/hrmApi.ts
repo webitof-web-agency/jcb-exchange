@@ -1,4 +1,6 @@
 import api from './api';
+import type { ManagerOptions } from './hrmManagers';
+import type { HrmHeadOffice } from './hrmHeadOffice';
 
 export type HrmEmployeeStatus = 'DRAFT' | 'PRE_ONBOARDING' | 'ONBOARDING' | 'ACTIVE' | 'ON_LEAVE' | 'SUSPENDED' | 'NOTICE_PERIOD' | 'EXITED' | 'TERMINATED';
 
@@ -56,8 +58,16 @@ export interface HrmEmployee {
   onboardingCases?: HrmOnboardingCase[];
   /** Directory-only summary of what KYC is on file. */
   kyc?: HrmKycSummary;
+  /** Directory-only: the permission role of the linked login (null when there is no login or no role). */
+  loginRole?: string | null;
+  /** Directory-only: how many people report to this person today. */
+  directReports?: number;
+  /** Directory-only: state offices this person also looks after today (additional charges). */
+  additionalCharges?: number;
   /** Directory-only: the assignment in force today (null when none is active). */
   currentAssignment?: HrmCurrentAssignment | null;
+  /** Directory-only: for somebody with no assignment in force yet, who they will report to and from when. */
+  upcomingManager?: { id: string; employeeCode: string; legalName: string; from: string } | null;
 }
 
 export interface HrmCurrentAssignment {
@@ -84,6 +94,8 @@ export interface HrmDirectoryQuery {
   designation?: string;
   employmentType?: string;
   kyc?: 'complete' | 'pending';
+  /** 'missing' lists the people with no reporting manager. */
+  manager?: 'missing' | 'assigned';
   /** 'only' lists records archived because the person never joined (kept for history); default hides them. */
   archived?: 'exclude' | 'only';
 }
@@ -118,10 +130,9 @@ export interface HrmEmployeeFormOptions {
   states: Array<{ id: number; name: string; hasOffice: boolean; /** The state has an office but it is switched off: it must be switched on first. */ officeSwitchedOff: boolean }>;
   /** The active designation list (managed from the Add employee screen). */
   designations: Array<{ id: string; name: string; isSystem: boolean }>;
-  /** Raipur, Chhattisgarh from the location master; null when it is missing there. */
-  headOffice: { stateId: number; stateName: string; cityId: number; cityName: string } | null;
-  /** The head office unit; null until the head office has been set up on the Organisation page. */
-  headOfficeUnit: { id: string; name: string } | null;
+  /** Where the head office is; null until a head office is set up. */
+  /** Every head office, the default one first; empty until the head office is set up on the Organisation page. */
+  headOffices: HrmHeadOffice[];
   /** State Managers report to this person by default when there is exactly one. */
   nationalOperationsManagers: Array<{ id: string; employeeCode: string; name: string }>;
   stateManagerDesignation: string;
@@ -145,6 +156,8 @@ export interface HrmOnboardPayload {
   orgUnitId: string;
   employmentType: string;
   /** Not sent by the add form (omit it): a State Manager then reports to the National Operations Manager by default. */
+  /** Head office postings: which head office. */
+  headOfficeUnitId?: string;
   managerEmployeeId?: string | null;
   locationType: HrmLocationType;
   /** State office: required. Head office: optional, defaults to the head office location; state and city go together. */
@@ -179,6 +192,8 @@ export interface HrmOnboardExistingPayload extends HrmProfileDetails {
   designation: string;
   orgUnitId: string;
   employmentType: string;
+  /** Head office postings: which head office. */
+  headOfficeUnitId?: string;
   managerEmployeeId?: string | null;
   locationType: HrmLocationType;
   stateId: number | null;
@@ -195,6 +210,8 @@ export interface HrmOnboardResult {
 export type HrmOrganisationKind = 'HEAD_OFFICE' | 'STATE' | 'DEPARTMENT' | 'OTHER';
 
 export interface HrmOrganisationUnit {
+  /** The default head office (at most one). */
+  isDefault?: boolean;
   id: string;
   code: string;
   name: string;
@@ -208,10 +225,12 @@ export interface HrmOrganisationUnit {
   managers: Array<{ id: string; employeeCode: string; name: string }>;
   /** Managers who are joining (pre-joining, or starting later): the office is still vacant until they join. */
   upcomingManagers?: Array<{ id: string; employeeCode: string; name: string; joiningDate: string }>;
+  /** People looking after this office today through an additional charge (`until` = their last day). */
+  chargeHolders?: Array<{ id: string; employeeCode: string; name: string; until: string | null }>;
   childCount: number;
   /** Employees working here: a department counts people placed in it, an office counts people who work from it. */
   employeeCount: number;
-  /** State offices only: COVERED when somebody manages it, VACANT when nobody does. */
+  /** State offices only: COVERED when somebody manages it (posted or on additional charge), VACANT when nobody does. */
   coverage: 'COVERED' | 'VACANT' | null;
 }
 
@@ -237,8 +256,13 @@ export interface HrmDepartmentRow {
   parent: { id: string; name: string } | null;
   currentEmployees: number;
   totalAssignments: number;
+  /** Offers still placing a candidate in it. */
+  openOffers: number;
+  accessScopes: number;
   canDelete: boolean;
   deleteBlockedReason: string | null;
+  canSwitchOff: boolean;
+  switchOffBlockedReason: string | null;
 }
 
 export interface HrmCoverage {
@@ -246,6 +270,8 @@ export interface HrmCoverage {
   officesSetUp: number;
   covered: number;
   vacant: number;
+  /** Covered only through an additional charge (no manager of their own). */
+  coveredByCharge?: number;
   notSetUp: number;
   staffInStates: number;
   staffInHeadOffice: number;
@@ -282,6 +308,7 @@ export interface HrmOfficeTeamMember {
 export interface HrmOfficeDetail {
   office: { id: string; code: string; name: string; kind: 'HEAD_OFFICE' | 'STATE'; isActive: boolean; state: { id: number; name: string } | null; city: { id: number; name: string } | null };
   managers: Array<{ id: string; employeeCode: string; name: string; designation: string; since: string }>;
+  chargeHolders?: Array<{ id: string; employeeCode: string; name: string; until: string | null }>;
   vacant: boolean;
   /** The viewer may see who manages the office but not the people in it (needs hrm.employees.read). */
   teamHidden: boolean;
@@ -294,6 +321,84 @@ export interface HrmOfficeDetail {
   abilities: { canManage: boolean; canManageAssignments: boolean; canManageEmployees: boolean; allIndia?: boolean };
 }
 
+/** "Login role & access" given with an appointment: omit `customRoleId` to keep the role, null removes it. */
+export type HrmManagerAccessInput = { grantStateAccess?: boolean; customRoleId?: string | null };
+export type HrmManagerAccessResult = { access: 'GRANTED' | 'ALREADY' | 'NOT_ASKED'; roleChanged: boolean };
+/** A running or upcoming additional charge, as the dialogs list it. */
+export type HrmChargeRef = { id: string; officeUnitId: string; officeName: string; effectiveFrom: string; effectiveTo: string | null; /** The viewer may end it (their own HR access covers that state). */ canEnd?: boolean };
+export type HrmEndedCharge = { id: string; employeeId: string; officeUnitId: string; officeName: string; cancelled: boolean };
+
+export type HrmManagerAccessContext = {
+  hasLogin: boolean;
+  login: null | { status: string; isEmployee: boolean; role: { id: string; name: string } | null };
+  state: { id: number; name: string | null } | null;
+  alreadyHasStateAccess: boolean;
+  /** Their state access follows the posting, so a move gives the new state by itself. */
+  followsPosting?: boolean;
+  canChangeRole: boolean;
+  canGrantAccess: boolean;
+  /** The viewer may give this state (also for a person who has no login yet, on a charge). */
+  viewerCanGrant: boolean;
+  blockedReason: 'NO_LOGIN' | 'OWN_RECORD' | null;
+  roles: Array<{ id: string; name: string }>;
+  charges: HrmChargeRef[];
+};
+
+export type HrmChargeState = 'ACTIVE' | 'UPCOMING' | 'ENDED' | 'CANCELLED';
+export type HrmCharge = {
+  id: string;
+  state: HrmChargeState;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  reason: string | null;
+  grantAccess: boolean;
+  hasAccess: boolean;
+  employee: { id: string; employeeCode: string; name: string; status: HrmEmployeeStatus; hasLogin: boolean };
+  office: { id: string; name: string; stateId: number | null; stateName: string | null };
+  canManage: boolean;
+};
+export type HrmChargeList = { charges: HrmCharge[]; today: string; abilities: { canGive: boolean; canGrantAccess: boolean } };
+export type HrmChargeOptions = { eligible: boolean; hasLogin: boolean; today: string; offices: Array<{ id: string; name: string; stateName: string | null }> };
+export type HrmCreateChargePayload = { employeeId: string; effectiveFrom: string; effectiveTo?: string | null; reason?: string | null; access?: HrmManagerAccessInput };
+
+export type HrmAccessIssueCode =
+  | 'MANAGER_NO_LOGIN' | 'MANAGER_NO_ACCESS' | 'MANAGER_NO_ROLE' | 'MANAGER_TOO_WIDE' | 'EXTRA_STATE_ACCESS'
+  | 'STALE_ACCESS' | 'RECRUITMENT_NO_REACH' | 'CHARGE_ENDING' | 'VACANT_OFFICE' | 'JOB_NO_STATE';
+export type HrmAccessSeverity = 'HIGH' | 'MEDIUM' | 'LOW';
+export type HrmAccessIssue = {
+  code: HrmAccessIssueCode;
+  severity: HrmAccessSeverity;
+  title: string;
+  detail: string;
+  person: { userId: string | null; employeeId: string | null; employeeCode: string | null; name: string } | null;
+  office: { id: string; name: string } | null;
+  stateId: number | null;
+  stateName: string | null;
+  jobId: string | null;
+};
+export type HrmAccessPerson = {
+  userId: string;
+  name: string;
+  email: string | null;
+  loginStatus: string;
+  roleName: string | null;
+  accountRole: string;
+  employee: { id: string; employeeCode: string; status: string } | null;
+  hr: { allIndia: boolean; states: Array<{ id: number; name: string }>; headOffice: boolean; directReports: boolean; other: boolean };
+  recruitment: 'ALL' | 'STATES' | 'NONE' | 'NOT_USED';
+  manages: Array<{ officeId: string; officeName: string; kind: 'PRIMARY' | 'CHARGE'; until: string | null }>;
+};
+export type HrmAccessReview = {
+  view: 'issues' | 'people';
+  today: string;
+  summary: { issues: number; high: number; types: Array<{ code: HrmAccessIssueCode; title: string; severity: HrmAccessSeverity; count: number }> };
+  states: Array<{ id: number; name: string }>;
+  issues: HrmAccessIssue[];
+  people: HrmAccessPerson[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+};
+export type HrmAccessReviewQuery = { view?: 'issues' | 'people'; issue?: HrmAccessIssueCode; search?: string; stateId?: number; page?: number; limit?: number };
+
 export interface HrmTransferPayload {
   toOfficeUnitId: string;
   orgUnitId?: string;
@@ -305,6 +410,9 @@ export interface HrmTransferPayload {
   isOfficeManager?: boolean;
   designation?: string;
   reason?: string | null;
+  access?: HrmManagerAccessInput;
+  /** Additional charges of this person to end with the transfer. */
+  endChargeIds?: string[];
 }
 
 export interface HrmAppointManagerPayload {
@@ -314,6 +422,10 @@ export interface HrmAppointManagerPayload {
   managerEmployeeId?: string | null;
   designation?: string;
   reason?: string | null;
+  access?: HrmManagerAccessInput;
+  /** End other people's additional charges of this office. */
+  endOfficeCharges?: boolean;
+  endChargeIds?: string[];
 }
 
 export type HrmOutgoingManagerAction =
@@ -330,6 +442,11 @@ export interface HrmReplaceManagerPayload {
   managerEmployeeId?: string | null;
   outgoing: HrmOutgoingManagerAction;
   reason?: string | null;
+  access?: HrmManagerAccessInput;
+  /** A new login role for the outgoing manager (omit to keep it). */
+  outgoingRoleId?: string | null;
+  endOfficeCharges?: boolean;
+  endChargeIds?: string[];
 }
 
 export interface HrmDeactivatePayload {
@@ -344,12 +461,16 @@ export interface HrmLifecycleContext {
   employee: { id: string; employeeCode: string; name: string; status: HrmEmployeeStatus; hasLogin: boolean; /** False for somebody added from a recruitment offer: use Add assignment first. */ hasAssignment: boolean };
   directReports: Array<{ id: string; employeeCode: string; name: string }>;
   managerOf: Array<{ id: string; name: string }>;
+  /** Running and upcoming additional charges. */
+  charges?: HrmChargeRef[];
 }
 
 export interface HrmMoveResult {
   assignment: { id: string };
   /** Set when the move left that state office without a manager. */
   vacatedOfficeId: string | null;
+  access?: HrmManagerAccessResult;
+  chargesEnded?: HrmEndedCharge[];
 }
 
 export interface HrmStateOfficesResult {
@@ -358,6 +479,8 @@ export interface HrmStateOfficesResult {
 }
 
 export interface HrmCreateUnitPayload {
+  /** Head office only: make it the default one. */
+  isDefault?: boolean;
   kind: 'STATE' | 'DEPARTMENT' | 'HEAD_OFFICE';
   name?: string;
   stateId?: number | null;
@@ -606,7 +729,8 @@ export type HrmShift = {
   halfDayMinutes: number | null; fullDayMinutes: number | null; isNightShift: boolean; isActive: boolean;
   employeesNow?: number; lengthMinutes?: number;
 };
-export type HrmShiftPayload = Omit<HrmShift, 'id' | 'employeesNow' | 'lengthMinutes'>;
+/** What the shift form sends: the code is generated by the server. */
+export type HrmShiftPayload = Omit<HrmShift, 'id' | 'code' | 'employeesNow' | 'lengthMinutes'>;
 export type HrmWeeklyOffs = { days: HrmWeekDay[]; saturdays?: number[] };
 export type HrmShiftAssignment = {
   id: string; employeeId: string; shiftId: string; weeklyOffs: HrmWeeklyOffs; effectiveFrom: string; effectiveTo: string | null;
@@ -721,19 +845,19 @@ export const hrmApi = {
   /** Attaches an existing login to an HR record that has none. */
   linkLoginToEmployee: (employeeId: string, userId: string) => api.post<{ employeeId: string; user: { id: string; name: string | null; email: string; role: { id: string; name: string } | null } }>(`/hrm/employees/${encodeURIComponent(employeeId)}/link-login`, { userId }),
   transferEmployee: (employeeId: string, payload: HrmTransferPayload) => api.post<HrmMoveResult>(`/hrm/employees/${encodeURIComponent(employeeId)}/transfer`, payload),
-  deactivateEmployee: (employeeId: string, payload: HrmDeactivatePayload) => api.post<{ employeeCode: string; reportsMoved: number; loginDisabled: boolean; vacatedOfficeIds: string[] }>(`/hrm/employees/${encodeURIComponent(employeeId)}/deactivate`, payload),
+  deactivateEmployee: (employeeId: string, payload: HrmDeactivatePayload) => api.post<{ employeeCode: string; reportsMoved: number; loginDisabled: boolean; vacatedOfficeIds: string[]; chargesEnded?: HrmEndedCharge[] }>(`/hrm/employees/${encodeURIComponent(employeeId)}/deactivate`, payload),
   reactivateEmployee: (employeeId: string) => api.post<{ employeeCode: string; loginEnabled: boolean }>(`/hrm/employees/${encodeURIComponent(employeeId)}/reactivate`),
   getLifecycleContext: (employeeId: string) => api.get<{ context: HrmLifecycleContext }>(`/hrm/employees/${encodeURIComponent(employeeId)}/lifecycle-context`),
   getOfficeDetail: (officeId: string, params: { page?: number; limit?: number; search?: string } = {}) => api.get<{ office: HrmOfficeDetail }>(`/hrm/organisation/offices/${encodeURIComponent(officeId)}`, { params }),
   appointOfficeManager: (officeId: string, payload: HrmAppointManagerPayload) => api.post<HrmMoveResult>(`/hrm/organisation/offices/${encodeURIComponent(officeId)}/managers`, payload),
-  replaceOfficeManager: (officeId: string, payload: HrmReplaceManagerPayload) => api.post<{ assignment: { id: string }; reportsMoved: number; vacatedOfficeId: string | null }>(`/hrm/organisation/offices/${encodeURIComponent(officeId)}/replace-manager`, payload),
+  replaceOfficeManager: (officeId: string, payload: HrmReplaceManagerPayload) => api.post<{ assignment: { id: string }; reportsMoved: number; vacatedOfficeId: string | null; access?: HrmManagerAccessResult; chargesEnded?: HrmEndedCharge[]; outgoing?: { action: string; chargesEnded?: HrmEndedCharge[]; vacatedOfficeIds?: string[] } }>(`/hrm/organisation/offices/${encodeURIComponent(officeId)}/replace-manager`, payload),
   createStateOffices: (stateIds: number[]) => api.post<HrmStateOfficesResult>('/hrm/organisation/state-offices', { stateIds }),
   getOrganisation: () => api.get<{ organisation: HrmOrganisation }>('/hrm/organisation'),
   createOrganisationUnit: (payload: HrmCreateUnitPayload) => api.post<{ unit: { id: string; code: string; name: string; type: string } }>('/hrm/organisation/units', payload),
   /** Departments with usage, for the manage dialog. */
   listDepartmentsForManagement: () => api.get<{ departments: HrmDepartmentRow[] }>('/hrm/organisation/departments'),
   /** Deletes a department nothing ever used (otherwise the server answers 409 and the department is switched off instead). */
-  deleteOrganisationUnit: (id: string) => api.delete<{ deleted: boolean; unit: { id: string; name: string }; departmentsDeleted?: string[] }>(`/hrm/organisation/units/${encodeURIComponent(id)}`),
+  deleteOrganisationUnit: (id: string) => api.delete<{ deleted: boolean; unit: { id: string; name: string }; departmentsKept?: string[] }>(`/hrm/organisation/units/${encodeURIComponent(id)}`),
   listDesignations: () => api.get<{ designations: HrmDesignation[] }>('/hrm/designations'),
   createDesignation: (name: string) => api.post<{ designation: { id: string; name: string; isActive: boolean; isSystem: boolean } }>('/hrm/designations', { name }),
   /** Renaming rewrites the text on every assignment that used the old name; the response says how many. */
@@ -741,13 +865,17 @@ export const hrmApi = {
   deleteDesignation: (id: string) => api.delete<{ deleted: boolean }>(`/hrm/designations/${encodeURIComponent(id)}`),
   /** Sets a new login password for the employee (needs hrm.employees.manage and users.update). */
   resetLoginPassword: (employeeId: string, password: string) => api.post<{ employeeId: string; reset: boolean; loginStatus: string }>(`/hrm/employees/${encodeURIComponent(employeeId)}/reset-password`, { password }),
-  updateOrganisationUnit: (id: string, payload: { name?: string; isActive?: boolean }) => api.patch<{ unit: { id: string; name: string; isActive: boolean } }>(`/hrm/organisation/units/${encodeURIComponent(id)}`, payload),
-  setupHeadOffice: (payload: { departments: string[] }) => api.post<HrmHeadOfficeSetupResult>('/hrm/organisation/head-office-setup', payload),
+  updateOrganisationUnit: (id: string, payload: { name?: string; isActive?: boolean; stateId?: number; cityId?: number; isDefault?: true }) => api.patch<{ unit: { id: string; name: string; isActive: boolean } }>(`/hrm/organisation/units/${encodeURIComponent(id)}`, payload),
+  setupHeadOffice: (payload: { name?: string; stateId: number; cityId: number; departments: string[] }) => api.post<HrmHeadOfficeSetupResult>('/hrm/organisation/head-office-setup', payload),
   getPayrollReadiness: () => api.get<{ payrollReadiness: HrmPayrollReadiness }>('/hrm/payroll/readiness'),
   getEmployee: (id: string) => api.get<{ employee: HrmEmployee }>(`/hrm/employees/${id}`),
   updateEmployee: (id: string, payload: Record<string, unknown>) => api.patch<{ employee: HrmEmployee }>(`/hrm/employees/${id}`, payload),
   listOrgUnits: () => api.get<{ orgUnits: HrmOrgUnit[] }>('/hrm/org-units'),
   createAssignment: (id: string, payload: Record<string, unknown>) => api.post<{ assignment: HrmAssignment }>(`/hrm/employees/${id}/assignments`, payload),
+  /** The list behind every "Reporting manager" dropdown. */
+  getManagerOptions: (params: Record<string, string>) => api.get<ManagerOptions>('/hrm/manager-options', { params }),
+  changeReportingManager: (employeeId: string, payload: { managerEmployeeId: string | null; effectiveFrom: string; reason?: string }) =>
+    api.post<{ assignment: HrmAssignment }>(`/hrm/employees/${encodeURIComponent(employeeId)}/reporting-manager`, payload),
   listOnboarding: () => api.get<{ onboarding: HrmOnboardingCase[] }>('/hrm/onboarding'),
   onboardOffer: (offerId: string, payload: Record<string, unknown>) => api.post<{ onboarding: HrmOnboardingCase }>(`/hrm/onboarding/from-offer/${offerId}`, payload),
   addDocument: (id: string, payload: Record<string, unknown>) => api.post<{ document: HrmDocument }>(`/hrm/employees/${id}/documents`, payload),
@@ -795,6 +923,16 @@ export const hrmApi = {
   createHoliday: (payload: HrmHolidayPayload) => api.post<{ holiday: HrmHoliday }>('/hrm/holidays', payload),
   updateHoliday: (holidayId: string, payload: HrmHolidayPayload) => api.patch<{ holiday: HrmHoliday }>(`/hrm/holidays/${encodeURIComponent(holidayId)}`, payload),
   deleteHoliday: (holidayId: string) => api.delete(`/hrm/holidays/${encodeURIComponent(holidayId)}`),
+  // ---- additional charge and access review ----
+  /** The "Login role & access" choices for a person and (optionally) a state office. */
+  getManagerAccessContext: (employeeId: string, officeUnitId?: string | null) => api.get<{ context: HrmManagerAccessContext }>(`/hrm/employees/${encodeURIComponent(employeeId)}/manager-access`, { params: officeUnitId ? { officeUnitId } : undefined }),
+  listCharges: (query: { employeeId?: string; officeUnitId?: string }) => api.get<HrmChargeList & { success: boolean }>('/hrm/additional-charges', { params: query }),
+  getChargeOptions: (employeeId: string) => api.get<HrmChargeOptions & { success: boolean }>(`/hrm/employees/${encodeURIComponent(employeeId)}/charge-options`),
+  createCharge: (officeId: string, payload: HrmCreateChargePayload) => api.post<{ chargeId: string; accessGiven: boolean; accessPending: boolean; roleChanged: boolean }>(`/hrm/organisation/offices/${encodeURIComponent(officeId)}/charges`, payload),
+  changeChargeEnd: (chargeId: string, effectiveTo: string | null) => api.patch<{ chargeId: string; effectiveTo: string | null }>(`/hrm/additional-charges/${encodeURIComponent(chargeId)}`, { effectiveTo }),
+  endCharge: (chargeId: string, payload: { lastDay?: string | null; reason?: string | null } = {}) => api.post<{ chargeId: string; cancelled: boolean }>(`/hrm/additional-charges/${encodeURIComponent(chargeId)}/end`, payload),
+  getAccessReview: (query: HrmAccessReviewQuery = {}) => api.get<HrmAccessReview & { success: boolean }>('/hrm/access-review', { params: query }),
+  downloadAccessReviewCsv: (query: HrmAccessReviewQuery = {}) => api.get<Blob>('/hrm/access-review.csv', { params: query, responseType: 'blob' }),
   // ---- Phase 6 ----
   getReportSummary: (query: HrmReportQuery = {}) => api.get<{ report: HrmReportSummary }>('/hrm/reports/summary', { params: query }),
   /** CSV blob of the headcount table (state-wise or department-wise). */

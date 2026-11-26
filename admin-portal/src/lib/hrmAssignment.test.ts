@@ -4,11 +4,9 @@ import test from 'node:test';
 import {
   createEmptyAssignmentForm,
   describeReactivation,
-  effectiveOfficeKind,
   firstAssignmentError,
   isRealDay,
   maxStartDate,
-  placeAfterSwitch,
   stateOfficeStatus,
   toAssignmentPayload,
   toLocalDay,
@@ -18,7 +16,6 @@ import {
   type AssignmentForm,
 } from './hrmAssignment';
 
-const place = { stateId: 4040, cityId: 133590 };
 const states = [
   { id: 4040, name: 'Chhattisgarh', hasOffice: true, officeSwitchedOff: false },
   { id: 4041, name: 'Gujarat', hasOffice: true, officeSwitchedOff: false },
@@ -26,10 +23,10 @@ const states = [
   { id: 4043, name: 'Kerala', hasOffice: false, officeSwitchedOff: true },
 ];
 const now = new Date('2026-11-25T10:00:00.000Z');
-const context: AssignmentContext = { headOfficeAvailable: true, headOfficePlace: place, states, canManageOrg: true, now };
+const context: AssignmentContext = { headOfficeAvailable: true, states, canManageOrg: true, now };
 
 const filled: AssignmentForm = {
-  ...createEmptyAssignmentForm('2026-11-25', place),
+  ...createEmptyAssignmentForm('2026-11-25', 'ho-1'),
   orgUnitId: 'dept-1', designation: ' Executive ', reason: '  joined from offer  ',
 };
 
@@ -52,26 +49,11 @@ test('dates must exist, not be older than 1990 and not be more than a year ahead
   assert.equal(maxStartDate(new Date('2026-11-25T20:00:00.000Z')), '2027-11-26');
 });
 
-test('the form starts at the head office place when there is one, otherwise at a state office', () => {
-  const withPlace = createEmptyAssignmentForm('2026-11-25', place);
-  assert.deepEqual([withPlace.locationType, withPlace.stateId, withPlace.cityId, withPlace.effectiveFrom, withPlace.employmentType], ['HEAD_OFFICE', '4040', '133590', '2026-11-25', 'FULL_TIME']);
+test('the form starts on the default head office when there is one, otherwise at a state office', () => {
+  const withOffice = createEmptyAssignmentForm('2026-11-25', 'ho-1');
+  assert.deepEqual([withOffice.locationType, withOffice.headOfficeUnitId, withOffice.stateId, withOffice.effectiveFrom, withOffice.employmentType], ['HEAD_OFFICE', 'ho-1', '', '2026-11-25', 'FULL_TIME']);
   const without = createEmptyAssignmentForm('2026-11-25', null);
-  assert.deepEqual([without.locationType, without.stateId, without.cityId], ['STATE_OFFICE', '', '']);
-});
-
-test('switching the location keeps what was typed but drops the head office default', () => {
-  assert.deepEqual(placeAfterSwitch(filled, 'STATE_OFFICE', place), { stateId: '', cityId: '' });
-  const typed = { ...filled, locationType: 'STATE_OFFICE' as const, stateId: '4041', cityId: '9' };
-  assert.deepEqual(placeAfterSwitch(typed, 'HEAD_OFFICE', place), { stateId: '4040', cityId: '133590' });
-  assert.deepEqual(placeAfterSwitch({ ...filled, stateId: '4041', cityId: '9' }, 'STATE_OFFICE', place), { stateId: '4041', cityId: '9' });
-  assert.deepEqual(placeAfterSwitch(typed, 'STATE_OFFICE', place), { stateId: '4041', cityId: '9' });
-});
-
-test('a head office assignment somewhere else is really a state office one', () => {
-  assert.equal(effectiveOfficeKind(filled, place), 'HEAD_OFFICE');
-  assert.equal(effectiveOfficeKind({ ...filled, cityId: '5' }, place), 'STATE_OFFICE');
-  assert.equal(effectiveOfficeKind({ ...filled, locationType: 'STATE_OFFICE' }, place), 'STATE_OFFICE');
-  assert.equal(effectiveOfficeKind(filled, null), 'STATE_OFFICE');
+  assert.deepEqual([without.locationType, without.headOfficeUnitId, without.stateId, without.cityId], ['STATE_OFFICE', '', '', '']);
 });
 
 test('state office status: ready, created for an administrator, blocked otherwise', () => {
@@ -93,7 +75,7 @@ test('a complete head office form is valid', () => {
 });
 
 test('missing fields are reported in the order the form shows them', () => {
-  const errors = validateAssignmentForm({ ...createEmptyAssignmentForm('', null), locationType: 'STATE_OFFICE' }, { ...context, headOfficePlace: null });
+  const errors = validateAssignmentForm({ ...createEmptyAssignmentForm('', null), locationType: 'STATE_OFFICE' }, context);
   assert.deepEqual(Object.keys(errors).sort(), ['cityId', 'designation', 'effectiveFrom', 'orgUnitId', 'stateId']);
   assert.equal(firstAssignmentError(errors), 'stateId');
   assert.equal(firstAssignmentError({}), undefined);
@@ -104,21 +86,25 @@ test('head office needs to be set up', () => {
   assert.ok(errors.locationType);
 });
 
-test('state and city are both needed, for the head office too', () => {
-  assert.ok(validateAssignmentForm({ ...filled, cityId: '' }, context).cityId);
-  assert.ok(validateAssignmentForm({ ...filled, stateId: '', cityId: '' }, context).stateId);
+test('a head office needs no state or city, but the chosen office must be usable', () => {
+  assert.deepEqual(validateAssignmentForm({ ...filled, stateId: '', cityId: '' }, context), {});
+  assert.equal(validateAssignmentForm(filled, { ...context, headOfficeMessage: 'It has no state and city.' }).headOfficeUnitId, 'It has no state and city.');
+});
+
+const stateForm = { ...filled, locationType: 'STATE_OFFICE' as const };
+
+test('a state office needs state and city', () => {
+  assert.ok(validateAssignmentForm({ ...stateForm, stateId: '4041', cityId: '' }, context).cityId);
+  assert.ok(validateAssignmentForm({ ...stateForm, stateId: '', cityId: '' }, context).stateId);
 });
 
 test('a state without a usable office blocks the save, but only for state office placements', () => {
-  const rajasthan = { ...filled, locationType: 'STATE_OFFICE' as const, stateId: '4042', cityId: '77' };
+  const rajasthan = { ...stateForm, stateId: '4042', cityId: '77' };
   assert.equal(validateAssignmentForm(rajasthan, context).stateId, undefined);
   assert.match(validateAssignmentForm(rajasthan, { ...context, canManageOrg: false }).stateId ?? '', /no state office yet/);
-  const kerala = { ...rajasthan, stateId: '4043' };
-  assert.match(validateAssignmentForm(kerala, context).stateId ?? '', /switched off/);
-  // Head office city: the head office is used, the state's office status does not matter.
-  assert.equal(validateAssignmentForm(filled, { ...context, states: [{ ...states[0]!, hasOffice: false }] }).stateId, undefined);
-  // A "head office" form moved to another place is judged as that state's office.
-  assert.match(validateAssignmentForm({ ...filled, stateId: '4043', cityId: '8' }, context).stateId ?? '', /switched off/);
+  assert.match(validateAssignmentForm({ ...rajasthan, stateId: '4043' }, context).stateId ?? '', /switched off/);
+  // A head office posting never looks at a state office, whatever state was picked before switching.
+  assert.equal(validateAssignmentForm({ ...filled, stateId: '4043', cityId: '8' }, context).stateId, undefined);
 });
 
 test('employment type, date and reason limits', () => {
@@ -128,10 +114,12 @@ test('employment type, date and reason limits', () => {
   assert.ok(validateAssignmentForm({ ...filled, reason: 'x'.repeat(501) }, context).reason);
 });
 
-test('the payload is trimmed, numeric ids are numbers and nothing else is sent', () => {
+test('the payload is trimmed; a head office is named, a state office sends its state and city', () => {
   assert.deepEqual(toAssignmentPayload(filled), {
-    orgUnitId: 'dept-1', designation: 'Executive', employmentType: 'FULL_TIME', stateId: 4040, cityId: 133590, effectiveFrom: '2026-11-25', reason: 'joined from offer',
+    orgUnitId: 'dept-1', designation: 'Executive', employmentType: 'FULL_TIME', locationType: 'HEAD_OFFICE', headOfficeUnitId: 'ho-1', effectiveFrom: '2026-11-25', reason: 'joined from offer',
   });
+  const state = toAssignmentPayload({ ...stateForm, stateId: '4040', cityId: '133590' });
+  assert.deepEqual([state.locationType, state.stateId, state.cityId, 'headOfficeUnitId' in state], ['STATE_OFFICE', 4040, 133590, false]);
   const noReason = toAssignmentPayload({ ...filled, reason: '   ', employmentType: '' });
   assert.equal('reason' in noReason, false);
   assert.equal(noReason.employmentType, 'FULL_TIME');

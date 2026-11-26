@@ -22,3 +22,11 @@ export const describeShiftProblem = (shift: { startTime: string; endTime: string
   return null;
 };
 
+/** The next free shift code (SH-001, SH-002, ...). Codes of other patterns (typed earlier) are ignored. */
+export const nextShiftCode = (existing: readonly string[]) => {
+  const highest = existing.reduce((max, code) => {
+    const match = /^SH-(\d+)$/i.exec(code);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+  return `SH-${String(highest + 1).padStart(3, '0')}`;
+};

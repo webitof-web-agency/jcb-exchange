@@ -3,17 +3,18 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../../../lib/prisma';
 import { insertManagedEmployeeUser, ManagedUserError, prepareManagedEmployeeUser, type PreparedManagedEmployeeUser } from '../../../services/managedEmployeeUser.service';
 import { normalizeProfileMobile } from '../../../utils/profileMobile';
-import { assertEmployeeAccess, getActiveScopes, getHrmPermissions } from '../access';
+import { abilitiesOf, assertCanGrant, checkScopeShape } from '../accessGrant';
+import { assertEmployeeAccess } from '../access';
 import { assertCanGiveRole, assertNotOwnRecord, rolesActorCanGive } from '../employeeGuards';
 import { writeHrmAudit } from '../audit';
 import { HrmAuthorizationError, HrmConflictError, HrmHttpError, HrmNotFoundError } from '../errors';
 import { istToday } from '../istDate';
-import { describeJoiningDateProblem, suggestScopes, type ScopeType } from '../joiningRules';
+import { describeJoiningDateProblem, suggestScopes } from '../joiningRules';
 import { syncOfficePrimaryManager } from '../officeAssignments';
 import { buildChecklist, checklistProgress } from '../onboardingChecklist';
 import { kindOfUnit } from '../organisationCodes';
 import { syncPlacementScopes } from '../accessProvisioning';
-import { HRM_PERMISSIONS, hasAllIndiaScope, hasHrmPermission } from '../security';
+import { createMissingChargeAccess } from '../chargeLifecycle';
 import { parseHrmInput, schemas } from '../validation';
 import { loadLinkableUser } from './employeeOnboarding.service';
 import { sendJoiningWelcome } from './joiningWelcome.service';
@@ -34,45 +35,8 @@ const JOINABLE = ['DRAFT', 'PRE_ONBOARDING', 'ONBOARDING'];
 const dayString = (date: Date | null | undefined) => (date ? date.toISOString().slice(0, 10) : null);
 const dayFrom = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
-export const abilitiesOf = async (actor: Actor) => {
-  const permissions = await getHrmPermissions(actor.userId, actor.role);
-  const scopes = await getActiveScopes(actor.userId);
-  return {
-    permissions,
-    canConfirm: hasHrmPermission(permissions, HRM_PERMISSIONS.ONBOARDING_MANAGE) && hasHrmPermission(permissions, HRM_PERMISSIONS.EMPLOYEES_MANAGE),
-    canCreateLogin: hasHrmPermission(permissions, 'users.create'),
-    canLinkLogin: hasHrmPermission(permissions, 'users.read'),
-    canUpdateLogin: hasHrmPermission(permissions, 'users.update'),
-    canManageScopes: hasHrmPermission(permissions, HRM_PERMISSIONS.SCOPE_MANAGE),
-    allIndia: actor.role === 'SUPER_ADMIN' || hasHrmPermission(permissions, HRM_PERMISSIONS.SCOPE_ALL) || hasAllIndiaScope(scopes),
-    ownStates: new Set(scopes.flatMap((scope) => (scope.scopeType === 'STATE' && scope.stateId ? [scope.stateId] : []))),
-  };
-};
-type Abilities = Awaited<ReturnType<typeof abilitiesOf>>;
-
-/** Nobody can hand out wider access than they have themselves. */
-export const assertCanGrant = (abilities: Abilities, scope: { scopeType: ScopeType; stateId?: number | null | undefined }) => {
-  if (!abilities.canManageScopes) throw new HrmAuthorizationError('Giving HRM access needs the hrm.scope.manage permission.');
-  if (abilities.allIndia) return;
-  if (scope.scopeType === 'STATE' && scope.stateId && abilities.ownStates.has(scope.stateId)) return;
-  if (scope.scopeType === 'DIRECT_REPORTS' || scope.scopeType === 'OWN') return;
-  throw new HrmAuthorizationError('You can only give access you have yourself (your own state, or direct reports).');
-};
-
-export const checkScopeShape = async (db: Tx | typeof prisma, scope: { scopeType: ScopeType; stateId?: number | null | undefined; orgUnitId?: string | null | undefined; source?: 'PLACEMENT' | 'MANUAL' | undefined }) => {
-  if (scope.scopeType === 'STATE') {
-    if (!scope.stateId) throw new HrmHttpError(400, 'SCOPE_STATE_REQUIRED', 'Choose the state for a state access.');
-    const state = await db.state.findFirst({ where: { id: scope.stateId, country: { iso2: 'IN' } }, select: { id: true } });
-    if (!state) throw new HrmHttpError(400, 'STATE_NOT_FOUND', 'The selected state was not found.');
-  }
-  if (scope.scopeType === 'HEAD_OFFICE' || scope.scopeType === 'DEPARTMENT' || scope.scopeType === 'TEAM') {
-    if (!scope.orgUnitId) throw new HrmHttpError(400, 'SCOPE_UNIT_REQUIRED', 'Choose the office or department for this access.');
-    const unit = await db.hrmOrgUnit.findUnique({ where: { id: scope.orgUnitId }, select: { type: true } });
-    if (!unit) throw new HrmHttpError(400, 'SCOPE_UNIT_NOT_FOUND', 'The selected office or department was not found.');
-    if (scope.scopeType === 'HEAD_OFFICE' && unit.type !== 'HEAD_OFFICE') throw new HrmHttpError(400, 'SCOPE_UNIT_INVALID', 'Choose the head office.');
-  }
-  if (scope.source === 'PLACEMENT' && scope.scopeType !== 'STATE') throw new HrmHttpError(400, 'SCOPE_SOURCE_INVALID', 'Only a state access can follow the placement.');
-};
+// The grant rules live in ../accessGrant (shared with appointments and additional charges).
+export { abilitiesOf, assertCanGrant, checkScopeShape };
 
 /** The assignment that decides the placement: in force on the joining day (or the next one). */
 const placementOf = async (employeeId: string, onDay: Date) => {
@@ -372,6 +336,9 @@ export const confirmJoining = async (actor: Actor, employeeId: string, rawInput:
         for (const row of later) await syncPlacementScopes(tx, employeeId, row.effectiveFrom, actor.userId);
       }
 
+      // An additional charge given before they had a login gets its access now (for states the confirmer may give).
+      if (userId) await createMissingChargeAccess(tx, actor, employeeId, userId, (stateId) => abilities.canManageScopes && (abilities.allIndia || abilities.ownStates.has(stateId)));
+
       // The office counts its manager from today.
       const managed = await tx.hrmEmploymentAssignment.findMany({ where: { employeeId, isOfficeManager: true, status: 'ACTIVE', officeUnitId: { not: null } }, select: { officeUnitId: true } });
       for (const officeUnitId of new Set(managed.map((row) => row.officeUnitId!))) await syncOfficePrimaryManager(tx, officeUnitId);
@@ -485,6 +452,7 @@ export const endEmployeeScope = async (actor: Actor, scopeId: string, rawInput: 
   if (!abilities.canManageScopes) throw new HrmAuthorizationError('Ending HRM access needs the hrm.scope.manage permission.');
   const scope = await prisma.hrmAccessScope.findUnique({ where: { id: scopeId } });
   if (!scope) throw new HrmNotFoundError('Access not found.');
+  if (scope.source === 'CHARGE') throw new HrmConflictError('This access belongs to an additional charge. End the charge instead (on the profile or the office page).');
   const employee = await prisma.hrmEmployee.findUnique({ where: { userId: scope.userId }, select: { id: true } });
   if (employee) await assertEmployeeAccess({ ...actor, employeeId: employee.id });
   else if (!abilities.allIndia) throw new HrmAuthorizationError('Only an all-India HR user can change the access of an account without an HR record.');

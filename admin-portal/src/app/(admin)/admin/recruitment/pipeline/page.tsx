@@ -14,6 +14,7 @@ import {
   getRecruitmentStageTone,
   normalizeRecruitmentStages,
 } from '@/lib/recruitmentStages';
+import useRecruitmentReach from '@/components/recruitment/useRecruitmentReach';
 
 const STAGE_COLOR_OPTIONS = [
   'blue',
@@ -66,9 +67,12 @@ const notifyRecruitmentStageRefresh = () => {
 export default function AdminPipelinePage() {
   const { t } = useTranslation();
   const currentUser = useAuthStore((state) => state.user);
-  const canCreate = canUseRecruitmentPermission(currentUser, recruitmentPermissions.pipelineCreate);
-  const canUpdate = canUseRecruitmentPermission(currentUser, recruitmentPermissions.pipelineUpdate);
-  const canDeletePipelineStage = canUseRecruitmentPermission(currentUser, recruitmentPermissions.pipelineDelete);
+  // Pipeline stages are shared by the whole company: only all-India recruiters change them (the server checks too).
+  const reach = useRecruitmentReach();
+  const allIndia = !reach || reach.allIndia;
+  const canCreate = allIndia && canUseRecruitmentPermission(currentUser, recruitmentPermissions.pipelineCreate);
+  const canUpdate = allIndia && canUseRecruitmentPermission(currentUser, recruitmentPermissions.pipelineUpdate);
+  const canDeletePipelineStage = allIndia && canUseRecruitmentPermission(currentUser, recruitmentPermissions.pipelineDelete);
   const [stages, setStages] = useState<PipelineStageItem[]>(DEFAULT_RECRUITMENT_STAGES);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

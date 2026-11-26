@@ -34,6 +34,10 @@ type HrmEmployeeKycPanelProps = {
   currentUserId: string | null;
   /** Reloads the employee after a change so every section shows the saved state. */
   onChanged: () => Promise<void> | void;
+  /** Show only this part (opened from the joining checklist). */
+  only?: 'PAN' | 'AADHAAR' | 'BANK' | null;
+  /** Open the bank account form straight away ("Complete" on the bank item). */
+  openBankForm?: boolean;
 };
 
 /** Blob responses hide the server's JSON error; read it back so the real message is shown. */
@@ -74,7 +78,7 @@ const inputClass = 'h-10 w-full rounded-lg border border-slate-200 bg-white px-3
  * The verified card template is saved on Google Drive by the shared verification service, which then
  * deletes the provider's raw data; HRM keeps only the masked number and a link to that template.
  */
-export default function HrmEmployeeKycPanel({ employeeId, employeeName, documents, bankAccounts, canManage, canViewDocuments, currentUserId, onChanged }: HrmEmployeeKycPanelProps) {
+export default function HrmEmployeeKycPanel({ employeeId, employeeName, documents, bankAccounts, canManage, canViewDocuments, currentUserId, onChanged, only = null, openBankForm = false }: HrmEmployeeKycPanelProps) {
   const [panNumber, setPanNumber] = useState('');
   const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [busy, setBusy] = useState<HrmKycDocumentType | null>(null);
@@ -306,12 +310,14 @@ export default function HrmEmployeeKycPanel({ employeeId, employeeName, document
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-5 lg:grid-cols-2">
-        {renderKycCard('PAN')}
-        {renderKycCard('AADHAAR')}
-      </div>
+      {only === 'BANK' ? null : (
+        <div className={only ? 'max-w-2xl' : 'grid gap-5 lg:grid-cols-2'}>
+          {only === 'AADHAAR' ? null : renderKycCard('PAN')}
+          {only === 'PAN' ? null : renderKycCard('AADHAAR')}
+        </div>
+      )}
 
-      <BankAccountsSection employeeId={employeeId} employeeName={employeeName} bankAccounts={bankAccounts} canManage={canManage} onChanged={onChanged} />
+      {only === 'PAN' || only === 'AADHAAR' ? null : <BankAccountsSection employeeId={employeeId} employeeName={employeeName} bankAccounts={bankAccounts} canManage={canManage} onChanged={onChanged} startOpen={openBankForm} />}
 
       {activePreview ? (
         <KycVerificationPreviewModal
@@ -357,15 +363,16 @@ export default function HrmEmployeeKycPanel({ employeeId, employeeName, document
   );
 }
 
-function BankAccountsSection({ employeeId, employeeName, bankAccounts, canManage, onChanged }: {
+function BankAccountsSection({ employeeId, employeeName, bankAccounts, canManage, onChanged, startOpen = false }: {
   employeeId: string;
   employeeName: string;
   bankAccounts: HrmBankAccount[];
   canManage: boolean;
   onChanged: () => Promise<void> | void;
+  startOpen?: boolean;
 }) {
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<BankAccountForm>(EMPTY_BANK_ACCOUNT_FORM);
+  const [showForm, setShowForm] = useState(() => startOpen && canManage);
+  const [form, setForm] = useState<BankAccountForm>(() => ({ ...EMPTY_BANK_ACCOUNT_FORM, accountHolderName: employeeName, isPrimary: bankAccounts.length === 0 }));
   const [errors, setErrors] = useState<Partial<Record<keyof BankAccountForm, string>>>({});
   const [saving, setSaving] = useState(false);
   const [busyAccount, setBusyAccount] = useState<string | null>(null);

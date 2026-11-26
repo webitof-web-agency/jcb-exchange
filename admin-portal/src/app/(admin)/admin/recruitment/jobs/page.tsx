@@ -29,6 +29,8 @@ import {
 import { buildPaginationItems } from '@/lib/paginationUtils';
 import { generateRecruitmentJobDetailPath, getRecruitmentPortalBasePath } from '@/lib/routePaths';
 import { confirmDelete } from '@/store/confirmDeleteStore';
+import useRecruitmentReach from '@/components/recruitment/useRecruitmentReach';
+import { jobPostingOptionsFor, jobStatesFor } from '@/lib/recruitmentReach';
 
 interface JobDepartment {
   id: string;
@@ -299,6 +301,9 @@ export default function AdminJobsPage() {
   const [formWorkMode, setFormWorkMode] = useState('ON_SITE');
   const [formLocationCity, setFormLocationCity] = useState('');
   const [formLocationState, setFormLocationState] = useState('');
+  // Head office or state office posting; '' lets the server decide from the city.
+  const [formLocationType, setFormLocationType] = useState('');
+  const reach = useRecruitmentReach();
   const [formLocationAddress, setFormLocationAddress] = useState('');
   const [formMinExp, setFormMinExp] = useState('0');
   const [formMaxExp, setFormMaxExp] = useState('');
@@ -365,6 +370,8 @@ export default function AdminJobsPage() {
   };
 
   const handleStateSelect = async (stateName: string) => {
+    // A new place decides the posting type again.
+    setFormLocationType('');
     setFormLocationState(stateName);
     setFormLocationCity('');
     setDbCities([]);
@@ -450,6 +457,7 @@ export default function AdminJobsPage() {
     setCustomQuestions([]);
 
     setFormLocationState('');
+    setFormLocationType('');
     setFormLocationCity('');
     setDbCities([]);
 
@@ -473,6 +481,7 @@ export default function AdminJobsPage() {
         setFormWorkMode(j.workMode || 'ON_SITE');
         setFormLocationCity(j.locationCity || '');
         setFormLocationState(j.locationState || '');
+        setFormLocationType(j.hrmLocationType || '');
         setFormLocationAddress(j.locationAddress || '');
         setFormMinExp(j.minExperience?.toString() || '0');
         setFormMaxExp(j.maxExperience?.toString() || '');
@@ -519,6 +528,19 @@ export default function AdminJobsPage() {
         alert('Failed to load job details for editing.');
     }
   };
+
+  // …/recruitment/jobs?edit=<id> (the HRM access review) opens that job's edit form once.
+  useEffect(() => {
+    const jobId = new URLSearchParams(window.location.search).get('edit');
+    if (!jobId || !canUpdate) return undefined;
+    const timer = window.setTimeout(() => {
+      window.history.replaceState(window.history.state, '', window.location.pathname);
+      void handleOpenEditModal(jobId);
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // handleOpenEditModal is recreated on every render; the link is read once the permission is known.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canUpdate]);
 
   const handleDuplicateJob = async (jobId: string) => {
     if (!canDuplicate) return;
@@ -613,6 +635,9 @@ export default function AdminJobsPage() {
         workMode: formWorkMode,
         locationCity: formLocationCity.trim(),
         locationState: formLocationState.trim(),
+        // The state's id (when the name is in the list) and the posting type: what the state limit goes by.
+        hrmStateId: dbStates.find((state) => state.name.toLowerCase() === formLocationState.trim().toLowerCase())?.id,
+        hrmLocationType: formLocationType,
         locationAddress: formLocationAddress.trim() || undefined,
         minExperience: formMinExp ? parseFloat(formMinExp) : 0,
         maxExperience: formMaxExp ? parseFloat(formMaxExp) : null,
@@ -1089,8 +1114,8 @@ export default function AdminJobsPage() {
                       placeholder="Select State"
                       searchable={true}
                       options={[
-                        ...dbStates.map((s) => ({ value: s.name, label: s.name })),
-                        ...(formLocationState && !dbStates.some((s) => s.name.toLowerCase() === formLocationState.toLowerCase())
+                        ...jobStatesFor(dbStates, reach).map((s) => ({ value: s.name, label: s.name })),
+                        ...(formLocationState && !jobStatesFor(dbStates, reach).some((s) => s.name.toLowerCase() === formLocationState.toLowerCase())
                           ? [{ value: formLocationState, label: formLocationState }]
                           : []),
                       ]}
@@ -1101,7 +1126,7 @@ export default function AdminJobsPage() {
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">Location City *</label>
                     <CustomSelect
                       value={formLocationCity}
-                      onChange={(val) => setFormLocationCity(val)}
+                      onChange={(val) => { setFormLocationCity(val); setFormLocationType(''); }}
                       disabled={!formLocationState || loadingLocations}
                       placeholder={
                         !formLocationState
@@ -1118,6 +1143,16 @@ export default function AdminJobsPage() {
                           : []),
                       ]}
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">Posting</label>
+                    <CustomSelect
+                      value={formLocationType}
+                      onChange={(val) => setFormLocationType(val)}
+                      options={jobPostingOptionsFor(reach)}
+                    />
+                    <p className="mt-1 text-[11px] text-gray-500">State Managers see only the state office jobs of their states.</p>
                   </div>
 
                   <div>

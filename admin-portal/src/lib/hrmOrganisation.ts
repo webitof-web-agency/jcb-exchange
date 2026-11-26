@@ -1,16 +1,4 @@
-import type { HrmHeadOfficeSetupResult, HrmOrganisation, HrmOrganisationUnit, HrmStateOfficesResult } from './hrmApi';
-
-/** Departments suggested when the head office is set up. The administrator can untick or add more. */
-export const SUGGESTED_HEAD_OFFICE_DEPARTMENTS = [
-  'Human Resources',
-  'Finance & Accounts',
-  'Sales',
-  'Operations',
-  'Technology',
-  'Customer Support',
-  'Marketing',
-  'Legal & Compliance',
-] as const;
+import type { HrmDepartmentRow, HrmHeadOfficeSetupResult, HrmOrganisation, HrmOrganisationUnit, HrmStateOfficesResult } from './hrmApi';
 
 export type OrganisationGroups = {
   headOffices: HrmOrganisationUnit[];
@@ -22,7 +10,7 @@ export type OrganisationGroups = {
 export const matchesUnit = (unit: HrmOrganisationUnit, query: string) => {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  return [unit.name, unit.code, unit.state?.name, unit.city?.name, unit.parent?.name, ...unit.managers.map((manager) => manager.name)]
+  return [unit.name, unit.code, unit.state?.name, unit.city?.name, unit.parent?.name, ...unit.managers.map((manager) => manager.name), ...(unit.chargeHolders ?? []).map((holder) => holder.name)]
     .some((value) => value?.toLowerCase().includes(needle));
 };
 
@@ -30,7 +18,9 @@ export const matchesUnit = (unit: HrmOrganisationUnit, query: string) => {
 export const groupOrganisation = (units: HrmOrganisationUnit[], options: { query?: string; showInactive?: boolean } = {}): OrganisationGroups => {
   const visible = units.filter((unit) => (options.showInactive || unit.isActive) && matchesUnit(unit, options.query ?? ''));
   const pick = (kind: HrmOrganisationUnit['kind']) => visible.filter((unit) => unit.kind === kind);
-  return { headOffices: pick('HEAD_OFFICE'), departments: pick('DEPARTMENT'), states: pick('STATE'), others: pick('OTHER') };
+  // The default head office leads its list.
+  const headOffices = [...pick('HEAD_OFFICE')].sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)));
+  return { headOffices, departments: pick('DEPARTMENT'), states: pick('STATE'), others: pick('OTHER') };
 };
 
 /**
@@ -43,12 +33,14 @@ export const summariseOrganisation = (organisation: HrmOrganisation) => {
   const stateOffices = activeOf('STATE');
   const sumStaff = (units: HrmOrganisationUnit[]) => units.reduce((total, unit) => total + unit.employeeCount, 0);
   return {
-    headOffice: activeOf('HEAD_OFFICE')[0] ?? null,
+    headOffice: activeOf('HEAD_OFFICE').find((unit) => unit.isDefault) ?? activeOf('HEAD_OFFICE')[0] ?? null,
     departments: activeOf('DEPARTMENT').length,
     stateOffices: stateOffices.length,
     totalStates: organisation.indiaStateCount || organisation.states.length,
     covered: stateOffices.filter((unit) => unit.coverage === 'COVERED').length,
     vacant: stateOffices.filter((unit) => unit.coverage === 'VACANT').length,
+    // Covered only through somebody's additional charge (no manager of their own).
+    coveredByCharge: stateOffices.filter((unit) => unit.coverage === 'COVERED' && !unit.managers.length).length,
     // Vacant today, but a State Manager is joining (still counted in vacant).
     joiningSoon: stateOffices.filter((unit) => unit.coverage === 'VACANT' && (unit.upcomingManagers?.length ?? 0) > 0).length,
     notSetUp: organisation.availableStates.length,
@@ -80,6 +72,8 @@ export type StateRow = {
   unit: HrmOrganisationUnit | null;
   status: StateRowStatus;
   managers: HrmOrganisationUnit['managers'];
+  /** People looking after the office through an additional charge today. */
+  chargeHolders: NonNullable<HrmOrganisationUnit['chargeHolders']>;
   /** People joining as manager of a vacant office (pre-joining, or starting later). */
   upcomingManagers: NonNullable<HrmOrganisationUnit['upcomingManagers']>;
   employeeCount: number;
@@ -100,17 +94,19 @@ export const buildStateRows = (organisation: Pick<HrmOrganisation, 'states' | 'u
   return organisation.states.map((state) => {
     const list = offices.get(state.id) ?? [];
     const unit = list.find((candidate) => candidate.isActive) ?? list[0] ?? null;
-    if (!unit) return { stateId: state.id, stateName: state.name, unit: null, status: 'NOT_SET_UP' as const, managers: [], upcomingManagers: [], employeeCount: 0 };
-    if (!unit.isActive) return { stateId: state.id, stateName: state.name, unit, status: 'SWITCHED_OFF' as const, managers: [], upcomingManagers: [], employeeCount: unit.employeeCount };
-    const status: StateRowStatus = unit.coverage ?? (unit.managers.length ? 'COVERED' : 'VACANT');
-    return { stateId: state.id, stateName: state.name, unit, status, managers: unit.managers, upcomingManagers: status === 'VACANT' ? unit.upcomingManagers ?? [] : [], employeeCount: unit.employeeCount };
+    if (!unit) return { stateId: state.id, stateName: state.name, unit: null, status: 'NOT_SET_UP' as const, managers: [], chargeHolders: [], upcomingManagers: [], employeeCount: 0 };
+    if (!unit.isActive) return { stateId: state.id, stateName: state.name, unit, status: 'SWITCHED_OFF' as const, managers: [], chargeHolders: [], upcomingManagers: [], employeeCount: unit.employeeCount };
+    const chargeHolders = unit.chargeHolders ?? [];
+    const status: StateRowStatus = unit.coverage ?? (unit.managers.length || chargeHolders.length ? 'COVERED' : 'VACANT');
+    // A state without its own manager still shows who is joining, also while a charge covers it.
+    return { stateId: state.id, stateName: state.name, unit, status, managers: unit.managers, chargeHolders, upcomingManagers: unit.managers.length ? [] : unit.upcomingManagers ?? [], employeeCount: unit.employeeCount };
   });
 };
 
 const matchesStateRow = (row: StateRow, query: string) => {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  return [row.stateName, row.unit?.name, row.unit?.code, ...row.managers.map((manager) => manager.name)]
+  return [row.stateName, row.unit?.name, row.unit?.code, ...row.managers.map((manager) => manager.name), ...row.chargeHolders.map((holder) => holder.name)]
     .some((value) => value?.toLowerCase().includes(needle));
 };
 
@@ -170,10 +166,46 @@ export const describeSkippedState = (skipped: HrmStateOfficesResult['skipped'][n
     ? `${skipped.name}: its office is switched off. Switch it on from the table instead.`
     : `${skipped.name}: it already has a state office.`;
 
-/** Adds a custom department name to the checklist: trims, ignores blanks and repeats (case-insensitive). */
+/**
+ * An office / department name as the server stores it: control characters, zero-width spaces and bidi overrides
+ * removed and spaces collapsed (zero-width joiners stay for Indic scripts). Same rule as the backend.
+ */
+export const cleanUnitName = (value: string) => value
+  .replace(/[\u0000-\u001f\u007f-\u009f\u200b\u202a-\u202e\u2066-\u2069\ufeff]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+/** Why a cleaned name cannot be used; null when it is fine. */
+export const unitNameProblem = (name: string): string | null => {
+  if (name.length < 2) return 'Enter at least 2 characters.';
+  if (name.length > 160) return 'The name can have at most 160 characters.';
+  if (/[<>]/.test(name)) return 'The name cannot contain < or >.';
+  if (!/[\p{L}\p{N}]/u.test(name)) return 'The name needs at least one letter or number.';
+  return null;
+};
+
+/** Adds a department name to a list: cleaned, checked and never repeated (case-insensitive). */
 export const addCustomDepartment = (current: readonly string[], raw: string) => {
-  const name = raw.replace(/\s+/g, ' ').trim();
-  if (name.length < 2) return { names: [...current], error: 'Enter at least 2 characters.' };
+  const name = cleanUnitName(raw);
+  const problem = unitNameProblem(name);
+  if (problem) return { names: [...current], error: problem };
   if (current.some((existing) => existing.toLowerCase() === name.toLowerCase())) return { names: [...current], error: `${name} is already in the list.` };
   return { names: [...current, name], error: '' };
+};
+
+export const filterDepartments = <T extends { name: string; code: string }>(rows: readonly T[], query = ''): T[] => {
+  const needle = query.trim().toLowerCase();
+  return needle ? rows.filter((row) => row.name.toLowerCase().includes(needle) || row.code.toLowerCase().includes(needle)) : [...rows];
+};
+
+/** What uses a department, in short labels for its row ([] when nothing does). */
+export const describeDepartmentUse = (row: Pick<HrmDepartmentRow, 'currentEmployees' | 'totalAssignments' | 'openOffers' | 'accessScopes'>) => {
+  const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+  const uses: string[] = [];
+  if (row.currentEmployees) uses.push(plural(row.currentEmployees, 'employee'));
+  if (row.openOffers) uses.push(plural(row.openOffers, 'open offer'));
+  if (row.accessScopes) uses.push('HRM access');
+  // Placements that are not today's: people who left or moved, or who join later.
+  if (!row.currentEmployees && row.totalAssignments) uses.push('Employee records');
+  return uses;
 };

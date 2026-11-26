@@ -2,6 +2,8 @@ import { ListingStatus, Role } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
+import { getRecruitmentReach } from '../services/recruitmentReach.service';
+import { applicationReachWhere, interviewReachWhere, jobReachWhere } from '../utils/recruitmentReachRules';
 import { syncHrmEmployeeFromLogin } from '../modules/hrm/services/employeeLogin.service';
 import {
   checkGoogleDriveConnection,
@@ -1003,11 +1005,12 @@ export const getDashboardSummary = async (req: Request, res: Response, next: Nex
       listingsCount: d._count?.listings || 0,
     }));
 
-    // ── Module 8: HR & Recruitment Snapshot ──
+    // ── Module 8: HR & Recruitment Snapshot (the viewer's own states) ──
+    const reach = await getRecruitmentReach({ userId: req.user!.id, role: req.user!.role });
     const [openJobsCount, scheduledInterviewsCount, newCandidatesCount] = await Promise.all([
-      prisma.job.count({ where: { status: 'PUBLISHED' } }),
-      prisma.interview.count({ where: { status: 'SCHEDULED' } }),
-      prisma.jobApplication.count({ where: { currentStage: 'NEW' } }),
+      prisma.job.count({ where: { AND: [{ status: 'PUBLISHED' }, jobReachWhere(reach)] } }),
+      prisma.interview.count({ where: { AND: [{ status: 'SCHEDULED' }, interviewReachWhere(reach)] } }),
+      prisma.jobApplication.count({ where: { AND: [{ currentStage: 'NEW' }, applicationReachWhere(reach)] } }),
     ]);
     const recruitmentSnapshot = {
       openJobs: openJobsCount,
@@ -3785,6 +3788,8 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
     const recurrenceSeenAt         = parseSeenAt(req.query['seenAt[recurrence]']);
     const recruitmentAppsSeenAt    = parseSeenAt(req.query['seenAt[recruitmentApplications]']);
     const recruitmentIntervsSeenAt = parseSeenAt(req.query['seenAt[recruitmentInterviews]']);
+    // Recruitment badges count only what the viewer can open.
+    const recruitmentReach = await getRecruitmentReach({ userId: req.user!.id, role: req.user!.role });
 
     const [enquiriesCount, verificationsCount, visitorsCount, recurrenceCount, listingsPendingApprovalCount, recruitmentApplicationsCount, recruitmentInterviewsCount] = await Promise.all([
       (prisma as any).lead.count({
@@ -3828,12 +3833,14 @@ export const getModuleBadges = async (req: Request, res: Response, next: NextFun
         where: {
           currentStage: 'NEW',
           ...(recruitmentAppsSeenAt ? { appliedAt: { gt: recruitmentAppsSeenAt } } : {}),
+          AND: [applicationReachWhere(recruitmentReach)],
         },
       }),
       (prisma as any).interview.count({
         where: {
           status: 'SCHEDULED',
           ...(recruitmentIntervsSeenAt ? { scheduledAt: { gt: recruitmentIntervsSeenAt } } : {}),
+          AND: [interviewReachWhere(recruitmentReach)],
         },
       }),
     ]);

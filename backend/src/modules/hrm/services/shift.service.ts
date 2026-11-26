@@ -5,7 +5,7 @@ import { writeHrmAudit } from '../audit';
 import { assertNotOwnRecord } from '../employeeGuards';
 import { HrmAuthorizationError, HrmConflictError, HrmHttpError, HrmNotFoundError } from '../errors';
 import { parseHrmInput, schemas } from '../validation';
-import { describeShiftProblem, shiftLengthMinutes } from '../shiftRules';
+import { describeShiftProblem, nextShiftCode, shiftLengthMinutes } from '../shiftRules';
 import { istToday } from '../istDate';
 
 export { describeShiftProblem, shiftLengthMinutes };
@@ -39,15 +39,18 @@ export const createShift = async (actor: Actor, rawInput: unknown) => {
   const input = parseHrmInput(schemas.createShift, rawInput);
   const problem = describeShiftProblem(input);
   if (problem) throw new HrmHttpError(400, 'SHIFT_INVALID', problem);
-  const existing = await prisma.hrmShift.findUnique({ where: { code: input.code }, select: { id: true } });
-  if (existing) throw new HrmConflictError(`A shift with code ${input.code} already exists.`);
-  const shift = await prisma.hrmShift.create({
-    data: {
-      code: input.code, name: input.name, startTime: input.startTime, endTime: input.endTime,
-      breakMinutes: input.breakMinutes ?? 0, graceMinutes: input.graceMinutes ?? 0,
-      halfDayMinutes: input.halfDayMinutes ?? null, fullDayMinutes: input.fullDayMinutes ?? null,
-      isNightShift: input.isNightShift ?? false, isActive: input.isActive ?? true, createdById: actor.userId,
-    },
+  const shift = await prisma.$transaction(async (tx) => {
+    // One at a time, so two people adding shifts never get the same code.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'hrm-shift-code'}))`;
+    const taken = await tx.hrmShift.findMany({ select: { code: true } });
+    return tx.hrmShift.create({
+      data: {
+        code: nextShiftCode(taken.map((row) => row.code)), name: input.name, startTime: input.startTime, endTime: input.endTime,
+        breakMinutes: input.breakMinutes ?? 0, graceMinutes: input.graceMinutes ?? 0,
+        halfDayMinutes: input.halfDayMinutes ?? null, fullDayMinutes: input.fullDayMinutes ?? null,
+        isNightShift: input.isNightShift ?? false, isActive: input.isActive ?? true, createdById: actor.userId,
+      },
+    });
   });
   await audit(actor, shift.id, 'SHIFT_CREATED', shift);
   return shift;
@@ -60,10 +63,6 @@ export const updateShift = async (actor: Actor, shiftId: string, rawInput: unkno
   const next = { ...before, ...Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)) } as typeof before;
   const problem = describeShiftProblem(next);
   if (problem) throw new HrmHttpError(400, 'SHIFT_INVALID', problem);
-  if (input.code && input.code !== before.code) {
-    const clash = await prisma.hrmShift.findUnique({ where: { code: input.code }, select: { id: true } });
-    if (clash) throw new HrmConflictError(`A shift with code ${input.code} already exists.`);
-  }
   if (input.isActive === false && before.isActive) {
     const using = await prisma.hrmShiftAssignment.count({ where: { shiftId, status: 'ACTIVE', effectiveTo: null, employee: { archivedAt: null, status: { notIn: ['EXITED', 'TERMINATED'] } } } });
     if (using) throw new HrmConflictError(`${using} employee(s) are on this shift. Move them to another shift before switching it off.`);

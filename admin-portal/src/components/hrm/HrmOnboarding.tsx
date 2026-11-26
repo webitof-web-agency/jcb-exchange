@@ -8,7 +8,7 @@ import { toast } from 'react-toastify';
 import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, ExternalLink, Loader2, RefreshCw, Search, ShieldQuestion, UserX, X } from 'lucide-react';
 import { hrmApi, type HrmOnboardingCaseRow, type HrmOnboardingList, type HrmResolveReviewPayload } from '@/lib/hrmApi';
 import {
-  describeCancelOutcome, describeJoining, describeResolveOutcome, joiningTone, ONBOARDING_CHIPS, onboardingChipCounts,
+  describeJoining, describeResolveOutcome, joiningTone, ONBOARDING_CHIPS, onboardingChipCounts,
   onboardingStatusClass, onboardingStatusLabel, progressTone, reasonProblem, type OnboardingChip,
 } from '@/lib/hrmOnboardingPage';
 import { getHrmBase } from '@/lib/hrmOrganisation';
@@ -18,6 +18,7 @@ import { formatHrmStatus, getHrmErrorMessage, getHrmStatusClass, hasHrmPermissio
 import { useAuthStore } from '@/store/authStore';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import HrmModal from './HrmModal';
+import HrmCancelJoiningDialog from './HrmCancelJoiningDialog';
 import HrmConfirmJoiningDialog from './HrmConfirmJoiningDialog';
 import { CONFIRMABLE_CASE_STATUSES } from '@/lib/hrmJoining';
 
@@ -50,44 +51,6 @@ function Progress({ row }: { row: HrmOnboardingCaseRow }) {
         <div className={`h-full rounded-full ${progressTone(percent)}`} style={{ width: `${percent}%` }} />
       </div>
     </div>
-  );
-}
-
-function CancelJoiningDialog({ row, onClose, onDone }: { row: HrmOnboardingCaseRow; onClose: () => void; onDone: (message: string) => void }) {
-  const [reason, setReason] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const problem = reasonProblem(reason);
-  const submit = async () => {
-    if (saving) return;
-    if (problem) { setError(problem); return; }
-    setSaving(true);
-    setError('');
-    try {
-      const response = await hrmApi.cancelJoining(row.id, reason.trim());
-      onDone(describeCancelOutcome(response.data.employeeOutcome));
-    } catch (requestError) {
-      setError(getHrmErrorMessage(requestError, 'The joining could not be cancelled.'));
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <HrmModal
-      title="Cancel joining"
-      description={`${row.employee?.name ?? row.candidateName ?? 'This person'} will not join.`}
-      onClose={onClose}
-      busy={saving}
-      lockDismiss={saving || Boolean(reason.trim())}
-      error={error}
-      footer={<><button type="button" onClick={onClose} className={secondary} disabled={saving}>Keep</button><button type="button" onClick={() => void submit()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60" disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserX className="h-4 w-4" />}Cancel joining</button></>}
-    >
-      <div className="space-y-3 text-sm text-slate-600">
-        <p>Nothing is deleted. A record made for this offer is archived (it never joined); somebody re-hired on an earlier record goes back to <strong>Exited</strong>. The assignment, salary draft and shift made for this joining are cancelled, and the recruitment application is marked “Did not join”.</p>
-        <label className="block text-sm font-semibold text-slate-700" htmlFor="hrm-cancel-joining-reason">Reason</label>
-        <textarea id="hrm-cancel-joining-reason" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={1000} className="w-full rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100" placeholder="For example: did not report on the joining date" />
-      </div>
-    </HrmModal>
   );
 }
 
@@ -265,9 +228,8 @@ export default function HrmOnboardingPage() {
   const pagination = data?.pagination;
 
   return (
-    <div className="min-h-full bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+    <div className="w-full space-y-4">
+      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">People operations</p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Onboarding</h2>
@@ -355,10 +317,9 @@ export default function HrmOnboardingPage() {
             </div>
           ) : null}
         </section>
-      </div>
 
       {dialog?.type === 'confirm' && dialog.row.employee ? <HrmConfirmJoiningDialog employeeId={dialog.row.employee.id} onClose={() => setDialog(null)} onDone={(result) => finish(`${result.employeeCode} joined and is now active.`)} /> : null}
-      {dialog?.type === 'cancel' ? <CancelJoiningDialog row={dialog.row} onClose={() => setDialog(null)} onDone={finish} /> : null}
+      {dialog?.type === 'cancel' ? <HrmCancelJoiningDialog caseId={dialog.row.id} name={dialog.row.employee?.name ?? dialog.row.candidateName ?? 'This person'} onClose={() => setDialog(null)} onDone={finish} /> : null}
       {dialog?.type === 'resolve' ? <ResolveReviewDialog row={dialog.row} onClose={() => setDialog(null)} onDone={finish} /> : null}
     </div>
   );

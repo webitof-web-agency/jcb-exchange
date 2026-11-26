@@ -16,6 +16,6 @@ test('email templates use Email Communications permissions instead of recruitmen
   assert.match(recruitmentRoutes, /const canViewEmailTemplates = requireAdminOrEmployeePermissions\(\['email\.read', 'email\.manage'\]\)/);
   assert.match(recruitmentRoutes, /section === 'templates'[\s\S]*canViewEmailTemplates\(req, res, next\)/);
   assert.match(recruitmentRoutes, /const canUpdateEmailTemplate = requireAdminOrEmployeePermissions\(\['email\.manage'\]\)/);
-  assert.match(recruitmentRoutes, /router\.put\('\/admin\/settings\/templates\/:id', canUpdateEmailTemplate, updateEmailTemplate\)/);
-  assert.match(recruitmentRoutes, /router\.delete\('\/admin\/settings\/templates\/:id', canUpdateEmailTemplate, deleteEmailTemplate\)/);
+  assert.match(recruitmentRoutes, /router\.put\('\/admin\/settings\/templates\/:id', canUpdateEmailTemplate, refuseStateLimitedRecruitmentMail, updateEmailTemplate\)/);
+  assert.match(recruitmentRoutes, /router\.delete\('\/admin\/settings\/templates\/:id', canUpdateEmailTemplate, refuseStateLimitedRecruitmentMail, deleteEmailTemplate\)/);
 });

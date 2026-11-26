@@ -6,8 +6,8 @@ import { normalizeSalaryComponents, totalSalaryComponents } from '../../../utils
 import { writeHrmAudit } from '../audit';
 import { HrmConflictError, HrmHttpError, HrmNotFoundError } from '../errors';
 import { lockEmployeeAssignments, syncOfficePrimaryManager, WORKING_STATUSES } from '../officeAssignments';
-import { normalizePersonName } from '../../../utils/offerAcceptanceEvidence';
-import { ensureStateOffice, findActiveHeadOffice } from '../officeUnits';
+import { normalizePersonName, signedLetterUrlOf } from '../../../utils/offerAcceptanceEvidence';
+import { ensureStateOffice, findDefaultHeadOffice, findHeadOfficeAt } from '../officeUnits';
 import { findEmployeeMatches, nextEmployeeCode } from './employeeOnboarding.service';
 
 /**
@@ -61,16 +61,26 @@ const letterNo = (offer: LoadedOffer) => {
   return typeof data.offerLetterNo === 'string' && data.offerLetterNo ? data.offerLetterNo : offer.application.applicationRef;
 };
 
-/** The office for the offer's placement, or why it cannot be used any more. */
-const resolveOffice = async (tx: Tx, actor: { userId: string; role: string }, offer: LoadedOffer): Promise<{ officeUnitId: string } | { note: string }> => {
+type OfferOffice = { officeUnitId: string; stateId: number | null; cityId: number | null };
+
+/** The office and work place for the offer's placement, or why it cannot be used any more. */
+const resolveOffice = async (tx: Tx, actor: { userId: string; role: string }, offer: LoadedOffer): Promise<OfferOffice | { note: string }> => {
   if (offer.locationType === 'HEAD_OFFICE') {
-    const headOffice = await findActiveHeadOffice(tx);
-    return headOffice ? { officeUnitId: headOffice.id } : { note: 'The head office is not set up or is switched off, so no assignment was made.' };
+    // The head office named on the offer. An older offer named none: the one at the offer's place, else the default.
+    const office = offer.headOfficeUnitId
+      ? await tx.hrmOrgUnit.findFirst({ where: { id: offer.headOfficeUnitId, type: 'HEAD_OFFICE', isActive: true }, select: { id: true, stateId: true, cityId: true } })
+      : (offer.stateId && offer.cityId ? await findHeadOfficeAt(tx, offer.stateId, offer.cityId) : null) ?? await findDefaultHeadOffice(tx);
+    if (!office) {
+      return { note: offer.headOfficeUnitId ? 'The head office on the offer is switched off or removed, so no assignment was made.' : 'The head office is not set up or is switched off, so no assignment was made.' };
+    }
+    // A head office posting records where that office is today (it may have moved since the offer was made).
+    const place = office.stateId && office.cityId ? office : offer;
+    return { officeUnitId: office.id, stateId: place.stateId, cityId: place.cityId };
   }
   if (offer.locationType === 'STATE_OFFICE' && offer.stateId) {
     try {
       // The system may add the state office (the offer already chose that state).
-      return { officeUnitId: (await ensureStateOffice(tx, actor, offer.stateId, true)).unit.id };
+      return { officeUnitId: (await ensureStateOffice(tx, actor, offer.stateId, true)).unit.id, stateId: offer.stateId, cityId: offer.cityId };
     } catch (error) {
       if (error instanceof HrmHttpError) return { note: `${error.message} No assignment was made.` };
       throw error;
@@ -85,9 +95,10 @@ const createDocuments = async (tx: Tx, employeeId: string, offer: LoadedOffer, u
     { category: 'OFFER', title: `Offer letter ${letterNo(offer)}`, url: offer.offerLetterUrl, mimeType: 'application/pdf', kind: 'OFFER_LETTER' },
     { category: 'ACCEPTANCE', title: 'Offer acceptance certificate', url: offer.acceptanceCertificateUrl, mimeType: 'application/pdf', kind: 'ACCEPTANCE_CERTIFICATE' },
   ];
-  if (offer.signatureFileUrl && offer.acceptanceMethod !== 'DRAWN') {
-    const signed = await tx.candidateDocument.findFirst({ where: { fileUrl: offer.signatureFileUrl }, select: { mimeType: true } });
-    rows.push({ category: 'ACCEPTANCE', title: 'Signed offer letter', url: offer.signatureFileUrl, mimeType: signed?.mimeType || 'application/pdf', kind: 'SIGNED_OFFER_LETTER' });
+  const signedLetterUrl = signedLetterUrlOf(offer);
+  if (signedLetterUrl) {
+    const signed = await tx.candidateDocument.findFirst({ where: { fileUrl: signedLetterUrl }, select: { mimeType: true } });
+    rows.push({ category: 'ACCEPTANCE', title: 'Signed offer letter', url: signedLetterUrl, mimeType: signed?.mimeType || 'application/pdf', kind: 'SIGNED_OFFER_LETTER' });
   }
   for (const row of rows) {
     if (!row.url) continue;
@@ -323,8 +334,8 @@ const doHandoff = async (offer: LoadedOffer, options: OfferHandoffOptions = {}):
             isOfficeManager: offer.locationType === 'STATE_OFFICE' && offer.isOfficeManager,
             designation: offer.designation.slice(0, 120),
             employmentType: offer.employmentType ?? 'FULL_TIME',
-            stateId: offer.stateId,
-            cityId: offer.cityId,
+            stateId: office.stateId,
+            cityId: office.cityId,
             managerEmployeeId,
             // ACTIVE from the joining date: every reader also requires effectiveFrom <= today.
             status: 'ACTIVE',

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
 import HrmModal from './HrmModal';
+import HrmHeadOfficeField from './HrmHeadOfficeField';
+import { selectedHeadOffice, type HrmHeadOffice } from '@/lib/hrmHeadOffice';
 import { hrmApi, type HrmEmployeeAccess, type HrmOrganisation, type HrmScopeType } from '@/lib/hrmApi';
 import { SCOPE_TYPE_LABELS, describeScope, grantableScopeTypes, scopePeriodState } from '@/lib/hrmJoining';
 import { formatHrmDate, getHrmErrorMessage } from '@/lib/hrmUi';
@@ -162,6 +164,7 @@ export default function HrmAccessCard({ employeeId, writable, ownRecord = false,
                       <span className="min-w-0">
                         <span className="font-semibold text-slate-900">{label}</span>
                         {scope.source === 'PLACEMENT' ? <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">Follows office</span> : null}
+                        {scope.source === 'CHARGE' ? <span title="Ends with the additional charge" className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">Additional charge</span> : null}
                         <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${PERIOD_CHIP[period]}`}>{period === 'ACTIVE' ? 'Active' : period === 'UPCOMING' ? 'Upcoming' : 'Ended'}</span>
                         <span className="block text-xs text-slate-500">{formatHrmDate(scope.activeFrom)} – {scope.activeTo ? formatHrmDate(scope.activeTo) : 'open'}</span>
                       </span>
@@ -221,7 +224,12 @@ function GrantScopeDialog({ employeeId, abilities, canReadOrganisation, onClose,
     return () => { cancelled = true; };
   }, [needsOrganisation, organisation]);
 
-  const headOffice = organisation?.units.find((unit) => unit.kind === 'HEAD_OFFICE' && unit.isActive) ?? null;
+  const headOffices: HrmHeadOffice[] = useMemo(() => (organisation?.units ?? [])
+    .filter((unit) => unit.kind === 'HEAD_OFFICE' && unit.isActive)
+    .map((unit) => ({ id: unit.id, name: unit.name, isDefault: Boolean(unit.isDefault), stateId: unit.state?.id ?? null, stateName: unit.state?.name ?? null, cityId: unit.city?.id ?? null, cityName: unit.city?.name ?? null }))
+    .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name)), [organisation]);
+  const [headOfficeId, setHeadOfficeId] = useState('');
+  const headOffice = selectedHeadOffice(headOffices, headOfficeId);
   const states = useMemo(() => grantableStates(organisation?.states ?? [], abilities), [organisation, abilities]);
   const dirty = Boolean(stateId || activeFrom || followsOffice);
 
@@ -274,7 +282,12 @@ function GrantScopeDialog({ employeeId, abilities, canReadOrganisation, onClose,
             <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={followsOffice} disabled={saving} onChange={(event) => setFollowsOffice(event.target.checked)} className="mt-0.5" /> Follows their office (a State Manager: moves with a transfer, ends when they stop managing the state or leave)</label>
           </>
         ) : null}
-        {scopeType === 'HEAD_OFFICE' ? <p className="text-xs text-slate-600">{headOffice ? headOffice.name : organisation ? 'The head office is not set up.' : 'Loading…'}</p> : null}
+        {scopeType === 'HEAD_OFFICE' ? (headOffice ? (
+          <div className="text-xs font-semibold text-slate-700">
+            <label htmlFor="hrm-grant-head-office" className="mb-1 block">Head office</label>
+            <HrmHeadOfficeField id="hrm-grant-head-office" offices={headOffices} value={headOfficeId} onChange={(office) => { setHeadOfficeId(office.id); setError(''); }} showPlace={false} disabled={saving} />
+          </div>
+        ) : <p className="text-xs text-slate-600">{organisation ? 'The head office is not set up.' : 'Loading…'}</p>) : null}
         <label className="block text-xs font-semibold text-slate-700" htmlFor="hrm-grant-from">From (optional, today if empty)
           <input id="hrm-grant-from" type="date" value={activeFrom} disabled={saving} onChange={(event) => setActiveFrom(event.target.value)} className={input} />
         </label>

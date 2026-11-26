@@ -1,8 +1,14 @@
 import prisma from '../../../lib/prisma';
+import type { Prisma } from '@prisma/client';
+import type { RecruitmentReach } from '../../../utils/recruitmentReachRules';
+import { activeChargeWhere } from '../additionalChargeRules';
+import { utcToday } from '../assignmentTimeline';
 import { HrmHttpError } from '../errors';
-import { STATE_MANAGER_DESIGNATION, WORKING_STATUSES, findNationalOperationsManagers } from '../officeAssignments';
-import { findActiveHeadOffice, resolveHeadOffice } from '../officeUnits';
+import { STATE_MANAGER_DESIGNATION, WORKING_STATUSES, currentAssignmentWhere, findNationalOperationsManagers } from '../officeAssignments';
+import { listHeadOffices, requireHeadOffice } from '../officeUnits';
 import { designationKey, ensureSystemDesignations, listActiveDesignations } from './designation.service';
+import { parseHrmInput, schemas } from '../validation';
+import { listManagerCandidates } from './managerOptions.service';
 
 /**
  * The HRM placement chosen on a recruitment offer: department, designation (from the managed list), the office and
@@ -20,6 +26,7 @@ export type OfferPlacementInput = {
   hrmOrgUnitId?: unknown;
   designation?: unknown;
   locationType?: unknown;
+  headOfficeUnitId?: unknown;
   stateId?: unknown;
   cityId?: unknown;
   isOfficeManager?: unknown;
@@ -32,6 +39,8 @@ export type OfferPlacement = {
   departmentName: string;
   designation: string;
   locationType: 'HEAD_OFFICE' | 'STATE_OFFICE';
+  /** The head office of a head office posting; null for a state office. */
+  headOfficeUnitId: string | null;
   stateId: number;
   stateName: string;
   cityId: number;
@@ -78,8 +87,10 @@ export const resolveOfferPlacement = async (input: OfferPlacementInput): Promise
 
   const locationType = text(input.locationType);
   if (locationType !== 'HEAD_OFFICE' && locationType !== 'STATE_OFFICE') throw fail('LOCATION_TYPE_REQUIRED', 'Choose Head office or State office.');
-  const stateId = optionalInt(input.stateId);
-  const cityId = optionalInt(input.cityId);
+  // A head office posting takes its place from the head office, so only a state office reads the sent state and city.
+  const headOffice = locationType === 'HEAD_OFFICE' ? await requireHeadOffice(prisma, text(input.headOfficeUnitId) || null) : null;
+  const stateId = headOffice ? headOffice.stateId : optionalInt(input.stateId);
+  const cityId = headOffice ? headOffice.cityId : optionalInt(input.cityId);
   if (Number.isNaN(stateId) || Number.isNaN(cityId)) throw fail('LOCATION_INVALID', 'Select a valid state and city.');
 
   let place: { stateId: number; stateName: string; cityId: number; cityName: string };
@@ -92,19 +103,8 @@ export const resolveOfferPlacement = async (input: OfferPlacementInput): Promise
     return { stateId: row.state.id, stateName: row.state.name, cityId: row.id, cityName: row.name };
   };
 
-  if (locationType === 'HEAD_OFFICE') {
-    const headOffice = await findActiveHeadOffice(prisma);
-    if (!headOffice) throw new HrmHttpError(409, 'HEAD_OFFICE_NOT_SET_UP', 'The head office is not set up yet. Set it up on the HRM Organisation page, or choose State office.');
-    if ((stateId === null) !== (cityId === null)) throw fail('LOCATION_INVALID', 'Select the state together with the city, or leave both empty for the head office city.');
-    if (stateId && cityId) {
-      place = await findCity(stateId, cityId);
-    } else {
-      const fallback = headOffice.stateId && headOffice.cityId ? null : await resolveHeadOffice();
-      const hoState = headOffice.stateId ?? fallback?.stateId;
-      const hoCity = headOffice.cityId ?? fallback?.cityId;
-      if (!hoState || !hoCity) throw new HrmHttpError(409, 'HEAD_OFFICE_LOCATION_MISSING', 'The head office has no location. Set it up on the HRM Organisation page first.');
-      place = await findCity(hoState, hoCity);
-    }
+  if (headOffice) {
+    place = await findCity(headOffice.stateId, headOffice.cityId);
   } else {
     if (!stateId) throw fail('STATE_REQUIRED', 'Select the state.');
     if (!cityId) throw fail('CITY_REQUIRED', 'Select the city.');
@@ -139,6 +139,7 @@ export const resolveOfferPlacement = async (input: OfferPlacementInput): Promise
     departmentName: department.name,
     designation: designation.name,
     locationType,
+    headOfficeUnitId: headOffice?.id ?? null,
     ...place,
     isOfficeManager,
     employmentType: employmentType as OfferEmploymentType,
@@ -152,56 +153,70 @@ export const resolveOfferPlacement = async (input: OfferPlacementInput): Promise
 
 /**
  * Everything the recruitment offer form needs from HRM, in one call: so a recruiter who may create offers can fill
- * the placement without holding HRM permissions. Only names and ids, no personal data.
+ * the placement without holding HRM permissions. Only names and ids, no personal data. A state-limited recruiter is
+ * only offered their own places.
  */
-export const getOfferFormOptions = async () => {
-  const [departments, designations, states, stateOffices, headOfficeLocation, headOfficeUnit, nationalOperationsManagers] = await Promise.all([
+export const getOfferFormOptions = async (reach: RecruitmentReach) => {
+  const [departments, designations, states, stateOffices, headOffices, nationalOperationsManagers] = await Promise.all([
     prisma.hrmOrgUnit.findMany({ where: { type: 'DEPARTMENT', isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: 'asc' } }),
     listActiveDesignations(),
     prisma.state.findMany({ where: { country: { iso2: 'IN' } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.hrmOrgUnit.findMany({ where: { type: 'REGION', stateId: { not: null } }, select: { stateId: true, isActive: true } }),
-    resolveHeadOffice(),
-    findActiveHeadOffice(prisma),
+    listHeadOffices(prisma),
     findNationalOperationsManagers(),
   ]);
   const activeStates = new Set(stateOffices.filter((office) => office.isActive).map((office) => office.stateId!));
   const switchedOff = new Set(stateOffices.filter((office) => !office.isActive).map((office) => office.stateId!));
+  // A head office posting may be in any state HR chooses, so somebody who covers the head office sees every state.
+  const offered = reach.all || reach.headOffice ? states : states.filter((state) => reach.stateIds.includes(state.id));
+  const mayHeadOffice = reach.all || reach.headOffice;
   return {
     departments,
     designations: designations.map((designation) => ({ id: designation.id, name: designation.name })),
-    states: states.map((state) => ({ id: state.id, name: state.name, hasOffice: activeStates.has(state.id), officeSwitchedOff: !activeStates.has(state.id) && switchedOff.has(state.id) })),
-    // The head office's own place (its unit's location, or the Raipur default); null until it is set up.
-    headOffice: headOfficeUnit ? {
-      id: headOfficeUnit.id,
-      name: headOfficeUnit.name,
-      stateId: headOfficeUnit.stateId ?? headOfficeLocation?.stateId ?? null,
-      cityId: headOfficeUnit.cityId ?? headOfficeLocation?.cityId ?? null,
-    } : null,
+    states: offered.map((state) => ({ id: state.id, name: state.name, hasOffice: activeStates.has(state.id), officeSwitchedOff: !activeStates.has(state.id) && switchedOff.has(state.id) })),
+    // Which places the caller may post a candidate to (the form hides the others; the server checks again).
+    places: { headOffice: mayHeadOffice, stateIds: reach.all ? null : reach.stateIds },
+    // Every head office, the default first; empty until one is set up, or outside the caller's places.
+    headOffices: mayHeadOffice ? headOffices : [],
     nationalOperationsManagers,
     employmentTypes: [...OFFER_EMPLOYMENT_TYPES],
     stateManagerDesignation: STATE_MANAGER_DESIGNATION,
   };
 };
 
-/** Working employees a new joiner could report to (name / code search, at most 20). */
-export const searchOfferReportingManagers = async (search: string) => {
-  const query = search.trim().slice(0, 80);
-  const rows = await prisma.hrmEmployee.findMany({
-    where: {
-      status: { in: [...WORKING_STATUSES] },
-      archivedAt: null,
-      ...(query ? { OR: [
-        { legalName: { contains: query, mode: 'insensitive' as const } },
-        { preferredName: { contains: query, mode: 'insensitive' as const } },
-        { employeeCode: { contains: query, mode: 'insensitive' as const } },
-      ] } : {}),
+/**
+ * The managers a state-limited recruiter may name: people working in their places, whoever holds an additional charge
+ * there, and the National Operations Manager (every State Manager reports to them).
+ */
+const managersInReach = async (reach: Extract<RecruitmentReach, { all: false }>): Promise<Prisma.HrmEmployeeWhereInput> => {
+  const today = utcToday();
+  const places: Prisma.HrmEmploymentAssignmentWhereInput[] = [
+    ...(reach.stateIds.length ? [{ stateId: { in: reach.stateIds }, officeUnit: { type: 'REGION' as const } }] : []),
+    ...(reach.headOffice ? [{ officeUnit: { type: 'HEAD_OFFICE' as const } }] : []),
+  ];
+  const national = (await findNationalOperationsManagers()).map((manager) => manager.id);
+  return {
+    OR: [
+      { id: { in: national } },
+      ...(places.length ? [{ assignments: { some: { AND: [currentAssignmentWhere(today), { OR: places }] } } }] : []),
+      ...(reach.stateIds.length ? [{ additionalCharges: { some: { ...activeChargeWhere(today), officeUnit: { stateId: { in: reach.stateIds } } } } }] : []),
+    ],
+  };
+};
+
+/**
+ * The reporting manager list of the offer form: the same grouping and suggestions as inside HRM, limited to the
+ * recruiter's places (plus the National Operations Manager). Names, codes, jobs and roles only.
+ */
+export const searchOfferReportingManagers = async (rawQuery: unknown, reach: RecruitmentReach) => {
+  const query = parseHrmInput(schemas.managerOptionsQuery, rawQuery);
+  return listManagerCandidates(
+    // An offer is for somebody who has no HR record yet, so nobody is excluded and no team can loop.
+    { stateId: query.stateId, headOffice: query.headOffice, managerRole: query.managerRole ?? false, search: query.search },
+    {
+      visible: reach.all ? null : await managersInReach(reach),
+      seesState: (stateId) => reach.all || reach.stateIds.includes(stateId),
+      searchContacts: false,
     },
-    select: {
-      id: true, employeeCode: true, legalName: true, preferredName: true,
-      assignments: { where: { status: 'ACTIVE', effectiveTo: null }, orderBy: { effectiveFrom: 'desc' }, take: 1, select: { designation: true } },
-    },
-    orderBy: { legalName: 'asc' },
-    take: 20,
-  });
-  return rows.map((row) => ({ id: row.id, employeeCode: row.employeeCode, name: row.preferredName || row.legalName, designation: row.assignments[0]?.designation ?? null }));
+  );
 };

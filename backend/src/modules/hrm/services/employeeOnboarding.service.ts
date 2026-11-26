@@ -8,8 +8,11 @@ import { writeHrmAudit } from '../audit';
 import { listActiveDesignations, resolveDesignationForWrite } from './designation.service';
 import { HrmAuthorizationError, HrmConflictError, HrmHttpError } from '../errors';
 import { assertCanGiveRole } from '../employeeGuards';
+import { abilitiesOf, mayManageState } from '../accessGrant';
+import { createMissingChargeAccess } from '../chargeLifecycle';
 import { findNationalOperationsManagers, STATE_MANAGER_DESIGNATION, syncOfficePrimaryManager, WORKING_STATUSES } from '../officeAssignments';
-import { ensureStateOffice, findActiveHeadOffice, HEAD_OFFICE_LOCATION, resolveHeadOffice } from '../officeUnits';
+import { ensureStateOffice, findActiveStateOffice, listHeadOffices, requireHeadOffice, resolveHeadOffice } from '../officeUnits';
+import { stateOfficeHolders } from './managerOptions.service';
 import { HRM_PERMISSIONS, hasHrmPermission } from '../security';
 import { parseHrmInput, schemas } from '../validation';
 
@@ -99,7 +102,7 @@ export const getEmployeeFormOptions = async (actor: Actor) => {
   const abilities = await getAbilities(actor);
   const nationalOperationsManagers = await findNationalOperationsManagers();
 
-  const [departments, roles, states, stateOffices, designations, headOfficeLocation, headOfficeUnit, code] = await Promise.all([
+  const [departments, roles, states, stateOffices, designations, headOffices, code] = await Promise.all([
     prisma.hrmOrgUnit.findMany({ where: { type: 'DEPARTMENT', isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: 'asc' } }),
     abilities.canCreateLogin
       ? prisma.customRole.findMany({ select: { id: true, name: true, description: true }, orderBy: { name: 'asc' } })
@@ -107,8 +110,7 @@ export const getEmployeeFormOptions = async (actor: Actor) => {
     prisma.state.findMany({ where: { country: { iso2: 'IN' } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.hrmOrgUnit.findMany({ where: { type: 'REGION', stateId: { not: null } }, select: { id: true, stateId: true, isActive: true } }),
     listActiveDesignations(),
-    resolveHeadOffice(),
-    findActiveHeadOffice(prisma),
+    listHeadOffices(prisma),
     nextEmployeeCode(prisma),
   ]);
 
@@ -122,8 +124,8 @@ export const getEmployeeFormOptions = async (actor: Actor) => {
     // Every state of the master is selectable. A state without an office gets one when an administrator adds someone.
     states: states.map((state) => ({ id: state.id, name: state.name, hasOffice: officeByState.has(state.id), officeSwitchedOff: !officeByState.has(state.id) && switchedOffStates.has(state.id) })),
     designations,
-    headOffice: headOfficeLocation,
-    headOfficeUnit: headOfficeUnit ? { id: headOfficeUnit.id, name: headOfficeUnit.name } : null,
+    // Every head office, the default first (empty until one is set up).
+    headOffices,
     nationalOperationsManagers,
     stateManagerDesignation: STATE_MANAGER_DESIGNATION,
   };
@@ -133,6 +135,7 @@ type PlacementInput = {
   orgUnitId: string;
   managerEmployeeId?: string | null | undefined;
   locationType: 'HEAD_OFFICE' | 'STATE_OFFICE';
+  headOfficeUnitId?: string | null | undefined;
   stateId?: number | null | undefined;
   cityId?: number | null | undefined;
   isOfficeManager?: boolean | undefined;
@@ -159,7 +162,14 @@ const validatePlacement = async (actor: Actor, input: PlacementInput) => {
   }
   if (managerEmployeeId) {
     const accessibleIds = await getAccessibleEmployeeIds(actor);
-    const allowed = !accessibleIds || accessibleIds.includes(managerEmployeeId) || national.some((manager) => manager.id === managerEmployeeId);
+    let allowed = !accessibleIds || accessibleIds.includes(managerEmployeeId) || national.some((manager) => manager.id === managerEmployeeId);
+    // The reporting manager list offers a state's own manager and charge holder to whoever covers that state, even
+    // when that person is posted elsewhere: what the list offers must also save.
+    if (!allowed && input.locationType === 'STATE_OFFICE' && input.stateId && mayManageState(await abilitiesOf(actor), input.stateId)) {
+      const office = await findActiveStateOffice(prisma, input.stateId);
+      const holders = office ? await stateOfficeHolders(office.id) : null;
+      allowed = Boolean(holders && [...holders.managerIds, ...holders.chargeIds].includes(managerEmployeeId));
+    }
     const manager = allowed
       ? await prisma.hrmEmployee.findFirst({ where: { id: managerEmployeeId, status: { in: [...WORKING_STATUSES] }, archivedAt: null }, select: { id: true } })
       : null;
@@ -169,28 +179,10 @@ const validatePlacement = async (actor: Actor, input: PlacementInput) => {
   let location: { stateId: number; cityId: number };
   let headOfficeUnitId: string | null = null;
   if (input.locationType === 'HEAD_OFFICE') {
-    const unit = await findActiveHeadOffice(prisma);
-    if (!unit) {
-      throw new HrmHttpError(409, 'HEAD_OFFICE_NOT_SET_UP', 'The head office is not set up yet. Set it up from the Organisation page, or choose State office.');
-    }
-    if (input.stateId && input.cityId) {
-      // A place was chosen for this head office employee: it must be a real city of that state.
-      const city = await prisma.city.findFirst({
-        where: { id: input.cityId, stateId: input.stateId, state: { country: { iso2: 'IN' } } },
-        select: { id: true, stateId: true },
-      });
-      if (!city) throw new HrmHttpError(400, 'LOCATION_INVALID', 'The selected city does not belong to the selected state.');
-      location = { stateId: city.stateId, cityId: city.id };
-    } else {
-      const fallback = unit.stateId && unit.cityId ? null : await resolveHeadOffice();
-      const stateId = unit.stateId ?? fallback?.stateId;
-      const cityId = unit.cityId ?? fallback?.cityId;
-      if (!stateId || !cityId) {
-        throw new HrmHttpError(409, 'HEAD_OFFICE_LOCATION_MISSING', `${HEAD_OFFICE_LOCATION.city}, ${HEAD_OFFICE_LOCATION.state} is missing from the location master. Choose State office or ask an administrator.`);
-      }
-      location = { stateId, cityId };
-    }
-    headOfficeUnitId = unit.id;
+    // The chosen head office (the default when none was chosen) is where the person is recorded.
+    const office = await requireHeadOffice(prisma, input.headOfficeUnitId);
+    location = { stateId: office.stateId, cityId: office.cityId };
+    headOfficeUnitId = office.id;
   } else {
     const city = await prisma.city.findFirst({
       where: { id: input.cityId!, stateId: input.stateId!, state: { country: { iso2: 'IN' } } },
@@ -520,6 +512,7 @@ export const linkLoginToEmployee = async (actor: Actor, employeeId: string, rawI
   if (employee.userId) throw new HrmConflictError(`${employee.employeeCode} already has a login.`);
   if (employee.status === 'EXITED' || employee.status === 'TERMINATED') throw new HrmConflictError(`${employee.employeeCode} has left the company, so a login cannot be linked.`);
   const user = await loadLinkableUser(input.userId);
+  const grant = await abilitiesOf(actor);
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -530,6 +523,7 @@ export const linkLoginToEmployee = async (actor: Actor, employeeId: string, rawI
       });
       if (result.count !== 1) throw new HrmConflictError('This employee was just linked to a login. Refresh and try again.');
       await auditWith(actor, tx)('HRM_EMPLOYEE', employeeId, 'LOGIN_LINKED', { loginUserId: user.id });
+      await createMissingChargeAccess(tx, actor, employeeId, user.id, (stateId) => grant.canManageScopes && (grant.allIndia || grant.ownStates.has(stateId)));
     });
   } catch (error) {
     if ((error as { code?: unknown })?.code === 'P2002') throw new HrmConflictError('That login was just linked to another employee. Refresh and try again.');

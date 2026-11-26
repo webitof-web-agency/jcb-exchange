@@ -4,6 +4,7 @@ import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { AiDisabledError } from '../utils/aiFeatureGate';
 import { loadAiPermissionScope } from '../middlewares/aiAccess.middleware';
+import { getRecruitmentReach } from '../services/recruitmentReach.service';
 import {
   AiGatewayError,
   getAiRuntimeStatus,
@@ -169,7 +170,8 @@ const aiContextFor = async (req: Request): Promise<AiToolContext> => {
   const permissions = req.user.role === 'SUPER_ADMIN' || req.user.role === 'ADMIN'
     ? ['ALL_ACCESS']
     : await loadAiPermissionScope(req.user.id);
-  return { userId: req.user.id, role: req.user.role as AiRole, permissions };
+  const recruitment = await getRecruitmentReach({ userId: req.user.id, role: req.user.role });
+  return { userId: req.user.id, role: req.user.role as AiRole, permissions, ...(recruitment.all ? {} : { recruitmentRestricted: true }) };
 };
 
 export const getAiStatus = async (_req: Request, res: Response, next: NextFunction) => {

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { getRecruitmentReach } from './recruitmentReach.service';
 import {
   canConfirmWhatsAppCampaign,
   getWhatsAppReminderDefinition,
@@ -30,6 +31,14 @@ export const saveWhatsAppConsent = async ({ phone, category, optedIn, actorUserI
     update: { optedIn, source: 'SUPERADMIN_PORTAL', updatedByUserId: actorUserId },
     create: { phone: normalizedPhone, category, optedIn, source: 'SUPERADMIN_PORTAL', updatedByUserId: actorUserId },
   });
+};
+
+/** Candidate campaigns reach people of every state, so they need all-India recruitment access. */
+const assertMayMessageCandidates = async (category: string, actorUserId: string) => {
+  if (category === 'MARKETING') return;
+  const actor = await prisma.user.findUnique({ where: { id: actorUserId }, select: { role: true } });
+  const reach = actor ? await getRecruitmentReach({ userId: actorUserId, role: actor.role }) : null;
+  if (!reach?.all) throw new Error('Campaigns to candidates cover every state, so they need all-India recruitment access.');
 };
 
 const getOptedInRecipients = async (category: CampaignCategory): Promise<CampaignRecipientInput[]> => {
@@ -81,6 +90,7 @@ export const createWhatsAppCampaign = async ({ name, category, templateId, actor
   const template = await prisma.whatsAppMetaTemplate.findUnique({ where: { id: templateId }, select: { id: true, status: true, metaTemplateId: true, category: true } });
   if (!template || template.status !== 'APPROVED' || !template.metaTemplateId) throw new Error('Select an approved Meta template.');
   if (!isWhatsAppTemplatePurposeAllowed(template.category, [category])) throw new Error('Selected template does not belong to this campaign category.');
+  await assertMayMessageCandidates(category, actorUserId);
   const recipients = (await getOptedInRecipients(category)).slice(0, CAMPAIGN_LIMIT);
   return createCampaignFromRecipients({
     name: trimmedName,
@@ -134,6 +144,7 @@ export const createWhatsAppReminderCampaign = async ({ kind, templateId, actorUs
   if (!isWhatsAppTemplatePurposeAllowed(template.category, [definition.category])) {
     throw new Error('Selected template does not belong to this reminder type.');
   }
+  await assertMayMessageCandidates(definition.category, actorUserId);
   const optedInRecipients = await getOptedInRecipients(definition.category);
   let recipients = optedInRecipients;
   if (kind === 'INTERVIEW_48_HOURS') {
@@ -183,6 +194,7 @@ export const confirmWhatsAppCampaign = async ({ campaignId, actorUserId }: { cam
   if (!canConfirmWhatsAppCampaign({ status: campaign.status, recipientCount: campaign.recipients.length })) {
     throw new Error('Only a non-empty draft campaign can be confirmed.');
   }
+  await assertMayMessageCandidates(campaign.category, actorUserId);
   if (!await isWhatsAppIntegrationEnabled()) {
     throw new Error('WhatsApp is disabled. Enable the global integration before confirming this campaign.');
   }

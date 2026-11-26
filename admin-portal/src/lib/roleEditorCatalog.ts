@@ -140,6 +140,12 @@ export const ROLE_EDITOR_PERMISSION_DATA: Record<string, AdminPermissionGroupDef
       ],
     },
     {
+      groupName: 'Recruitment Access',
+      permissions: [
+        { id: 'recruitment.scope.all', label: 'All-India recruitment (untick for State Managers: they then see only their own states)' },
+      ],
+    },
+    {
       groupName: 'Departments',
       permissions: [
         { id: 'recruitment.departments.read', label: 'View Departments' },

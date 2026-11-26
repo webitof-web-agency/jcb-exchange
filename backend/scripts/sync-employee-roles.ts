@@ -89,6 +89,7 @@ const recruitment = [
   'recruitment.pipeline.delete',
   'recruitment.settings.read',
   'recruitment.settings.update',
+  'recruitment.scope.all',
 ];
 const content = [
   ...categories,

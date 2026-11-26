@@ -45,7 +45,7 @@ type AttachmentMode =
 const ATTACHMENT_DESCRIPTIONS: Record<AttachmentMode, string> = {
   NONE: 'This email notification will be delivered as pure responsive text/HTML without PDF attachments.',
   DYNAMIC_OFFER_PDF: 'The system attaches the current offer letter PDF at the moment of sending, so a revised letter is never missed.',
-  DYNAMIC_OFFER_ACCEPTANCE_PDF: 'The system attaches the offer acceptance certificate PDF and, when the candidate uploaded a signed scan or HR recorded a paper copy, that signed copy too.',
+  DYNAMIC_OFFER_ACCEPTANCE_PDF: 'The system attaches the offer acceptance certificate PDF and the signed offer letter (signed on the link, uploaded by the candidate, or recorded by HR).',
   DYNAMIC_VEHICLE_INVOICE_PDF: 'The system generates and attaches the latest vehicle sale invoice PDF with official stamps and signatures.',
   DYNAMIC_PAYMENT_RECEIPT_PDF: 'The system generates and attaches the latest payment receipt PDF with official stamps and signatures.',
   DYNAMIC_PRIME_INVOICE_PDF: 'The system generates and attaches the latest Prime membership invoice PDF with official stamps and signatures.',

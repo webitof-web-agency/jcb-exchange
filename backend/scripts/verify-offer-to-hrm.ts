@@ -32,7 +32,7 @@ const main = async () => {
   await ensureSystemDesignations();
   await prisma.hrmDesignation.upsert({ where: { nameKey: 'probe executive' }, update: { isActive: true }, create: { name: 'Probe Executive', nameKey: 'probe executive' } });
 
-  if (!(await prisma.hrmOrgUnit.findFirst({ where: { type: 'HEAD_OFFICE' } }))) await org.setupHeadOffice(actor, { departments: ['ProbeSales'] });
+  if (!(await prisma.hrmOrgUnit.findFirst({ where: { type: 'HEAD_OFFICE' } }))) await org.setupHeadOffice(actor, { stateId: 4040, cityId: 133590, departments: ['ProbeSales'] });
   const dept = await prisma.hrmOrgUnit.findFirst({ where: { type: 'DEPARTMENT', isActive: true }, select: { id: true, name: true } })
     ?? await prisma.hrmOrgUnit.create({ data: { code: `DEP-PROBE-${stamp}`, name: `ProbeSales ${stamp}`, type: 'DEPARTMENT', isActive: true }, select: { id: true, name: true } });
 

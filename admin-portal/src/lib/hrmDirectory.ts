@@ -12,6 +12,8 @@ export type DirectoryFilters = {
   designation: string;
   employmentType: string;
   kyc: '' | 'complete' | 'pending';
+  /** Reporting manager: 'missing' = not set. */
+  manager: '' | 'missing' | 'assigned';
   sort: DirectorySort;
   order: 'asc' | 'desc';
   page: number;
@@ -22,7 +24,7 @@ export type DirectoryFilters = {
 export const DIRECTORY_PAGE_SIZES = [10, 25, 50, 100] as const;
 
 export const DEFAULT_DIRECTORY_FILTERS: DirectoryFilters = {
-  q: '', tab: '', orgUnitId: '', designation: '', employmentType: '', kyc: '',
+  q: '', tab: '', orgUnitId: '', designation: '', employmentType: '', kyc: '', manager: '',
   sort: 'createdAt', order: 'desc', page: 1, limit: 25, view: 'table',
 };
 
@@ -74,6 +76,7 @@ export const parseDirectoryParams = (params: ParamReader): DirectoryFilters => {
   const sort = params.get('sort') as DirectorySort | null;
   const type = params.get('type') ?? '';
   const kyc = params.get('kyc');
+  const manager = params.get('manager');
   const limit = positiveInt(params.get('limit'), defaults.limit, 100);
   return {
     q: (params.get('q') ?? '').slice(0, 120),
@@ -82,6 +85,7 @@ export const parseDirectoryParams = (params: ParamReader): DirectoryFilters => {
     designation: (params.get('role') ?? '').slice(0, 120),
     employmentType: (EMPLOYMENT_TYPE_OPTIONS as readonly string[]).includes(type) ? type : '',
     kyc: kyc === 'complete' || kyc === 'pending' ? kyc : '',
+    manager: manager === 'missing' || manager === 'assigned' ? manager : '',
     sort: sort && SORTS.includes(sort) ? sort : defaults.sort,
     order: params.get('order') === 'asc' ? 'asc' : params.get('order') === 'desc' ? 'desc' : (sort === 'name' || sort === 'code' ? 'asc' : defaults.order),
     page: positiveInt(params.get('page'), 1, 100000),
@@ -100,6 +104,7 @@ export const toDirectorySearch = (filters: DirectoryFilters) => {
   if (filters.designation) params.set('role', filters.designation);
   if (filters.employmentType) params.set('type', filters.employmentType);
   if (filters.kyc) params.set('kyc', filters.kyc);
+  if (filters.manager) params.set('manager', filters.manager);
   if (filters.sort !== defaults.sort || filters.order !== defaults.order) {
     params.set('sort', filters.sort);
     params.set('order', filters.order);
@@ -122,11 +127,12 @@ export const toDirectoryApiQuery = (filters: DirectoryFilters): HrmDirectoryQuer
   ...(filters.designation ? { designation: filters.designation } : {}),
   ...(filters.employmentType ? { employmentType: filters.employmentType } : {}),
   ...(filters.kyc ? { kyc: filters.kyc } : {}),
+  ...(filters.manager ? { manager: filters.manager } : {}),
 });
 
 /** Number of filters in use (search and tab are shown separately in the UI). */
 export const countActiveFilters = (filters: DirectoryFilters) =>
-  [filters.orgUnitId, filters.designation, filters.employmentType, filters.kyc].filter(Boolean).length;
+  [filters.orgUnitId, filters.designation, filters.employmentType, filters.kyc, filters.manager].filter(Boolean).length;
 
 export const hasAnyDirectoryFilter = (filters: DirectoryFilters) =>
   Boolean(filters.q.trim() || filters.tab || countActiveFilters(filters));
@@ -190,7 +196,7 @@ export const employeesToCsv = (employees: HrmEmployee[]) => {
       assignment?.designation ?? '',
       assignment?.orgUnit?.name ?? '',
       getAssignmentLocation(assignment),
-      assignment?.managerEmployee?.legalName ?? '',
+      assignment?.managerEmployee?.legalName ?? employee.upcomingManager?.legalName ?? '',
       assignment?.employmentType ? formatHrmStatus(assignment.employmentType) : '',
       employee.workEmail ?? '',
       employee.mobile ?? '',
@@ -203,3 +209,43 @@ export const employeesToCsv = (employees: HrmEmployee[]) => {
   });
   return [DIRECTORY_CSV_HEADERS, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
 };
+
+export type EmployeeOptionPerson = {
+  employeeCode: string;
+  designation?: string | null;
+  department?: string | null;
+  officeName?: string | null;
+  officeType?: string | null;
+  location?: string | null;
+  isOfficeManager?: boolean;
+  directReports?: number;
+  /** State offices looked after on top of the posting (additional charges) today. */
+  additionalCharges?: number;
+  /** Undefined when the list does not know about logins (the badge line then leaves the role out). */
+  hasLogin?: boolean;
+  loginRole?: string | null;
+  status?: string | null;
+};
+
+/**
+ * How a person is described in an employee picker, so HR knows exactly who is being chosen: a manager badge (State
+ * Manager, Office Manager or Manager with the number of reports), the job (designation and department) and the
+ * identifying line (code, office or place, permission role).
+ */
+export const describeEmployeeOption = (person: EmployeeOptionPerson) => {
+  const reports = person.directReports ?? 0;
+  const charges = person.additionalCharges ?? 0;
+  const badge = person.isOfficeManager
+    ? (person.officeType === 'REGION' ? 'State Manager' : 'Office Manager')
+    : charges > 0 ? 'Additional charge' : reports > 0 ? 'Manager' : null;
+  const role = person.hasLogin === undefined ? null : person.loginRole ? `Role: ${person.loginRole}` : person.hasLogin ? 'No role' : 'No login';
+  return {
+    badge,
+    reports: reports > 0 ? `${reports} report${reports === 1 ? '' : 's'}` : null,
+    states: charges > 0 ? `${person.isOfficeManager ? '+' : ''}${charges} state${charges === 1 ? '' : 's'}` : null,
+    job: [person.designation, person.department].filter(Boolean).join(' · ') || 'No designation yet',
+    detail: [person.employeeCode, person.officeName || person.location, role].filter(Boolean).join(' · '),
+    status: person.status && person.status !== 'ACTIVE' ? person.status : null,
+  };
+};
+

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { inflateSync } from 'node:zlib';
 import test from 'node:test';
 import { renderBillOfSupplyPdf, renderDeliveryChallanPdf, renderMoneyReceiptPdf } from './vehicleSaleDocumentsPdf';
+import { renderProfitGstInvoicePdf } from './vehicleSaleProfitInvoicePdf';
 
 const pdfCommands = (buffer: Buffer) => {
   const source = buffer.toString('latin1');
@@ -182,4 +183,64 @@ test('delivery challan renders a source-backed vehicle handover document', async
 
   assert.equal(pdf.subarray(0, 5).toString('latin1'), '%PDF-');
   assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 1);
+});
+
+test('profit GST invoice keeps Rs. totals, header, and long vehicle titles aligned without wrapping or clipping', async () => {
+  const pdf = await renderProfitGstInvoicePdf({
+    company: {
+      name: 'JCB EXCHANGE (OPC) PRIVATE LIMITED',
+      addressLine: 'Shop No. 8, Housing Board Complex, Shankar Nagar Khamhardih Raipur C.G., Raipur, Chhattisgarh, India',
+      gstin: '22AAHCJ5752E1ZR',
+      state: 'Chhattisgarh',
+    },
+    invoiceNumber: 'JCBX/PR/20261117/9955',
+    invoiceDate: '17/NOV/2026',
+    customerName: 'ROSHAN VERMA',
+    customerAddressLine: 'Raipur, Chhattisgarh',
+    customerStateCode: 'Chhattisgarh',
+    placeOfSupply: 'Chhattisgarh',
+    vehicle: {
+      title: '2021 CASE NEW HOLLAND CONSTRUCTION EQUIPMENT(I) PVT LTD CASE 770 EX-SS',
+      registrationNumber: 'CG11BN7867',
+      chassisNumber: 'RAJ3DXNA03449629',
+      engineNumber: 'H00445338',
+      category: 'Excavator (NT)',
+    },
+    relatedBillOfSupplyNumber: 'JCBX/SV/2026-27/0001',
+    finance: {
+      purchaseAmount: 2300000,
+      saleAmount: 2400000,
+      expenses: 16000,
+      grossMargin: 84000,
+      taxableValue: 71186.44,
+      gstRatePercent: 18,
+      isIntraState: true,
+      cgst: 6406.78,
+      sgst: 6406.78,
+      igst: 0,
+      totalGst: 12813.56,
+      totalInvoiceAmount: 84000,
+      netProfitAfterGst: 71186.44,
+    },
+    amountInWords: 'Rupees Eighty Four Thousand Only',
+    remarksBullets: [
+      '• Gross Profit Margin (Inclusive of 18% GST): Rs. 84,000.00',
+      '• Note: Tax Invoice issued under GST Margin Scheme pursuant to Rule 32(5) of the CGST Rules, 2017. Internal record for accounting and audit compliance.',
+    ],
+    signatory: { name: 'Authorised Signatory', designation: 'Director' },
+  });
+
+  assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 1);
+  const tjLines = [...pdfCommands(pdf).matchAll(/\[([^\]]*)\]\s*TJ/g)]
+    .map((m) => [...m[1]!.matchAll(/<([0-9a-f]+)>/gi)].map((h) => Buffer.from(h[1]!, 'hex').toString('latin1')).join(''));
+  assert.ok(tjLines.includes('Total (Gross)'), 'Total (Gross) header must fit on a single line');
+  assert.equal(tjLines.filter((line) => line === 'Rs. 84,000.00').length, 2, 'Item and Total Gross amounts must stay on single lines');
+  assert.ok(
+    tjLines.includes('2021 CASE NEW HOLLAND CONSTRUCTION EQUIPMENT(I) PVT LTD CASE 770 EX-SS'),
+    'Long vehicle title must fit cleanly on one line',
+  );
+  assert.ok(
+    tjLines.some((line) => line.includes('Internal record for accounting and audit compliance.')),
+    'Wrapped accounting note bullet must not be clipped',
+  );
 });

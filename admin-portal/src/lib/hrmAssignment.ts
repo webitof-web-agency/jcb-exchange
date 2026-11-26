@@ -10,6 +10,9 @@ export type AssignmentLocationType = 'HEAD_OFFICE' | 'STATE_OFFICE';
 
 export type AssignmentForm = {
   locationType: AssignmentLocationType;
+  /** Head office postings: the chosen head office. */
+  headOfficeUnitId: string;
+  /** State office postings only. */
   stateId: string;
   cityId: string;
   orgUnitId: string;
@@ -20,9 +23,6 @@ export type AssignmentForm = {
 };
 
 export type AssignmentErrors = Partial<Record<keyof AssignmentForm, string>>;
-
-/** The head office place (state and city ids) from the form options, or null when it is not set up. */
-export type DefaultPlace = { stateId: number; cityId: number } | null;
 
 export type StateOption = { id: number; name: string; hasOffice: boolean; officeSwitchedOff: boolean };
 
@@ -60,36 +60,18 @@ export const validateStartDate = (value: string, now = new Date()) => {
   return '';
 };
 
-export const createEmptyAssignmentForm = (today: string, place: DefaultPlace): AssignmentForm => ({
-  locationType: place ? 'HEAD_OFFICE' : 'STATE_OFFICE',
-  stateId: place ? String(place.stateId) : '',
-  cityId: place ? String(place.cityId) : '',
+/** `headOfficeId` is the default head office; without one the form starts on a state office. */
+export const createEmptyAssignmentForm = (today: string, headOfficeId: string | null): AssignmentForm => ({
+  locationType: headOfficeId ? 'HEAD_OFFICE' : 'STATE_OFFICE',
+  headOfficeUnitId: headOfficeId ?? '',
+  stateId: '',
+  cityId: '',
   orgUnitId: '',
   designation: '',
   employmentType: 'FULL_TIME',
   effectiveFrom: today,
   reason: '',
 });
-
-const isDefaultPlace = (form: Pick<AssignmentForm, 'stateId' | 'cityId'>, place: DefaultPlace) =>
-  Boolean(place) && form.stateId === String(place!.stateId) && form.cityId === String(place!.cityId);
-
-/**
- * What the place becomes when the radio is switched. Head office goes back to its own place; moving to a state office
- * drops that default place (so the person does not keep Raipur by accident) but keeps a place somebody typed.
- */
-export const placeAfterSwitch = (form: AssignmentForm, next: AssignmentLocationType, place: DefaultPlace) => {
-  if (next === form.locationType) return { stateId: form.stateId, cityId: form.cityId };
-  if (next === 'HEAD_OFFICE') return place ? { stateId: String(place.stateId), cityId: String(place.cityId) } : { stateId: form.stateId, cityId: form.cityId };
-  return isDefaultPlace(form, place) ? { stateId: '', cityId: '' } : { stateId: form.stateId, cityId: form.cityId };
-};
-
-/**
- * The server places a person at the head office only when the place IS the head office city; any other place belongs
- * to that state's office. So a "head office" assignment with a different place is really a state office one.
- */
-export const effectiveOfficeKind = (form: Pick<AssignmentForm, 'locationType' | 'stateId' | 'cityId'>, place: DefaultPlace): AssignmentLocationType =>
-  form.locationType === 'HEAD_OFFICE' && isDefaultPlace(form, place) ? 'HEAD_OFFICE' : 'STATE_OFFICE';
 
 export type StateOfficeStatus =
   | { kind: 'ok'; message: '' }
@@ -110,7 +92,8 @@ export const stateOfficeStatus = (state: StateOption | undefined, canManageOrg: 
 
 export type AssignmentContext = {
   headOfficeAvailable: boolean;
-  headOfficePlace: DefaultPlace;
+  /** Why the chosen head office cannot be used (it has no state and city yet). */
+  headOfficeMessage?: string | null | undefined;
   states: readonly StateOption[];
   canManageOrg: boolean;
   now?: Date;
@@ -118,9 +101,13 @@ export type AssignmentContext = {
 
 export const validateAssignmentForm = (form: AssignmentForm, context: AssignmentContext): AssignmentErrors => {
   const errors: AssignmentErrors = {};
-  if (form.locationType === 'HEAD_OFFICE' && !context.headOfficeAvailable) errors.locationType = 'The head office is not set up. Choose State office.';
-  if (!form.stateId) errors.stateId = 'Select the state.';
-  if (!form.cityId) errors.cityId = 'Select the city.';
+  if (form.locationType === 'HEAD_OFFICE') {
+    if (!context.headOfficeAvailable) errors.locationType = 'The head office is not set up. Choose State office.';
+    else if (context.headOfficeMessage) errors.headOfficeUnitId = context.headOfficeMessage;
+  } else {
+    if (!form.stateId) errors.stateId = 'Select the state.';
+    if (!form.cityId) errors.cityId = 'Select the city.';
+  }
   if (!form.orgUnitId) errors.orgUnitId = 'Select the department.';
   if (!form.designation.trim()) errors.designation = 'Select the designation.';
   if (form.employmentType && !(EMPLOYMENT_TYPE_OPTIONS as readonly string[]).includes(form.employmentType)) errors.employmentType = 'Select the employment type.';
@@ -129,7 +116,7 @@ export const validateAssignmentForm = (form: AssignmentForm, context: Assignment
   if (form.reason.trim().length > REASON_MAX_LENGTH) errors.reason = `Keep the reason within ${REASON_MAX_LENGTH} characters.`;
 
   // A state without a usable office blocks the save (the same message the form shows under the state box).
-  if (form.stateId && !errors.stateId && effectiveOfficeKind(form, context.headOfficePlace) === 'STATE_OFFICE') {
+  if (form.locationType === 'STATE_OFFICE' && form.stateId && !errors.stateId) {
     const state = context.states.find((entry) => String(entry.id) === form.stateId);
     const status = stateOfficeStatus(state, context.canManageOrg);
     if (status.kind === 'blocked') errors.stateId = status.message;
@@ -137,19 +124,22 @@ export const validateAssignmentForm = (form: AssignmentForm, context: Assignment
   return errors;
 };
 
-/** The request body: only what the form fills (no reporting manager, work mode or region). */
-export const toAssignmentPayload = (form: AssignmentForm): Record<string, unknown> => ({
+/** The request body: only what the form fills (no work mode or region; the reporting manager only when chosen). */
+export const toAssignmentPayload = (form: AssignmentForm, managerEmployeeId?: string | null): Record<string, unknown> => ({
+  ...(managerEmployeeId ? { managerEmployeeId } : {}),
   orgUnitId: form.orgUnitId,
   designation: form.designation.trim(),
   employmentType: form.employmentType || 'FULL_TIME',
-  stateId: Number(form.stateId),
-  cityId: Number(form.cityId),
+  locationType: form.locationType,
+  ...(form.locationType === 'HEAD_OFFICE'
+    ? { ...(form.headOfficeUnitId ? { headOfficeUnitId: form.headOfficeUnitId } : {}) }
+    : { stateId: Number(form.stateId), cityId: Number(form.cityId) }),
   effectiveFrom: form.effectiveFrom,
   ...(form.reason.trim() ? { reason: form.reason.trim() } : {}),
 });
 
 /** Where the first error is, in the order the form shows its fields (to focus it). */
-export const ASSIGNMENT_FIELD_ORDER: ReadonlyArray<keyof AssignmentForm> = ['locationType', 'stateId', 'cityId', 'orgUnitId', 'designation', 'employmentType', 'effectiveFrom', 'reason'];
+export const ASSIGNMENT_FIELD_ORDER: ReadonlyArray<keyof AssignmentForm> = ['locationType', 'headOfficeUnitId', 'stateId', 'cityId', 'orgUnitId', 'designation', 'employmentType', 'effectiveFrom', 'reason'];
 
 export const firstAssignmentError = (errors: AssignmentErrors) => ASSIGNMENT_FIELD_ORDER.find((field) => errors[field]);
 

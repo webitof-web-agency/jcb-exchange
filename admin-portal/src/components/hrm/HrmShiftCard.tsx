@@ -79,7 +79,8 @@ export default function HrmShiftCard({
           <ul className="mt-2 space-y-1.5">{history.map((row) => <li key={row.id} className="flex flex-wrap justify-between gap-2 text-xs"><span className="text-slate-700">{row.shift.name} · {describeWeeklyOffs(row.weeklyOffs)}</span><span className="text-slate-500">{formatHrmDate(row.effectiveFrom)}{row.effectiveTo ? ` – ${formatHrmDate(row.effectiveTo)}` : ''} · {formatHrmStatus(row.status)}</span></li>)}</ul>
         </details>
       ) : null}
-      {assigning ? <AssignShiftDialog employeeId={employeeId} portal={portal} current={current} onClose={() => onAssigningChange(false)} onDone={async () => { onAssigningChange(false); await load(); onChanged?.(); }} /> : null}
+      {/* Opened only once the shifts are loaded, so the form starts from the current one. */}
+      {assigning && data ? <AssignShiftDialog employeeId={employeeId} portal={portal} current={current} onClose={() => onAssigningChange(false)} onDone={async () => { onAssigningChange(false); await load(); onChanged?.(); }} /> : null}
     </section>
   );
 }

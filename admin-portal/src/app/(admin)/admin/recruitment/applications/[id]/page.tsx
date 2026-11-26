@@ -387,6 +387,7 @@ interface ApplicationWorkspaceData {
     documentHash?: string | null;
     acceptanceCertificateUrl?: string | null;
     signatureFileUrl?: string | null;
+    signedLetterUrl?: string | null;
     hrmHandoffStatus?: string | null;
     hrmHandoffError?: string | null;
     hrmHandoffAttempts?: number | null;
@@ -1892,6 +1893,7 @@ export default function ApplicationDetailPage({ params }: { params: Promise<{ id
                             documentHash: off.documentHash ?? null,
                             hasCertificate: Boolean(off.acceptanceCertificateUrl),
                             hasSignatureFile: Boolean(off.signatureFileUrl),
+                            hasSignedLetter: Boolean(off.signedLetterUrl || ((off.acceptanceMethod === 'UPLOADED_SCAN' || off.acceptanceMethod === 'OFFLINE_HR') && off.signatureFileUrl)),
                           }}
                         />
                       ) : null}

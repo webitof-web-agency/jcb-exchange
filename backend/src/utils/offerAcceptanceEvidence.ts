@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import PDFDocument from 'pdfkit';
+import { cleanPng, isPng, SCAN_LIMITS, SIGNATURE_LIMITS } from './pngImage';
 
 /**
  * Pure parts of an offer acceptance (no database): which signing methods exist, checking what the candidate sent,
@@ -11,7 +12,6 @@ export type AcceptanceMethod = (typeof ACCEPTANCE_METHODS)[number];
 export const CANDIDATE_ACCEPTANCE_METHODS = ['TYPED', 'DRAWN', 'UPLOADED_SCAN'] as const;
 
 export const MAX_DRAWN_SIGNATURE_BYTES = 300 * 1024;
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export const sha256Hex = (buffer: Buffer) => createHash('sha256').update(buffer).digest('hex');
 
@@ -19,15 +19,24 @@ export const sha256Hex = (buffer: Buffer) => createHash('sha256').update(buffer)
 export const normalizePersonName = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 export const namesMatch = (typed: string, onRecord: string) => normalizePersonName(typed) !== '' && normalizePersonName(typed) === normalizePersonName(onRecord);
 
-/** A drawn signature arrives as a PNG data URL; anything else (or too small / too big) is refused. */
+/**
+ * A drawn signature arrives as a PNG data URL; anything else (too small, too big, damaged or oversized as a picture)
+ * is refused. What comes back is the picture rebuilt by cleanPng, safe to give to the PDF libraries.
+ */
 export const decodeDrawnSignature = (dataUrl: unknown): Buffer | null => {
   if (typeof dataUrl !== 'string') return null;
   const match = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl.trim());
   if (!match?.[1]) return null;
   const buffer = Buffer.from(match[1], 'base64');
   if (buffer.length < 200 || buffer.length > MAX_DRAWN_SIGNATURE_BYTES) return null;
-  if (!buffer.subarray(0, 8).equals(PNG_MAGIC)) return null;
-  return buffer;
+  return cleanPng(buffer, SIGNATURE_LIMITS);
+};
+
+/** A picture that may be drawn on the certificate: a sound PNG (rebuilt) or a JPEG; null otherwise. */
+const certificatePicture = (image: Buffer | null) => {
+  if (!image) return null;
+  if (isPng(image)) return cleanPng(image, SCAN_LIMITS);
+  return image[0] === 0xff && image[1] === 0xd8 ? image : null;
 };
 
 export type CandidateAcceptanceInput = {
@@ -36,12 +45,16 @@ export type CandidateAcceptanceInput = {
   place: string;
 };
 
-/** Checks what the candidate sent with "Accept". The scan file itself is checked by the upload middleware. */
+/**
+ * Checks what the candidate sent with "Accept". The scan file itself is checked by the upload middleware.
+ * `drawn` is the signature drawn on the page; `typed` is the typed name as the page showed it (used on the signed
+ * letter; without it the name is written there in italics).
+ */
 export const validateCandidateAcceptance = (
   body: Record<string, unknown>,
   candidateName: string,
   hasFile: boolean,
-): { value: CandidateAcceptanceInput; drawn: Buffer | null } | { error: string } => {
+): { value: CandidateAcceptanceInput; drawn: Buffer | null; typed: Buffer | null } | { error: string } => {
   const method = typeof body.method === 'string' ? body.method.trim().toUpperCase() : '';
   if (!(CANDIDATE_ACCEPTANCE_METHODS as readonly string[]).includes(method)) return { error: 'Choose how you want to sign: type your name, draw your signature, or upload the signed letter.' };
   const fullName = typeof body.fullName === 'string' ? body.fullName.trim().replace(/\s+/g, ' ') : '';
@@ -60,8 +73,17 @@ export const validateCandidateAcceptance = (
     if (!drawn) return { error: 'Draw your signature in the box before accepting.' };
   }
   if (method === 'UPLOADED_SCAN' && !hasFile) return { error: 'Upload the signed offer letter (PDF, JPG or PNG).' };
-  return { value: { method: method as CandidateAcceptanceInput['method'], fullName, place }, drawn };
+  const typed = method === 'TYPED' ? decodeDrawnSignature(body.typedSignature) : null;
+  return { value: { method: method as CandidateAcceptanceInput['method'], fullName, place }, drawn, typed };
 };
+
+/**
+ * The signed offer letter of an accepted offer. Acceptances recorded before it was stored separately keep a scan (the
+ * candidate's or HR's) as their signature file; a drawn signature image alone is not a letter.
+ */
+export const signedLetterUrlOf = (offer: { signedLetterUrl?: string | null; signatureFileUrl?: string | null; acceptanceMethod?: string | null }) =>
+  offer.signedLetterUrl
+    || (offer.acceptanceMethod === 'UPLOADED_SCAN' || offer.acceptanceMethod === 'OFFLINE_HR' ? offer.signatureFileUrl || null : null);
 
 export type CertificateInput = {
   /** HR entered only the signing date (paper copy): show the date, not a time. */
@@ -81,6 +103,8 @@ export type CertificateInput = {
   userAgent: string | null;
   documentHash: string;
   signatureHash: string | null;
+  /** The letter with the signature placed on it (typed or drawn on the link). */
+  signedLetterHash?: string | null;
   signatureImage: Buffer | null;
   recordedBy: string | null;
   note: string | null;
@@ -98,6 +122,14 @@ const istDateTime = (date: Date) => new Intl.DateTimeFormat('en-IN', {
 }).format(date) + ' IST';
 
 const istDate = (date: Date) => new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+
+/** DD/MM/YYYY in India, as written on the letter. */
+export const letterDay = (date: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+
+/** The record printed at the foot of the signature page of the signed letter. */
+export const signedLetterStatement = (input: { signerName: string; acceptedAt: Date; place: string; method: AcceptanceMethod; letterNo: string }) =>
+  `Signed electronically by ${input.signerName} on ${istDateTime(input.acceptedAt)} at ${input.place} (${METHOD_LABELS[input.method].toLowerCase()}). `
+  + `Offer letter no. ${input.letterNo}. The acceptance certificate records the IP address, browser and file fingerprints.`;
 
 /**
  * The PDF uses the built-in fonts, which draw Latin (WinAnsi) characters only. Names and places are checked to be
@@ -147,16 +179,18 @@ export const buildAcceptanceCertificatePdf = (input: CertificateInput) => new Pr
   document.moveDown(0.6);
   row('SHA-256 of the offer letter', input.documentHash);
   if (input.signatureHash) row(input.method === 'DRAWN' ? 'SHA-256 of the signature' : 'SHA-256 of the signed copy', input.signatureHash);
+  if (input.signedLetterHash) row('SHA-256 of the signed letter', input.signedLetterHash);
 
   document.moveDown(1);
   const boxTop = document.y;
   document.roundedRect(48, boxTop, 499, 110, 6).lineWidth(0.8).strokeColor('#cbd5e1').stroke();
   document.font('Helvetica-Bold').fontSize(9).fillColor('#64748b').text('SIGNATURE', 60, boxTop + 10);
+  const picture = certificatePicture(input.signatureImage);
   if (input.method === 'TYPED') {
     document.font('Times-BoldItalic').fontSize(28).fillColor('#0f172a').text(pdfSafeText(input.acceptedName), 60, boxTop + 40, { width: 470 });
-  } else if (input.signatureImage) {
+  } else if (picture) {
     try {
-      document.image(input.signatureImage, 60, boxTop + 26, { fit: [260, 76] });
+      document.image(picture, 60, boxTop + 26, { fit: [260, 76] });
     } catch {
       document.font('Helvetica').fontSize(10).fillColor('#0f172a').text('Signed copy stored with this record (see its hash above).', 60, boxTop + 46);
     }

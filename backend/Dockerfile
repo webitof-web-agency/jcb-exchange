@@ -13,8 +13,7 @@ COPY src ./src
 COPY assets ./assets
 COPY templates ./templates
 RUN DATABASE_URL="postgresql://ci:ci@127.0.0.1:1/ci" npm run build \
-  && npm prune --omit=dev --no-audit --no-fund \
-  && DATABASE_URL="postgresql://ci:ci@127.0.0.1:1/ci" ./node_modules/.bin/prisma generate
+  && npm prune --omit=dev --no-audit --no-fund
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app

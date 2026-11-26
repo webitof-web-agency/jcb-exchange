@@ -14,6 +14,8 @@ function cn(...inputs: ClassValue[]) {
 export type Option = {
   id: string | number;
   name: string;
+  /** Shown before the name, in the list and on the closed box (for example a "default" star). */
+  icon?: React.ReactNode;
 };
 
 type SearchableSelectProps = {
@@ -260,6 +262,8 @@ export default function SearchableSelect({
     portal: "h-11 px-3 text-xs rounded-xl bg-zinc-50/70 hover:bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-900 font-normal",
   }[size];
 
+  const selectedIcon = options.find((option) => String(option.id) === String(value))?.icon;
+
   return (
     <div className={cn("relative w-full", className)} ref={wrapperRef} aria-invalid={required && !displayValue}>
       <input
@@ -290,6 +294,7 @@ export default function SearchableSelect({
           buttonClassName
         )}
       >
+        {!loading && displayValue && selectedIcon ? <span className="mr-1.5 flex shrink-0">{selectedIcon}</span> : null}
         <span className="truncate text-left flex-1 mr-1">
           {loading ? (placeholder ?? 'Loading…') : (displayValue || resolvedPlaceholder)}
         </span>
@@ -408,7 +413,8 @@ export default function SearchableSelect({
                         setSearchQuery('');
                       }}
                     >
-                      <span className="truncate">{String(option.name ?? '')}</span>
+                      {option.icon ? <span className="mr-1.5 flex shrink-0">{option.icon}</span> : null}
+                      <span className="mr-auto truncate">{String(option.name ?? '')}</span>
                       {isSelected && <Check className="h-3.5 w-3.5 text-amber-600 shrink-0 ml-2" />}
                     </li>
                   );

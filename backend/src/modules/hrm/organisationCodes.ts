@@ -50,3 +50,22 @@ export const kindOfUnit = (unit: { type: string; stateId: number | null }): Orga
 
 /** Default name of a state office when the administrator leaves the name empty. */
 export const defaultStateOfficeName = (stateName: string) => `${stateName} State Office`;
+
+/**
+ * A unit name as it is stored: control characters, zero-width spaces and bidi overrides (used for spoofing) are
+ * removed and spaces collapsed. Zero-width joiners stay: Devanagari and other Indic scripts need them.
+ */
+export const cleanUnitName = (value: string) => value
+  .replace(/[\u0000-\u001f\u007f-\u009f\u200b\u202a-\u202e\u2066-\u2069\ufeff]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+/** Why a (cleaned) office / department name cannot be used; null when it is fine. */
+export const unitNameProblem = (name: string): string | null => {
+  if (name.length < 2) return 'Enter the name (at least 2 characters).';
+  if (name.length > 160) return 'The name can have at most 160 characters.';
+  if (/[<>]/.test(name)) return 'The name cannot contain < or >.';
+  if (!/[\p{L}\p{N}]/u.test(name)) return 'The name needs at least one letter or number.';
+  return null;
+};
+

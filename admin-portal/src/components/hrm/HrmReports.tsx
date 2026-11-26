@@ -16,6 +16,7 @@ import { onboardingStatusLabel } from '@/lib/hrmOnboardingPage';
 import { formatHrmDate, getHrmErrorMessage, hasHrmPermission } from '@/lib/hrmUi';
 import { useAuthStore } from '@/store/authStore';
 import SearchableSelect from '@/components/ui/SearchableSelect';
+import HrmAccessReview from './HrmAccessReview';
 
 type Option = { id: string | number; name: string };
 
@@ -160,7 +161,7 @@ function PeopleList({ title, count, people, base, emptyText, linkNames = true, f
 }
 
 /** Director / HR reports: headcount state-wise and department-wise, joinings and exits, onboarding, KYC, vacant states. */
-export default function HrmReports() {
+function HeadcountReports({ onScope }: { onScope?: (allIndia: boolean) => void }) {
   const pathname = usePathname();
   const base = getHrmBase(pathname);
   const { user } = useAuthStore();
@@ -207,6 +208,7 @@ export default function HrmReports() {
         });
         if (ticket !== requestRef.current) return;
         setReport(response.data.report);
+        onScope?.(response.data.report.scope.allIndia);
       } catch (requestError) {
         if (ticket !== requestRef.current) return;
         // The old numbers belong to other filters: do not keep showing them under the new ones.
@@ -217,7 +219,7 @@ export default function HrmReports() {
       }
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [month, stateId, orgUnitId, reloadKey]);
+  }, [month, stateId, orgUnitId, reloadKey, onScope]);
 
   const download = useCallback(async (by: 'state' | 'department') => {
     if (downloading) return;
@@ -249,9 +251,8 @@ export default function HrmReports() {
   const nextMonth = nextReportMonth(month);
 
   return (
-    <div className="min-h-full bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <header className={`${card} flex flex-col gap-4 p-5 lg:flex-row lg:items-end lg:justify-between`}>
+    <div className="w-full space-y-4">
+      <header className={`${card} flex flex-col gap-4 p-5 lg:flex-row lg:items-end lg:justify-between`}>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">People reports</p>
             <h2 className="mt-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-slate-950"><BarChart3 className="h-6 w-6 text-amber-500" aria-hidden="true" /> HRM reports</h2>
@@ -371,8 +372,8 @@ export default function HrmReports() {
               </section>
               <section className={`${card} p-4`}>
                 <h2 className="font-bold text-slate-950">Vacant states <span className="text-sm font-semibold text-slate-500">({report.vacantStates.length})</span></h2>
-                <p className="mt-1 text-xs text-slate-500">State offices with no working State Manager today.</p>
-                {!report.vacantStates.length ? <p className="mt-3 text-sm text-emerald-700">Every state office has a manager.</p> : (
+                <p className="mt-1 text-xs text-slate-500">State offices nobody manages today (posted there or on an additional charge).</p>
+                {!report.vacantStates.length ? <p className="mt-3 text-sm text-emerald-700">Every state office is covered.</p> : (
                   <ul className="mt-3 max-h-64 divide-y divide-slate-100 overflow-y-auto">
                     {report.vacantStates.map((office) => (
                       <li key={office.officeId} className="flex items-center justify-between py-2 text-sm">
@@ -386,7 +387,29 @@ export default function HrmReports() {
             </div>
           </div>
         ) : null}
-      </div>
+    </div>
+  );
+}
+
+/** HRM reports: the headcount reports and, for HR who manage access, the access review. */
+export default function HrmReports() {
+  const pathname = usePathname();
+  const { user } = useAuthStore();
+  const canManageAccess = hasHrmPermission(user?.permissions, ['hrm.scope.manage'], user?.role === 'SUPER_ADMIN');
+  // The review covers every state, so it also needs all-India access (known from the first report).
+  const [allIndia, setAllIndia] = useState(false);
+  const [tab, setTab] = useState<'reports' | 'access'>('reports');
+  const showTabs = canManageAccess && allIndia;
+  return (
+    <div className="w-full space-y-4">
+      {showTabs ? (
+        <div role="tablist" aria-label="Reports" className="flex gap-1 border-b border-slate-200">
+          {([['reports', 'Headcount'], ['access', 'Access review']] as const).map(([id, label]) => (
+            <button key={id} role="tab" type="button" aria-selected={tab === id} onClick={() => setTab(id)} className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition ${tab === id ? 'border-amber-400 text-slate-950' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{label}</button>
+          ))}
+        </div>
+      ) : null}
+      {showTabs && tab === 'access' ? <HrmAccessReview portal={pathname?.startsWith('/employee') ? 'employee' : 'admin'} /> : <HeadcountReports onScope={setAllIndia} />}
     </div>
   );
 }

@@ -1,7 +1,11 @@
 'use client';
 
+import HrmManagerSelect from '@/components/hrm/HrmManagerSelect';
+import HrmHeadOfficeField from '@/components/hrm/HrmHeadOfficeField';
+import { defaultHeadOffice, headOfficeForPosting, selectedHeadOffice, type HrmHeadOffice } from '@/lib/hrmHeadOffice';
+import { toManagerParams, type ManagerOptions, type ManagerPick, type ManagerQuery } from '@/lib/hrmManagers';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Plus, Search, Trash2, X } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import type { OfferLetterFormData } from '@/lib/offerLetter';
 import {
@@ -23,7 +27,6 @@ import {
   type OfferHrmErrors,
   type OfferHrmForm,
   type OfferLocationType,
-  type OfferManagerOption,
   type SalaryComponentRow,
   type StoredOfferPlacement,
   type StoredSalaryComponent,
@@ -35,6 +38,13 @@ import {
  * manager and the monthly salary breakup. It keeps the letter in step (department, designation, place of posting,
  * salary amount) through `onLetterChange`; the page owns both forms.
  */
+
+/**
+ * How the reporting manager got there. One is filled in only after HR changes the place in this editor (a saved offer
+ * is never changed by just opening it), and never over a choice HR made.
+ */
+type ManagerFill = { autoId: string; placeChanged: boolean; decided: boolean };
+const NEW_MANAGER_FILL: ManagerFill = { autoId: '', placeChanged: false, decided: false };
 
 type OptionsState = {
   options: OfferFormOptions | null;
@@ -53,6 +63,7 @@ const NO_OFFER_EDIT_PERMISSION = 'You need permission to create or edit offers t
 export const useOfferHrmEditor = (enabled = true) => {
   const [form, setForm] = useState<OfferHrmForm>(createEmptyOfferHrmForm);
   const [errors, setErrors] = useState<OfferHrmErrors>({});
+  const [managerFill, setManagerFill] = useState<ManagerFill>(NEW_MANAGER_FILL);
   const [options, setOptions] = useState<OfferFormOptions | null>(null);
   const [loadingState, setLoading] = useState(true);
   const [errorState, setError] = useState('');
@@ -90,6 +101,7 @@ export const useOfferHrmEditor = (enabled = true) => {
   const reset = useCallback((stored?: { placement: StoredOfferPlacement | null; components: StoredSalaryComponent[]; reportingManagerName?: string | null }) => {
     setForm(stored ? offerHrmFormFromStored(stored.placement, stored.components, stored.reportingManagerName) : createEmptyOfferHrmForm());
     setErrors({});
+    setManagerFill(NEW_MANAGER_FILL);
   }, []);
 
   /** Checks the HRM fields against the letter's designation; returns true when the offer may be generated. */
@@ -100,7 +112,7 @@ export const useOfferHrmEditor = (enabled = true) => {
   }, [form, options]);
 
   const optionsState: OptionsState = { options, loading, error, retry };
-  return { form, setForm, errors, setErrors, optionsState, reset, validate };
+  return { form, setForm, errors, setErrors, optionsState, reset, validate, managerFill, setManagerFill };
 };
 
 export type OfferHrmEditor = ReturnType<typeof useOfferHrmEditor>;
@@ -143,96 +155,6 @@ const useCities = () => {
   return { byState, loadingStates, failedStates, ensure };
 };
 
-/** Search-as-you-type picker over working employees (manager-options endpoint). */
-function ManagerPicker({ value, valueName, onChange, disabled, idPrefix }: {
-  value: string;
-  valueName: string;
-  onChange: (manager: OfferManagerOption | null) => void;
-  disabled?: boolean | undefined;
-  idPrefix: string;
-}) {
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
-  const [results, setResults] = useState<OfferManagerOption[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const latest = useRef(0);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const ticket = latest.current + 1;
-    latest.current = ticket;
-    const timer = window.setTimeout(() => {
-      setSearching(true);
-      offerHrmApi.searchManagers(query)
-        .then((response) => {
-          if (latest.current !== ticket) return;
-          setResults(response.data.managers ?? []);
-          setFailed(false);
-        })
-        .catch(() => { if (latest.current === ticket) setFailed(true); })
-        .finally(() => { if (latest.current === ticket) setSearching(false); });
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [open, query]);
-
-  if (value && !open) {
-    return (
-      <div className="mt-1 flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white p-2.5 text-gray-900">
-        <span className="truncate font-semibold">{valueName || 'Selected employee'}</span>
-        {!disabled && (
-          <span className="flex shrink-0 gap-1">
-            <button type="button" onClick={() => setOpen(true)} className="rounded-lg px-2 py-1 text-[11px] font-bold text-blue-700 hover:bg-blue-50">Change</button>
-            <button type="button" onClick={() => onChange(null)} aria-label="Remove reporting manager" className="rounded-lg p-1 text-gray-500 hover:bg-gray-100"><X size={14} /></button>
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative mt-1">
-      <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-2.5">
-        <Search size={14} className="shrink-0 text-gray-400" />
-        <input
-          id={`${idPrefix}-manager`}
-          type="search"
-          disabled={disabled}
-          value={query}
-          onFocus={() => setOpen(true)}
-          onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
-          onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); } }}
-          placeholder="Search by name or employee code (optional)"
-          className="w-full bg-transparent py-2.5 text-gray-900 outline-none"
-          aria-autocomplete="list"
-          aria-controls={`${idPrefix}-manager-results`}
-        />
-        {searching && <Loader2 size={14} className="shrink-0 animate-spin text-gray-400" />}
-        {open && <button type="button" onClick={() => setOpen(false)} aria-label="Close search" className="rounded p-1 text-gray-400 hover:bg-gray-100"><X size={12} /></button>}
-      </div>
-      {open && (
-        <div id={`${idPrefix}-manager-results`} role="listbox" className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
-          {failed ? <p className="px-3 py-2 text-[11px] text-rose-600">Could not search employees. Type again to retry.</p>
-            : results.length === 0 && !searching ? <p className="px-3 py-2 text-[11px] text-gray-500">No working employee matches.</p>
-              : results.map((manager) => (
-                <button
-                  key={manager.id}
-                  type="button"
-                  role="option"
-                  aria-selected={manager.id === value}
-                  onClick={() => { onChange(manager); setOpen(false); setQuery(''); }}
-                  className="block w-full rounded-lg px-3 py-2 text-left hover:bg-amber-50"
-                >
-                  <span className="font-semibold text-gray-900">{manager.name}</span>
-                  <span className="ml-1 text-gray-500">{manager.employeeCode}{manager.designation ? ` · ${manager.designation}` : ''}</span>
-                </button>
-              ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function OfferHrmFields({
   editor,
   letter,
@@ -246,12 +168,13 @@ export default function OfferHrmFields({
   disabled?: boolean;
   idPrefix?: string;
 }) {
-  const { form, setForm, errors, setErrors, optionsState } = editor;
+  const { form, setForm, errors, setErrors, optionsState, managerFill, setManagerFill } = editor;
+  // The chosen row of the list (the form itself keeps only the id and the name).
+  const [pickedManager, setPickedManager] = useState<ManagerPick | null>(null);
   const { options, loading, error, retry } = optionsState;
   const cities = useCities();
   // What ticking "State Manager" filled in, so unticking can undo it only while unchanged.
   const autoDesignation = useRef<string | null>(null);
-  const autoManager = useRef<string | null>(null);
   const { ensure: ensureCities } = cities;
 
   // A saved offer (edit) or the head office default may name a state whose cities are not loaded yet.
@@ -292,41 +215,59 @@ export default function OfferHrmFields({
     onLetterChange({ employmentType: EMPLOYMENT_TYPE_LABELS[type] });
   };
 
-  const undoStateManagerDefaults = (patch: Partial<OfferHrmForm>, letterPatch: Partial<OfferLetterFormData>) => {
+  const undoStateManagerDefaults = (letterPatch: Partial<OfferLetterFormData>) => {
     if (autoDesignation.current && letter.designation === autoDesignation.current) letterPatch.designation = '';
-    if (autoManager.current && form.reportingManagerEmployeeId === autoManager.current) {
-      patch.reportingManagerEmployeeId = '';
-      patch.reportingManagerName = '';
-      letterPatch.reportingManager = '';
-    }
     autoDesignation.current = null;
-    autoManager.current = null;
+  };
+  const placeChanged = () => setManagerFill((current) => (current.placeChanged ? current : { ...current, placeChanged: true }));
+
+  /** A head office posting: the office decides the state, the city and the place printed on the letter. */
+  const headOfficeValues = (office: HrmHeadOffice) => ({ headOfficeUnitId: office.id, stateId: office.stateId ? String(office.stateId) : '', cityId: office.cityId ? String(office.cityId) : '' });
+  const applyHeadOffice = (office: HrmHeadOffice) => {
+    clearError('headOfficeUnitId');
+    update(headOfficeValues(office));
+    onLetterChange({ placeOfPosting: buildPlaceOfPosting({ locationType: 'HEAD_OFFICE' }, { stateName: office.stateName, cityName: office.cityName }) });
+  };
+  const onHeadOffice = (office: HrmHeadOffice) => {
+    placeChanged();
+    applyHeadOffice(office);
   };
 
-  const onLocationType = async (type: OfferLocationType) => {
+  // A saved offer is brought up to date: one without a usable head office takes one (see headOfficeForPosting), and
+  // a head office that has moved since brings its new place to the letter too.
+  const headOffices = options?.headOffices;
+  const savedOffice = headOffices?.find((office) => office.id === form.headOfficeUnitId);
+  const needsHeadOffice = !disabled && form.locationType === 'HEAD_OFFICE' && Boolean(headOffices?.length)
+    && (!savedOffice || headOfficeValues(savedOffice).stateId !== form.stateId || headOfficeValues(savedOffice).cityId !== form.cityId);
+  const bringUpToDate = () => {
+    const office = headOfficeForPosting(headOffices ?? [], form);
+    if (office) applyHeadOffice(office);
+  };
+  const latestBringUpToDate = useRef(bringUpToDate);
+  useEffect(() => { latestBringUpToDate.current = bringUpToDate; });
+  useEffect(() => {
+    if (!needsHeadOffice) return undefined;
+    const timer = window.setTimeout(() => latestBringUpToDate.current(), 0);
+    return () => window.clearTimeout(timer);
+  }, [needsHeadOffice, headOffices]);
+
+  const onLocationType = (type: OfferLocationType) => {
     clearError('locationType');
     clearError('stateId');
     clearError('cityId');
     const patch: Partial<OfferHrmForm> = { locationType: type, isOfficeManager: false };
     const letterPatch: Partial<OfferLetterFormData> = {};
-    if (form.isOfficeManager) undoStateManagerDefaults(patch, letterPatch);
-    if (type === 'HEAD_OFFICE') {
-      // The head office's own place, unless HR picks another one.
-      const stateId = options?.headOffice?.stateId ? String(options.headOffice.stateId) : '';
-      const cityId = options?.headOffice?.cityId ? String(options.headOffice.cityId) : '';
-      Object.assign(patch, { stateId, cityId });
-      update(patch);
-      if (Object.keys(letterPatch).length) onLetterChange(letterPatch);
-      const list = stateId ? await ensureCities(stateId) : [];
-      onLetterChange({ placeOfPosting: placeFor({ locationType: type, stateId, cityId }, list) });
-      return;
-    }
-    Object.assign(patch, { stateId: '', cityId: '' });
+    if (form.isOfficeManager) undoStateManagerDefaults(letterPatch);
+    placeChanged();
+    const office = type === 'HEAD_OFFICE' ? defaultHeadOffice(options?.headOffices) : null;
+    Object.assign(patch, office ? headOfficeValues(office) : { headOfficeUnitId: '', stateId: '', cityId: '' });
     update(patch);
+    if (office) letterPatch.placeOfPosting = buildPlaceOfPosting({ locationType: 'HEAD_OFFICE' }, { stateName: office.stateName, cityName: office.cityName });
     if (Object.keys(letterPatch).length) onLetterChange(letterPatch);
   };
 
   const onState = (id: string) => {
+    placeChanged();
     clearError('stateId');
     clearError('cityId');
     update({ stateId: id, cityId: '' });
@@ -334,43 +275,54 @@ export default function OfferHrmFields({
   };
 
   const onCity = (id: string) => {
+    placeChanged();
     clearError('cityId');
     const next = { ...form, cityId: id };
     update({ cityId: id });
     onLetterChange({ placeOfPosting: placeFor(next) });
   };
 
-  const clearHeadOfficePlace = () => {
-    update({ stateId: '', cityId: '' });
-    onLetterChange({ placeOfPosting: placeFor({ locationType: 'HEAD_OFFICE', stateId: '', cityId: '' }) });
-  };
-
   const onOfficeManager = (checked: boolean) => {
-    const patch: Partial<OfferHrmForm> = { isOfficeManager: checked };
     const letterPatch: Partial<OfferLetterFormData> = {};
     if (checked) {
       if (!letter.designation.trim() && options?.stateManagerDesignation) {
         letterPatch.designation = options.stateManagerDesignation;
         autoDesignation.current = options.stateManagerDesignation;
       }
-      const national = options?.nationalOperationsManagers ?? [];
-      if (!form.reportingManagerEmployeeId && national.length === 1) {
-        patch.reportingManagerEmployeeId = national[0]!.id;
-        patch.reportingManagerName = national[0]!.name;
-        letterPatch.reportingManager = national[0]!.name;
-        autoManager.current = national[0]!.id;
-      }
     } else {
-      undoStateManagerDefaults(patch, letterPatch);
+      undoStateManagerDefaults(letterPatch);
     }
-    update(patch);
+    placeChanged();
+    update({ isOfficeManager: checked });
     if (Object.keys(letterPatch).length) onLetterChange(letterPatch);
   };
 
-  const onManager = (manager: OfferManagerOption | null) => {
-    autoManager.current = null;
+  /** Writes the manager into the form and onto the letter. */
+  const writeManager = (manager: ManagerPick | null) => {
+    setPickedManager(manager);
     update({ reportingManagerEmployeeId: manager?.id ?? '', reportingManagerName: manager?.name ?? '' });
     onLetterChange({ reportingManager: manager?.name ?? '' });
+    clearError('reportingManagerEmployeeId');
+  };
+  const onManager = (manager: ManagerPick | null) => {
+    setManagerFill((current) => ({ ...current, autoId: '', decided: true }));
+    writeManager(manager);
+  };
+  const managerQuery: ManagerQuery = form.locationType === 'HEAD_OFFICE'
+    ? { headOffice: true }
+    // No city here: whatever the city, a "State office" offer puts the person in that state's office.
+    : form.locationType === 'STATE_OFFICE' ? { stateId: form.stateId, managerRole: form.isOfficeManager } : {};
+  // A manager filled in for the old place goes before the new place is looked up.
+  const onManagerListStart = () => {
+    if (!managerFill.autoId || form.reportingManagerEmployeeId !== managerFill.autoId) return;
+    setManagerFill((current) => ({ ...current, autoId: '' }));
+    writeManager(null);
+  };
+  const onManagerList = (list: ManagerOptions) => {
+    if (!managerFill.placeChanged || managerFill.decided || form.reportingManagerEmployeeId || !list.preselect) return;
+    const { id } = list.preselect;
+    setManagerFill((current) => ({ ...current, autoId: id }));
+    writeManager(list.preselect);
   };
 
   const setRows = (rows: SalaryComponentRow[]) => {
@@ -455,20 +407,29 @@ export default function OfferHrmFields({
             <div className="mt-1 flex gap-2">
               {(['HEAD_OFFICE', 'STATE_OFFICE'] as const).map((type) => (
                 <label key={type} className={`flex flex-1 cursor-pointer items-center gap-2 rounded-xl border p-2.5 ${form.locationType === type ? 'border-blue-400 bg-white ring-1 ring-blue-300' : 'border-gray-200 bg-white'}`}>
-                  <input type="radio" name={`${idPrefix}-location`} value={type} checked={form.locationType === type} disabled={disabled || (type === 'HEAD_OFFICE' && !options.headOffice)} onChange={() => void onLocationType(type)} />
+                  <input type="radio" name={`${idPrefix}-location`} value={type} checked={form.locationType === type} disabled={disabled || (type === 'HEAD_OFFICE' && !options.headOffices.length)} onChange={() => onLocationType(type)} />
                   <span>{type === 'HEAD_OFFICE' ? 'Head office' : 'State office'}</span>
                 </label>
               ))}
             </div>
-            {!options.headOffice && <span className="mt-1 block text-[11px] font-normal text-gray-500">The head office is not set up yet (HRM → Organisation).</span>}
+            {!options.headOffices.length && <span className="mt-1 block text-[11px] font-normal text-gray-500">{options.places && !options.places.headOffice ? 'Head office postings are outside your recruitment access.' : 'The head office is not set up yet (HRM → Organisation).'}</span>}
             <FieldError id={`${idPrefix}-location-error`} message={errors.locationType} />
           </fieldset>
         </div>
 
-        {form.locationType && (
+        {form.locationType === 'HEAD_OFFICE' && options.headOffices.length > 0 && (
+          <div className="mt-3 font-semibold text-gray-700">
+            <label htmlFor={`${idPrefix}-head-office`}>Head office *</label>
+            <div className="mt-1">
+              <HrmHeadOfficeField id={`${idPrefix}-head-office`} offices={options.headOffices} value={selectedHeadOffice(options.headOffices, form.headOfficeUnitId)?.id ?? ''} onChange={onHeadOffice} error={errors.headOfficeUnitId} disabled={disabled} />
+            </div>
+          </div>
+        )}
+
+        {form.locationType === 'STATE_OFFICE' && (
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="font-semibold text-gray-700">
-              <label htmlFor={`${idPrefix}-state`}>State {form.locationType === 'STATE_OFFICE' ? '*' : '(optional)'}</label>
+              <label htmlFor={`${idPrefix}-state`}>State *</label>
               <SearchableSelect
                 id={`${idPrefix}-state`}
                 options={options.states.map((state) => ({ id: String(state.id), name: state.hasOffice ? state.name : `${state.name} · ${state.officeSwitchedOff ? 'office switched off' : 'no office yet'}` }))}
@@ -478,19 +439,17 @@ export default function OfferHrmFields({
                 placeholder="Select the state"
                 disabled={disabled}
                 className="mt-1"
-                clearable={form.locationType === 'HEAD_OFFICE' && Boolean(form.stateId)}
-                onClear={clearHeadOfficePlace}
               />
               <FieldError id={`${idPrefix}-state-error`} message={errors.stateId} />
-              {form.locationType === 'STATE_OFFICE' && selectedState && !selectedState.hasOffice && !selectedState.officeSwitchedOff && (
+              {selectedState && !selectedState.hasOffice && !selectedState.officeSwitchedOff && (
                 <span className="mt-1 block text-[11px] font-normal text-blue-800">{selectedState.name} has no office yet. It is created when the offer is accepted.</span>
               )}
-              {form.locationType === 'STATE_OFFICE' && selectedState?.officeSwitchedOff && (
+              {selectedState?.officeSwitchedOff && (
                 <span role="alert" className={errorClass}>The {selectedState.name} state office is switched off. Switch it on from HRM → Organisation first.</span>
               )}
             </div>
             <div className="font-semibold text-gray-700">
-              <label htmlFor={`${idPrefix}-city`}>City {form.locationType === 'STATE_OFFICE' ? '*' : '(optional)'}</label>
+              <label htmlFor={`${idPrefix}-city`}>City *</label>
               <SearchableSelect
                 id={`${idPrefix}-city`}
                 options={cityList.map((city) => ({ id: String(city.id), name: city.name }))}
@@ -510,34 +469,29 @@ export default function OfferHrmFields({
               )}
               <FieldError id={`${idPrefix}-city-error`} message={errors.cityId} />
             </div>
-            {form.locationType === 'HEAD_OFFICE' && (
-              <p className="text-[11px] font-normal text-gray-500 sm:col-span-2">Leave the head office place as it is, or choose where this head office employee will actually work.</p>
-            )}
-            {form.locationType === 'STATE_OFFICE' && (
-              <label className="flex items-center gap-2 font-semibold text-gray-700 sm:col-span-2">
-                <input type="checkbox" checked={form.isOfficeManager} disabled={disabled} onChange={(event) => onOfficeManager(event.target.checked)} />
-                Will be the State Manager of this state
-              </label>
-            )}
+            <label className="flex items-center gap-2 font-semibold text-gray-700 sm:col-span-2">
+              <input type="checkbox" checked={form.isOfficeManager} disabled={disabled} onChange={(event) => onOfficeManager(event.target.checked)} />
+              Will be the State Manager of this state
+            </label>
           </div>
         )}
 
         <div className="mt-3 font-semibold text-gray-700">
           <label htmlFor={`${idPrefix}-manager`}>Reporting manager</label>
-          <ManagerPicker idPrefix={idPrefix} value={form.reportingManagerEmployeeId} valueName={form.reportingManagerName} onChange={onManager} disabled={disabled} />
-          {form.isOfficeManager && !form.reportingManagerEmployeeId && options.nationalOperationsManagers.length > 1 && (
-            <span className="mt-1 block text-[11px] font-normal text-gray-500">
-              There are several National Operations Managers. Choose one:
-              <span className="mt-1 flex flex-wrap gap-1.5">
-                {options.nationalOperationsManagers.map((manager) => (
-                  <button key={manager.id} type="button" disabled={disabled} onClick={() => onManager({ id: manager.id, employeeCode: manager.employeeCode, name: manager.name, designation: null })} className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50 disabled:opacity-60">{manager.name} ({manager.employeeCode})</button>
-                ))}
-              </span>
-            </span>
-          )}
-          {form.isOfficeManager && !form.reportingManagerEmployeeId && options.nationalOperationsManagers.length === 0 && (
-            <span className="mt-1 block text-[11px] font-normal text-gray-500">No National Operations Manager is set yet. Choose a reporting manager here, or leave it empty.</span>
-          )}
+          <div className="mt-1">
+            <HrmManagerSelect
+              id={`${idPrefix}-manager`}
+              value={form.reportingManagerEmployeeId ? (pickedManager?.id === form.reportingManagerEmployeeId ? pickedManager : { id: form.reportingManagerEmployeeId, name: form.reportingManagerName || 'Selected employee' }) : null}
+              auto={Boolean(managerFill.autoId) && managerFill.autoId === form.reportingManagerEmployeeId}
+              invalid={Boolean(errors.reportingManagerEmployeeId)}
+              disabled={disabled}
+              onChange={onManager}
+              load={async (search) => (await offerHrmApi.getManagerOptions(toManagerParams(managerQuery, search))).data}
+              loadKey={JSON.stringify(toManagerParams(managerQuery))}
+              onLoadStart={onManagerListStart}
+              onLoaded={onManagerList}
+            />
+          </div>
           <FieldError id={`${idPrefix}-manager-error`} message={errors.reportingManagerEmployeeId} />
         </div>
       </div>

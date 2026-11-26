@@ -185,6 +185,8 @@ export const allowedAdminPermissions = new Set([
   'recruitment.pipeline.delete',
   'recruitment.settings.read',
   'recruitment.settings.update',
+  // All-India recruitment. Without it a login sees only the states of its HRM access scopes.
+  'recruitment.scope.all',
   // HRM permissions are additive to the existing role model. HRM scope
   // enforcement still applies to every non-super-admin request.
   'hrm.employees.read',

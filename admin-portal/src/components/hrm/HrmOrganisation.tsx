@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { toast } from 'react-toastify';
-import { AlertCircle, Building2, CalendarDays, ChevronRight, CircleCheck, Clock3, Globe2, Landmark, MapPin, Pencil, Plus, Power, RefreshCw, Search, Trash2, TriangleAlert, UserPlus, Users, X, type LucideIcon } from 'lucide-react';
+import { AlertCircle, Building2, CalendarDays, ChevronRight, Clock3, Globe2, Landmark, MapPin, Pencil, Plus, Power, RefreshCw, Search, Trash2, TriangleAlert, UserPlus, Users, X } from 'lucide-react';
 import { hrmApi, type HrmOrganisation, type HrmOrganisationUnit } from '@/lib/hrmApi';
 import {
   buildStateRows, countStateRows, departmentsOf, filterStateRows, formatManagerNames, getHrmBase, groupOrganisation, officeHref,
@@ -13,9 +13,12 @@ import {
 import { getHrmErrorMessage, hasHrmPermission } from '@/lib/hrmUi';
 import { describeUpcomingManagers } from '@/lib/hrmOnboardingPage';
 import { useAuthStore } from '@/store/authStore';
+import HrmDepartmentsSection from './HrmDepartmentsSection';
 import HrmShifts from './HrmShifts';
 import HrmHolidays from './HrmHolidays';
+import { DefaultStar } from './HrmHeadOfficeField';
 import { AddStateOfficesDialog, AddUnitDialog, DeleteUnitDialog, HeadOfficeSetupDialog, RenameUnitDialog, ToggleUnitDialog } from './HrmOrganisationDialogs';
+import { ActiveChip, Count, Empty, IconButton, SectionCard, orgTh } from './orgUi';
 
 type OrganisationTab = 'STRUCTURE' | 'SHIFTS' | 'HOLIDAYS';
 const ORGANISATION_TABS = ['STRUCTURE', 'SHIFTS', 'HOLIDAYS'] as const;
@@ -26,7 +29,7 @@ const tabFromQuery = (value: string | null): OrganisationTab => {
 };
 
 type Dialog =
-  | { type: 'add'; kind: 'STATE' | 'DEPARTMENT' | 'HEAD_OFFICE'; stateId?: number }
+  | { type: 'add'; kind: 'STATE' | 'HEAD_OFFICE'; stateId?: number }
   | { type: 'bulk' }
   | { type: 'setup' }
   | { type: 'rename'; unit: HrmOrganisationUnit }
@@ -34,13 +37,12 @@ type Dialog =
   | { type: 'delete'; unit: HrmOrganisationUnit }
   | null;
 
-const th = 'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500';
-
+// Only states that have an office are listed, so "not set up" here can only mean an office that is switched off.
 const STATE_FILTERS: Array<{ id: StateFilter; label: string }> = [
   { id: 'ALL', label: 'All' },
   { id: 'COVERED', label: 'Covered' },
   { id: 'VACANT', label: 'Vacant' },
-  { id: 'NOT_SET_UP', label: 'Not set up' },
+  { id: 'NOT_SET_UP', label: 'Switched off' },
 ];
 
 const STATUS_CHIP: Record<StateRowStatus, { label: string; className: string }> = {
@@ -50,64 +52,45 @@ const STATUS_CHIP: Record<StateRowStatus, { label: string; className: string }> 
   SWITCHED_OFF: { label: 'Switched off', className: 'bg-slate-100 text-slate-600 ring-slate-500/20' },
 };
 
-function ActiveChip({ active }: { active: boolean }) {
-  return <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${active ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' : 'bg-slate-100 text-slate-600 ring-slate-500/20'}`}>{active ? 'Active' : 'Inactive'}</span>;
-}
+const secondaryButton = 'inline-flex h-9 shrink-0 items-center gap-1.5 self-start rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:self-auto';
 
 function StatusChip({ status }: { status: StateRowStatus }) {
   const { label, className } = STATUS_CHIP[status];
-  return <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${className}`}>{label}</span>;
+  return <span className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${className}`}>{label}</span>;
 }
 
-function Count({ value, label }: { value: number; label: string }) {
-  return <span title={label} className="inline-flex min-w-7 items-center justify-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">{value}</span>;
-}
+type Stat = { label: string; value: string; hint: string; tone?: 'good' | 'warn'; filter?: StateFilter };
 
-function SectionCard({ icon: Icon, title, description, count, action, children }: { icon: typeof Building2; title: string; description: string; count: number; action?: React.ReactNode; children: React.ReactNode }) {
+/** The coverage numbers in one compact strip; the state ones filter the state list when clicked. */
+function CoverageStrip({ stats, onPick }: { stats: Stat[]; onPick: (filter: StateFilter) => void }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><Icon className="h-4 w-4" /></span>
-          <div>
-            <h2 className="flex items-center gap-2 font-bold text-slate-950">{title} <Count value={count} label={`${count} shown`} /></h2>
-            <p className="text-xs text-slate-500">{description}</p>
+    <div role="group" aria-label="India coverage" className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 shadow-sm sm:grid-cols-4 lg:grid-cols-7">
+      {stats.map((stat, index) => {
+        const { filter } = stat;
+        const body = (
+          <>
+            <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">{stat.label}</p>
+            <p className={`mt-0.5 text-xl font-bold ${stat.tone === 'good' ? 'text-emerald-700' : stat.tone === 'warn' ? 'text-amber-700' : 'text-slate-950'}`}>{stat.value}</p>
+            <p className="truncate text-[11px] text-slate-500">{stat.hint}</p>
+          </>
+        );
+        // The seventh box fills the empty cell of the two and four column layouts.
+        const cell = `bg-white px-4 py-3 text-left ${index === stats.length - 1 ? 'col-span-2 lg:col-span-1' : ''}`;
+        return filter ? (
+          <div key={stat.label} className={`${cell} relative transition hover:bg-amber-50`}>
+            {body}
+            <button type="button" onClick={() => onPick(filter)} aria-label={`Show ${stat.label.toLowerCase()} states`} title="Show these states" className="absolute inset-0 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400" />
           </div>
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Empty({ icon: Icon, title, description, action }: { icon: typeof Building2; title: string; description: string; action?: React.ReactNode }) {
-  return (
-    <div className="px-6 py-10 text-center">
-      <Icon className="mx-auto h-8 w-8 text-slate-300" />
-      <p className="mt-3 text-sm font-semibold text-slate-800">{title}</p>
-      <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-500">{description}</p>
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
-  );
-}
-
-function CoverageTile({ label, value, hint, icon: Icon, tone = 'default' }: { label: string; value: string; hint: string; icon: LucideIcon; tone?: 'default' | 'good' | 'warn' }) {
-  const box = tone === 'warn' ? 'border-amber-200 bg-amber-50/60' : 'border-slate-200 bg-white';
-  const icon = tone === 'good' ? 'text-emerald-600' : 'text-amber-500';
-  return (
-    <div className={`rounded-2xl border p-4 shadow-sm ${box}`}>
-      <div className="flex items-center justify-between gap-2"><span className="text-sm text-slate-500">{label}</span><Icon className={`h-4 w-4 shrink-0 ${icon}`} /></div>
-      <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
-      <p className="text-xs text-slate-500">{hint}</p>
+        ) : <div key={stat.label} className={cell}>{body}</div>;
+      })}
     </div>
   );
 }
 
 /**
- * Organisation: the head office, its departments and the state offices of every state, with who manages each
- * office and which states are still vacant or not set up. Administrators add a state, department or head office
- * unit at any time; everything here feeds the Add employee form and the directory.
+ * Organisation: the head office, the company's departments and the state offices of every state, with who manages
+ * each office and which states are still vacant or not set up. Everything here feeds the Add employee form, offers
+ * and the directory. Departments are edited only in their section (HrmDepartmentsSection).
  */
 export default function HrmOrganisationPage() {
   const pathname = usePathname();
@@ -175,261 +158,240 @@ export default function HrmOrganisationPage() {
   const canManage = organisation?.abilities.canManage ?? false;
   const summary = useMemo(() => (organisation ? summariseOrganisation(organisation) : null), [organisation]);
   const groups = useMemo(() => groupOrganisation(organisation?.units ?? [], { query, showInactive }), [organisation?.units, query, showInactive]);
-  const stateRows = useMemo(() => (organisation ? buildStateRows(organisation) : []), [organisation]);
+  // A state appears once its office is added.
+  const stateRows = useMemo(() => (organisation ? buildStateRows(organisation).filter((row) => row.unit) : []), [organisation]);
   const stateCounts = useMemo(() => countStateRows(stateRows, query), [stateRows, query]);
   const visibleStateRows = useMemo(() => filterStateRows(stateRows, stateFilter, query), [stateRows, stateFilter, query]);
   const openStates = useMemo(() => (organisation ? statesWithoutOffice(organisation).length : 0), [organisation]);
+  // Switched-off head offices and other units are hidden unless asked for (state offices and departments always show).
+  const hiddenUnits = organisation?.units.filter((unit) => !unit.isActive && (unit.kind === 'HEAD_OFFICE' || unit.kind === 'OTHER')).length ?? 0;
   const searching = Boolean(query.trim());
 
-  const rowActions = (unit: HrmOrganisationUnit) => canManage ? (
-    <div className="flex items-center justify-end gap-1">
-      <button type="button" onClick={() => setDialog({ type: 'rename', unit })} aria-label={`Rename ${unit.name}`} title="Rename" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
-      <button type="button" onClick={() => setDialog({ type: 'toggle', unit })} aria-label={`${unit.isActive ? 'Switch off' : 'Switch on'} ${unit.name}`} title={unit.isActive ? 'Switch off' : 'Switch on'} className={`rounded-lg p-2 hover:bg-slate-100 ${unit.isActive ? 'text-slate-400 hover:text-rose-600' : 'text-emerald-600 hover:text-emerald-700'}`}><Power className="h-4 w-4" /></button>
-      {/* Delete: only a unit nobody works in (the server also refuses one with past placements, access or open offers).
-          A head office goes together with its departments; any other unit must have nothing under it. */}
-      {unit.employeeCount === 0 && (unit.kind === 'HEAD_OFFICE' || unit.childCount === 0) ? <button type="button" onClick={() => setDialog({ type: 'delete', unit })} aria-label={`Delete ${unit.name}`} title="Delete" className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button> : null}
-    </div>
-  ) : null;
-  const actionHeader = canManage ? <th scope="col" className={`${th} text-right`}><span className="sr-only">Actions</span></th> : null;
-  const addButton = (kind: 'STATE' | 'DEPARTMENT' | 'HEAD_OFFICE', label: string) => canManage ? (
-    <button type="button" onClick={() => setDialog({ type: 'add', kind })} className="inline-flex h-9 items-center gap-1.5 self-start rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 sm:self-auto"><Plus className="h-3.5 w-3.5" /> {label}</button>
-  ) : null;
-  const bulkButton = (className: string) => canManage && openStates ? (
-    <button type="button" onClick={() => setDialog({ type: 'bulk' })} className={className}><MapPin className="h-4 w-4" /> Add state offices</button>
+  const showStates = (filter: StateFilter) => {
+    setStateFilter(filter);
+    document.getElementById('hrm-org-states')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const unitActions = (unit: HrmOrganisationUnit) => canManage ? (
+    <>
+      <IconButton label={unit.kind === 'HEAD_OFFICE' ? `Edit ${unit.name} (name and place)` : `Edit ${unit.name}`} onClick={() => setDialog({ type: 'rename', unit })}><Pencil className="h-4 w-4" /></IconButton>
+      <IconButton label={`${unit.isActive ? 'Switch off' : 'Switch on'} ${unit.name}`} tone={unit.isActive ? 'default' : 'success'} onClick={() => setDialog({ type: 'toggle', unit })}><Power className="h-4 w-4" /></IconButton>
+      {/* The dialog says why when a unit cannot be deleted (people work there, past placements, access or offers). */}
+      <IconButton label={`Delete ${unit.name}`} tone="danger" onClick={() => setDialog({ type: 'delete', unit })}><Trash2 className="h-4 w-4" /></IconButton>
+    </>
   ) : null;
   const viewLink = (unit: HrmOrganisationUnit, label = 'View') => (
-    <Link href={officeHref(base, unit.id)} aria-label={`${label} ${unit.name}`} className="inline-flex items-center gap-0.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50">{label}<ChevronRight className="h-3.5 w-3.5" /></Link>
+    <Link href={officeHref(base, unit.id)} aria-label={`${label} ${unit.name}`} className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50">{label}<ChevronRight className="h-3.5 w-3.5" /></Link>
   );
 
+  const stats: Stat[] = summary ? [
+    { label: 'State offices', value: `${summary.stateOffices}/${summary.totalStates}`, hint: 'set up' },
+    { label: 'Covered', value: String(summary.covered), hint: summary.coveredByCharge ? `${summary.coveredByCharge} on additional charge` : 'have a manager', tone: 'good', filter: 'COVERED' },
+    { label: 'Vacant', value: String(summary.vacant), hint: 'no manager', ...(summary.vacant ? { tone: 'warn' as const } : {}), filter: 'VACANT' },
+    { label: 'Joining soon', value: String(summary.joiningSoon), hint: 'manager joining' },
+    { label: 'Not set up', value: String(summary.notSetUp), hint: 'states without office' },
+    { label: 'Staff in states', value: String(summary.staffInStates), hint: 'state offices' },
+    { label: 'Head office staff', value: String(summary.staffInHeadOffice), hint: 'head office' },
+  ] : [];
+
   return (
-    <div className="min-h-full bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+    <div className="w-full space-y-4">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">People operations</p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Organisation</h2>
-            <p className="mt-1 text-sm text-slate-500">Raipur head office, its departments and every state office, with who manages each one.</p>
+            <p className="mt-0.5 text-sm text-slate-500">Head office, departments and state offices.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {organisation?.scope.allIndia ? <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-600/20" title="You can see every state and every employee"><Globe2 className="h-3.5 w-3.5" /> All India access</span> : null}
-            <button type="button" onClick={reload} disabled={loading} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh</button>
-            {bulkButton('inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50')}
-            {canManage ? <button type="button" onClick={() => setDialog({ type: 'add', kind: 'STATE' })} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800"><Plus className="h-4 w-4" /> Add</button> : null}
+            <button type="button" onClick={reload} disabled={loading} className={secondaryButton}><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh</button>
           </div>
         </header>
 
-        <div role="tablist" aria-label="Organisation sections" className="flex flex-wrap gap-2">
+        <div role="tablist" aria-label="Organisation sections" className="custom-scrollbar flex gap-1 overflow-x-auto overflow-y-hidden border-b border-slate-200">
           {([
             { id: 'STRUCTURE', label: 'Offices & departments', icon: Landmark },
             { id: 'SHIFTS', label: 'Shifts', icon: Clock3 },
             { id: 'HOLIDAYS', label: 'Holidays', icon: CalendarDays },
           ] as const).filter(({ id }) => (visibleTabs as readonly string[]).includes(id)).map(({ id, label, icon: Icon }) => (
-            <button key={id} id={`hrm-org-tab-${id}`} type="button" role="tab" aria-selected={tab === id} aria-controls={`hrm-org-panel-${id}`} tabIndex={tab === id ? 0 : -1} onKeyDown={onTabKeyDown} onClick={() => setTab(id)} className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition ${tab === id ? 'bg-slate-950 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100'}`}><Icon className="h-3.5 w-3.5" />{label}</button>
+            <button key={id} id={`hrm-org-tab-${id}`} type="button" role="tab" aria-selected={tab === id} aria-controls={`hrm-org-panel-${id}`} tabIndex={tab === id ? 0 : -1} onKeyDown={onTabKeyDown} onClick={() => setTab(id)} className={`-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-semibold transition ${tab === id ? 'border-amber-500 text-slate-950' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><Icon className="h-4 w-4" />{label}</button>
           ))}
         </div>
 
         {canReadAttendance ? <div role="tabpanel" id="hrm-org-panel-SHIFTS" aria-labelledby="hrm-org-tab-SHIFTS" hidden={tab !== 'SHIFTS'}>{tab === 'SHIFTS' ? <HrmShifts canManage={canManageAttendance} /> : null}</div> : null}
         <div role="tabpanel" id="hrm-org-panel-HOLIDAYS" aria-labelledby="hrm-org-tab-HOLIDAYS" hidden={tab !== 'HOLIDAYS'}>{tab === 'HOLIDAYS' ? <HrmHolidays canManage={canManageAttendance} states={organisation?.states ?? []} /> : null}</div>
 
-        <div role="tabpanel" id="hrm-org-panel-STRUCTURE" aria-labelledby="hrm-org-tab-STRUCTURE" hidden={tab !== 'STRUCTURE'} className="space-y-5">
-        {tab === 'STRUCTURE' && error ? (
-          <div role="alert" className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
-            <span className="flex items-start gap-3"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</span>
-            <button type="button" onClick={reload} className="self-start rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 sm:self-auto">Try again</button>
-          </div>
-        ) : null}
+        <div role="tabpanel" id="hrm-org-panel-STRUCTURE" aria-labelledby="hrm-org-tab-STRUCTURE" hidden={tab !== 'STRUCTURE'} className="space-y-4">
+          {tab === 'STRUCTURE' && error ? (
+            <div role="alert" className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
+              <span className="flex items-start gap-3"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</span>
+              <button type="button" onClick={reload} className="self-start rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 sm:self-auto">Try again</button>
+            </div>
+          ) : null}
 
-        {tab !== 'STRUCTURE' ? null : !organisation && loading ? (
-          <div role="status" className="space-y-4"><span className="sr-only">Loading organisation…</span>{[0, 1, 2].map((index) => <div key={index} className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white" />)}</div>
-        ) : organisation && summary ? (
-          <>
-            {!summary.headOffice ? (
-              <section className="flex flex-col gap-4 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-400 text-slate-950"><Landmark className="h-5 w-5" /></span>
-                  <div>
-                    <h2 className="font-bold text-slate-950">Set up the head office</h2>
-                    <p className="mt-0.5 max-w-xl text-sm text-slate-600">Start with the Raipur head office and its departments. State offices can be added one by one as you open them.</p>
+          {tab !== 'STRUCTURE' ? null : !organisation && loading ? (
+            <div role="status" className="space-y-4"><span className="sr-only">Loading organisation…</span>{[0, 1, 2].map((index) => <div key={index} className="h-28 animate-pulse rounded-2xl border border-slate-200 bg-white" />)}</div>
+          ) : organisation && summary ? (
+            <>
+              {!summary.headOffice ? (
+                <section className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-400 text-slate-950"><Landmark className="h-5 w-5" /></span>
+                    <div>
+                      <h2 className="text-sm font-bold text-slate-950">Set up the head office</h2>
+                      <p className="mt-0.5 max-w-xl text-sm text-slate-600">Choose its state and city. State offices can be added as you open them.</p>
+                    </div>
                   </div>
-                </div>
-                {canManage ? <button type="button" onClick={() => setDialog({ type: 'setup' })} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-400 px-5 text-sm font-bold text-slate-950 shadow-sm hover:bg-amber-500"><Landmark className="h-4 w-4" /> Set up head office</button> : <p className="text-xs font-medium text-amber-800">Ask an administrator to set it up.</p>}
-              </section>
-            ) : null}
+                  {canManage ? <button type="button" onClick={() => setDialog({ type: 'setup' })} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-400 px-5 text-sm font-bold text-slate-950 shadow-sm hover:bg-amber-500"><Landmark className="h-4 w-4" /> Set up head office</button> : <p className="text-xs font-medium text-amber-800">Ask an administrator to set it up.</p>}
+                </section>
+              ) : null}
 
-            <section aria-label="India coverage" className="space-y-3">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-                <CoverageTile label="State offices set up" value={`${summary.stateOffices} of ${summary.totalStates}`} hint="states with an active office" icon={MapPin} />
-                <CoverageTile label="Covered" value={String(summary.covered)} hint="have a manager" icon={CircleCheck} tone="good" />
-                <CoverageTile label="Vacant (no manager)" value={String(summary.vacant)} hint="office without a manager" icon={TriangleAlert} tone={summary.vacant ? 'warn' : 'default'} />
-                <CoverageTile label="Joining soon" value={String(summary.joiningSoon)} hint="vacant, State Manager joining" icon={UserPlus} />
-                <CoverageTile label="Not set up" value={String(summary.notSetUp)} hint="no active office yet" icon={Globe2} />
-                <CoverageTile label="Staff in states" value={String(summary.staffInStates)} hint="work from a state office" icon={Users} />
-                <CoverageTile label="Staff at head office" value={String(summary.staffInHeadOffice)} hint="work from the head office" icon={Landmark} />
-              </div>
+              <CoverageStrip stats={stats} onPick={showStates} />
               {summary.unplacedStaff > 0 ? (
                 <p role="note" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                   <span>{summary.unplacedStaff} employee{summary.unplacedStaff === 1 ? ' has' : 's have'} no office assigned yet – transfer them to place them.</span>
                 </p>
               ) : null}
-            </section>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="relative w-full sm:max-w-sm">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, code, state or manager" aria-label="Search organisation" className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-sm outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100" />
-                {query ? <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-700"><X className="h-3.5 w-3.5" /></button> : null}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="relative w-full sm:max-w-sm">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search office, department, state or manager" aria-label="Search organisation" maxLength={120} autoComplete="off" className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-sm outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100" />
+                  {query ? <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-700"><X className="h-3.5 w-3.5" /></button> : null}
+                </div>
+                {canManage && hiddenUnits ? (
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600"><input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} className="h-4 w-4 rounded accent-amber-500" /> Show switched-off offices ({hiddenUnits})</label>
+                ) : null}
               </div>
-              {canManage && summary.inactive ? (
-                <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600"><input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} className="h-4 w-4 rounded accent-amber-500" /> Show inactive departments and units ({summary.inactive})</label>
-              ) : null}
-            </div>
 
-            <SectionCard icon={Landmark} title="Head office" description="Where the company is run from." count={groups.headOffices.length} action={summary.headOffice ? addButton('HEAD_OFFICE', 'Add head office unit') : null}>
-              {groups.headOffices.length ? (
-                <ul className="divide-y divide-slate-100">
-                  {groups.headOffices.map((office) => {
-                    const departments = departmentsOf(organisation.units, office.id);
-                    return (
-                      <li key={office.id} className="px-5 py-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <SectionCard
+                icon={Landmark}
+                title="Head office"
+                description={groups.headOffices.length > 1 ? 'Where the company is run from. Forms choose the default one (★) first.' : 'Where the company is run from.'}
+                count={groups.headOffices.length}
+                action={canManage && summary.headOffice ? <button type="button" onClick={() => setDialog({ type: 'add', kind: 'HEAD_OFFICE' })} className={secondaryButton}><Plus className="h-3.5 w-3.5" /> Add head office unit</button> : undefined}
+              >
+                {groups.headOffices.length ? (
+                  <ul className="divide-y divide-slate-100">
+                    {groups.headOffices.map((office) => {
+                      const departments = departmentsOf(organisation.units, office.id).length;
+                      return (
+                        <li key={office.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                           <div className="min-w-0">
-                            <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-950">{office.name} <ActiveChip active={office.isActive} /></p>
+                            <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-950">{office.name} <ActiveChip active={office.isActive} />{office.isDefault ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800 ring-1 ring-amber-300" title="Chosen first in forms, and used wherever no head office is chosen. Change it by editing another head office."><DefaultStar /> Default</span> : null}</p>
                             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                              <span>{office.code}</span>
+                              <span className="font-mono">{office.code}</span>
                               <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{[office.city?.name, office.state?.name].filter(Boolean).join(', ') || 'No location'}</span>
-                              <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" />{office.employeeCount} employee{office.employeeCount === 1 ? '' : 's'} here</span>
+                              <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" />{office.employeeCount} employee{office.employeeCount === 1 ? '' : 's'}</span>
+                              <span className="inline-flex items-center gap-1"><Building2 className="h-3 w-3" />{departments} department{departments === 1 ? '' : 's'}</span>
                               {office.managers.length ? <span>Managed by {formatManagerNames(office.managers)}</span> : null}
+                              {office.chargeHolders?.length ? <span>Additional charge: {formatManagerNames(office.chargeHolders)}</span> : null}
                             </p>
                           </div>
-                          <div className="flex items-center justify-end gap-1">
-                            {viewLink(office, 'View office')}
-                            {rowActions(office)}
-                          </div>
-                        </div>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          {departments.length ? departments.map((department) => <span key={department.id} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{department.name}</span>) : <span className="text-xs text-slate-500">No departments yet.</span>}
-                          {canManage && office.isActive ? <button type="button" onClick={() => setDialog({ type: 'add', kind: 'DEPARTMENT' })} className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-amber-400 hover:text-amber-700"><Plus className="h-3 w-3" /> Department</button> : null}
-                        </div>
-                      </li>
+                          <div className="flex items-center justify-end gap-0.5">{viewLink(office, 'View office')}{unitActions(office)}</div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <Empty icon={Landmark} title={searching ? 'No head office matches' : 'No head office yet'} description={searching ? 'Try a different search.' : 'Use “Set up head office” above.'} />
+                )}
+              </SectionCard>
+
+              <HrmDepartmentsSection canManage={canManage} query={query} reloadKey={reloadKey} onChanged={reload} />
+
+              <SectionCard
+                id="hrm-org-states"
+                icon={MapPin}
+                title="State offices"
+                description={`${summary.stateOffices} of ${summary.totalStates} states have an office.`}
+                count={visibleStateRows.length}
+                action={canManage && openStates ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setDialog({ type: 'bulk' })} className={secondaryButton}>Add several</button>
+                    <button type="button" onClick={() => setDialog({ type: 'add', kind: 'STATE' })} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-semibold text-white hover:bg-slate-800"><Plus className="h-3.5 w-3.5" /> Add state office</button>
+                  </div>
+                ) : undefined}
+              >
+                <div role="group" aria-label="Filter states" className="custom-scrollbar flex gap-2 overflow-x-auto border-b border-slate-100 px-4 py-2.5 sm:px-5">
+                  {STATE_FILTERS.filter(({ id }) => id !== 'NOT_SET_UP' || stateCounts.NOT_SET_UP > 0 || stateFilter === 'NOT_SET_UP').map(({ id, label }) => {
+                    const selected = stateFilter === id;
+                    return (
+                      <button key={id} type="button" aria-pressed={selected} onClick={() => setStateFilter(id)} className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${selected ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                        {label}
+                        <span className={`rounded-full px-1.5 py-px text-[11px] font-bold ${selected ? 'bg-white/20 text-white' : 'bg-white text-slate-600'}`}>{stateCounts[id]}</span>
+                      </button>
                     );
                   })}
-                </ul>
-              ) : (
-                <Empty icon={Landmark} title={searching ? 'No head office matches' : 'No head office yet'} description={searching ? 'Try a different search.' : 'Use “Set up head office” above to create the Raipur head office.'} />
-              )}
-            </SectionCard>
-
-            <SectionCard icon={Building2} title="Departments" description="Used when adding employees and in the directory." count={groups.departments.length} action={addButton('DEPARTMENT', 'Add department')}>
-              {groups.departments.length ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead className="bg-slate-50"><tr><th scope="col" className={th}>Department</th><th scope="col" className={`${th} hidden md:table-cell`}>Code</th><th scope="col" className={`${th} hidden sm:table-cell`}>Head office</th><th scope="col" className={th}>Employees</th><th scope="col" className={th}>Status</th>{actionHeader}</tr></thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {groups.departments.map((unit) => (
-                        <tr key={unit.id} className={unit.isActive ? '' : 'bg-slate-50/60 text-slate-500'}>
-                          <td className="px-4 py-3 font-semibold text-slate-900">{unit.name}</td>
-                          <td className="hidden px-4 py-3 font-mono text-xs text-slate-500 md:table-cell">{unit.code}</td>
-                          <td className="hidden px-4 py-3 text-slate-600 sm:table-cell">{unit.parent?.name ?? '—'}</td>
-                          <td className="px-4 py-3"><Count value={unit.employeeCount} label="Employees placed in this department" /></td>
-                          <td className="px-4 py-3"><ActiveChip active={unit.isActive} /></td>
-                          {canManage ? <td className="px-4 py-3">{rowActions(unit)}</td> : null}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
-              ) : (
-                <Empty icon={Building2} title={searching ? 'No department matches' : 'No departments yet'} description={searching ? 'Try a different search.' : 'Add the departments employees will be placed in, such as Finance or Sales.'} action={!searching ? addButton('DEPARTMENT', 'Add department') : null} />
-              )}
-            </SectionCard>
-
-            <SectionCard
-              icon={MapPin}
-              title="State offices"
-              description={`${summary.stateOffices} of ${summary.totalStates} states have an office. Every state is listed, so you can see what is covered and what is still open.`}
-              count={visibleStateRows.length}
-              action={bulkButton('inline-flex h-9 items-center gap-1.5 self-start rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 sm:self-auto')}
-            >
-              <div role="group" aria-label="Filter states" className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-5 py-3">
-                {STATE_FILTERS.map(({ id, label }) => {
-                  const selected = stateFilter === id;
-                  return (
-                    <button key={id} type="button" aria-pressed={selected} onClick={() => setStateFilter(id)} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${selected ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
-                      {label}
-                      <span className={`rounded-full px-1.5 py-px text-[11px] font-bold ${selected ? 'bg-white/20 text-white' : 'bg-white text-slate-600'}`}>{stateCounts[id]}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {visibleStateRows.length ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead className="bg-slate-50"><tr><th scope="col" className={th}>State</th><th scope="col" className={`${th} hidden sm:table-cell`}>Office</th><th scope="col" className={th}>Managers</th><th scope="col" className={th}>Staff</th><th scope="col" className={`${th} text-right`}><span className="sr-only">Actions</span></th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {visibleStateRows.map((row) => {
-                        const { unit } = row;
-                        return (
-                          <tr key={row.stateId} className={row.status === 'SWITCHED_OFF' ? 'bg-slate-50/60 text-slate-500' : ''}>
-                            <td className="px-4 py-3 font-semibold text-slate-900">{unit ? <Link href={officeHref(base, unit.id)} className="hover:text-amber-700 hover:underline">{row.stateName}</Link> : row.stateName}</td>
-                            <td className="hidden px-4 py-3 text-slate-600 sm:table-cell">{unit ? <>{unit.name}<span className="block font-mono text-[11px] text-slate-400">{unit.code}</span></> : <span className="text-slate-400">—</span>}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                {row.managers.length ? <span className="text-slate-700">{formatManagerNames(row.managers)}</span> : <span className="text-slate-400">—</span>}
-                                <StatusChip status={row.status} />
-                              </div>
-                              {row.upcomingManagers.length ? <p className="mt-1 flex items-center gap-1 text-xs font-medium text-sky-700"><UserPlus className="h-3 w-3 shrink-0" />{describeUpcomingManagers(row.upcomingManagers)}</p> : null}
-                            </td>
-                            <td className="px-4 py-3">{unit ? <Count value={row.employeeCount} label="Employees working from this office" /> : <span className="text-slate-400">—</span>}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center justify-end gap-1">
-                                {unit ? viewLink(unit, 'View') : canManage ? (
-                                  <button type="button" onClick={() => setDialog({ type: 'add', kind: 'STATE', stateId: row.stateId })} aria-label={`Add office in ${row.stateName}`} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 hover:border-amber-300 hover:bg-amber-50"><Plus className="h-3.5 w-3.5" /> Add office</button>
-                                ) : null}
-                                {unit ? rowActions(unit) : null}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <Empty
-                  icon={MapPin}
-                  title={stateRows.length ? 'No state matches' : 'No states found'}
-                  description={stateRows.length ? 'Try a different search or filter.' : 'The location master has no states for India yet.'}
-                  action={stateRows.length && (searching || stateFilter !== 'ALL') ? <button type="button" onClick={() => { setQuery(''); setStateFilter('ALL'); }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Clear search and filter</button> : null}
-                />
-              )}
-            </SectionCard>
-
-            {groups.others.length ? (
-              <SectionCard icon={Building2} title="Other units" description="Units created earlier that are not a department, state office or head office." count={groups.others.length}>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead className="bg-slate-50"><tr><th scope="col" className={th}>Name</th><th scope="col" className={th}>Type</th><th scope="col" className={th}>Employees</th><th scope="col" className={th}>Status</th>{actionHeader}</tr></thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {groups.others.map((unit) => (
-                        <tr key={unit.id}><td className="px-4 py-3 font-semibold text-slate-900">{unit.name}</td><td className="px-4 py-3 text-slate-600">{unit.type}</td><td className="px-4 py-3"><Count value={unit.employeeCount} label="Employees" /></td><td className="px-4 py-3"><ActiveChip active={unit.isActive} /></td>{canManage ? <td className="px-4 py-3">{rowActions(unit)}</td> : null}</tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                {visibleStateRows.length ? (
+                  <div className="custom-scrollbar max-h-[32rem] overflow-auto">
+                    <table className="min-w-full text-sm">
+                      <thead><tr><th scope="col" className={orgTh}>State</th><th scope="col" className={`${orgTh} hidden md:table-cell`}>Office</th><th scope="col" className={orgTh}>Manager</th><th scope="col" className={orgTh}>Staff</th><th scope="col" className={`${orgTh} text-right`}><span className="sr-only">Actions</span></th></tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {visibleStateRows.map((row) => {
+                          const { unit } = row;
+                          return (
+                            <tr key={row.stateId} className={row.status === 'SWITCHED_OFF' ? 'bg-slate-50/60 text-slate-500' : 'hover:bg-slate-50/60'}>
+                              <td className="px-4 py-2.5 font-semibold text-slate-900">{unit ? <Link href={officeHref(base, unit.id)} className="hover:text-amber-700 hover:underline">{row.stateName}</Link> : row.stateName}{unit ? <span className="block text-[11px] font-normal text-slate-500 md:hidden">{unit.name}</span> : null}</td>
+                              <td className="hidden px-4 py-2.5 text-slate-600 md:table-cell">{unit ? <>{unit.name}<span className="block font-mono text-[11px] text-slate-400">{unit.code}</span></> : <span className="text-slate-400">—</span>}</td>
+                              <td className="px-4 py-2.5">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  {row.managers.length ? <span className="text-slate-700">{formatManagerNames(row.managers)}</span> : null}
+                                  {row.chargeHolders.length ? <span className="inline-flex items-center gap-1 text-slate-700">{row.managers.length ? '+ ' : ''}{formatManagerNames(row.chargeHolders)}<span title="Looks after this state besides their own posting" className="rounded-full bg-violet-50 px-1.5 py-px text-[10px] font-bold text-violet-700">Additional charge</span></span> : null}
+                                  <StatusChip status={row.status} />
+                                </div>
+                                {row.upcomingManagers.length ? <p className="mt-1 flex items-center gap-1 text-xs font-medium text-sky-700"><UserPlus className="h-3 w-3 shrink-0" />{describeUpcomingManagers(row.upcomingManagers)}</p> : null}
+                              </td>
+                              <td className="px-4 py-2.5">{unit ? <Count value={row.employeeCount} label="Employees working from this office" /> : <span className="text-slate-400">—</span>}</td>
+                              <td className="px-4 py-2.5">
+                                <div className="flex items-center justify-end gap-0.5">
+                                  {unit ? <>{viewLink(unit)}{unitActions(unit)}</> : null}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <Empty
+                    icon={MapPin}
+                    title={stateRows.length ? 'No state office matches' : 'No state office yet'}
+                    description={stateRows.length ? 'Try a different search or filter.' : canManage ? 'Add the office of each state as you open it. It then appears here.' : 'Ask an administrator to add the state offices.'}
+                    action={stateRows.length
+                      ? (searching || stateFilter !== 'ALL' ? <button type="button" onClick={() => { setQuery(''); setStateFilter('ALL'); }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Clear search and filter</button> : null)
+                      : (canManage && openStates ? <button type="button" onClick={() => setDialog({ type: 'add', kind: 'STATE' })} className={secondaryButton}><Plus className="h-3.5 w-3.5" /> Add state office</button> : null)}
+                  />
+                )}
               </SectionCard>
-            ) : null}
-          </>
-        ) : null}
-        </div>
-      </div>
 
-      {organisation && dialog?.type === 'add' ? <AddUnitDialog key={`${dialog.kind}-${dialog.stateId ?? ''}`} organisation={organisation} initialKind={dialog.kind} initialStateId={dialog.stateId} onClose={closeDialog} onDone={done} /> : null}
+              {groups.others.length ? (
+                <SectionCard icon={Building2} title="Other units" description="Units created earlier that are not a department, state office or head office." count={groups.others.length}>
+                  <div className="custom-scrollbar max-h-80 overflow-auto">
+                    <table className="min-w-full text-sm">
+                      <thead><tr><th scope="col" className={orgTh}>Name</th><th scope="col" className={orgTh}>Type</th><th scope="col" className={orgTh}>Employees</th><th scope="col" className={orgTh}>Status</th>{canManage ? <th scope="col" className={`${orgTh} text-right`}><span className="sr-only">Actions</span></th> : null}</tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {groups.others.map((unit) => (
+                          <tr key={unit.id}><td className="px-4 py-2.5 font-semibold text-slate-900">{unit.name}</td><td className="px-4 py-2.5 text-slate-600">{unit.type}</td><td className="px-4 py-2.5"><Count value={unit.employeeCount} label="Employees" /></td><td className="px-4 py-2.5"><ActiveChip active={unit.isActive} /></td>{canManage ? <td className="px-4 py-2.5"><div className="flex items-center justify-end gap-0.5">{unitActions(unit)}</div></td> : null}</tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </SectionCard>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+
+      {organisation && dialog?.type === 'add' ? <AddUnitDialog key={`${dialog.kind}-${dialog.stateId ?? ''}`} organisation={organisation} kind={dialog.kind} initialStateId={dialog.stateId} onClose={closeDialog} onDone={done} /> : null}
       {organisation && dialog?.type === 'bulk' ? <AddStateOfficesDialog organisation={organisation} onClose={closeDialog} onDone={done} /> : null}
       {organisation && dialog?.type === 'setup' ? <HeadOfficeSetupDialog organisation={organisation} onClose={closeDialog} onDone={done} /> : null}
-      {dialog?.type === 'rename' ? <RenameUnitDialog unit={dialog.unit} onClose={closeDialog} onDone={done} /> : null}
-      {dialog?.type === 'toggle' ? <ToggleUnitDialog unit={dialog.unit} onClose={closeDialog} onDone={done} /> : null}
-      {dialog?.type === 'delete' && organisation ? <DeleteUnitDialog unit={dialog.unit} departmentNames={dialog.unit.kind === 'HEAD_OFFICE' ? departmentsOf(organisation.units, dialog.unit.id).map((department) => department.name) : []} onClose={closeDialog} onDone={done} /> : null}
+      {organisation && dialog?.type === 'rename' ? <RenameUnitDialog organisation={organisation} unit={dialog.unit} onClose={closeDialog} onDone={done} /> : null}
+      {organisation && dialog?.type === 'toggle' ? <ToggleUnitDialog unit={dialog.unit} departmentCount={dialog.unit.kind === 'HEAD_OFFICE' ? departmentsOf(organisation.units, dialog.unit.id).length : 0} moveTo={organisation.units.find((unit) => unit.kind === 'HEAD_OFFICE' && unit.isDefault && unit.id !== dialog.unit.id)?.name} onClose={closeDialog} onDone={done} /> : null}
+      {organisation && dialog?.type === 'delete' ? <DeleteUnitDialog unit={dialog.unit} departmentCount={dialog.unit.kind === 'HEAD_OFFICE' ? departmentsOf(organisation.units, dialog.unit.id).length : 0} moveTo={organisation.units.find((unit) => unit.kind === 'HEAD_OFFICE' && unit.isDefault && unit.id !== dialog.unit.id)?.name} onClose={closeDialog} onDone={done} /> : null}
     </div>
   );
 }

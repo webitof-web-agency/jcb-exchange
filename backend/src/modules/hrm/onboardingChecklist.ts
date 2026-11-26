@@ -40,7 +40,7 @@ export const buildChecklist = (facts: ChecklistFacts): ChecklistItem[] => {
   ].filter(Boolean) as string[];
   return [
     { key: 'PERSONAL', label: 'Personal details', required: true, counted: true, state: missingPersonal.length ? 'MISSING' : 'DONE', hint: missingPersonal.length ? `Add ${missingPersonal.join(', ')}.` : 'Date of birth, gender, address and emergency contact are filled.' },
-    { key: 'PLACEMENT', label: 'Department, designation and office', required: true, counted: true, state: facts.hasPlacement ? 'DONE' : 'MISSING', hint: facts.hasPlacement ? 'Assignment recorded.' : 'Use "Add assignment" on the profile.' },
+    { key: 'PLACEMENT', label: 'Department, designation and office', required: true, counted: true, state: facts.hasPlacement ? 'DONE' : 'MISSING', hint: facts.hasPlacement ? 'Assignment recorded.' : 'Add the assignment in the Job tab.' },
     { key: 'PAN', label: 'PAN verified', required: true, counted: true, state: facts.panVerified ? 'DONE' : 'MISSING', hint: facts.panVerified ? 'Verified.' : 'Verify PAN in KYC & Bank.' },
     { key: 'AADHAAR', label: 'Aadhaar verified', required: true, counted: true, state: facts.aadhaarVerified ? 'DONE' : 'MISSING', hint: facts.aadhaarVerified ? 'Verified.' : 'Verify Aadhaar in KYC & Bank.' },
     { key: 'BANK', label: 'Salary bank account', required: true, counted: true, state: facts.bank === 'VERIFIED' ? 'DONE' : facts.bank === 'ADDED' ? 'PENDING' : 'MISSING', hint: facts.bank === 'VERIFIED' ? 'Primary account verified.' : facts.bank === 'ADDED' ? 'Primary account added, not verified yet.' : 'Add the primary bank account in KYC & Bank.' },
@@ -49,8 +49,8 @@ export const buildChecklist = (facts: ChecklistFacts): ChecklistItem[] => {
     { key: 'PHOTO', label: 'Passport photo', required: true, counted: true, state: fromDocument(facts.documents.PHOTO), hint: facts.documents.PHOTO === 'MISSING' ? 'Upload a passport-size photo in Documents.' : facts.documents.PHOTO === 'PENDING' ? 'Uploaded, waiting for verification.' : 'On file.' },
     { key: 'ADDRESS_PROOF', label: 'Address proof', required: false, counted: false, state: facts.aadhaarVerified ? 'DONE' : fromDocument(facts.documents.ADDRESS), hint: facts.aadhaarVerified ? 'Covered by the verified Aadhaar.' : 'Optional when Aadhaar is verified.' },
     { key: 'EDUCATION', label: 'Education certificates', required: false, counted: false, state: fromDocument(facts.documents.EDUCATION), hint: 'Optional.' },
-    { key: 'SALARY', label: 'Salary approved', required: true, counted: true, state: facts.salary === 'APPROVED' ? 'DONE' : facts.salary === 'PENDING' ? 'PENDING' : 'MISSING', hint: facts.salary === 'APPROVED' ? 'Approved.' : facts.salary === 'PENDING' ? 'Waiting for approval.' : 'Propose the salary in the Salary card.' },
-    { key: 'SHIFT', label: 'Shift and weekly off', required: true, counted: true, state: facts.hasShift ? 'DONE' : 'MISSING', hint: facts.hasShift ? 'Assigned.' : 'Assign a shift in the Shift card.' },
+    { key: 'SALARY', label: 'Salary approved', required: true, counted: true, state: facts.salary === 'APPROVED' ? 'DONE' : facts.salary === 'PENDING' ? 'PENDING' : 'MISSING', hint: facts.salary === 'APPROVED' ? 'Approved.' : facts.salary === 'PENDING' ? 'Waiting for approval.' : 'Propose the salary in the Salary tab.' },
+    { key: 'SHIFT', label: 'Shift and weekly off', required: true, counted: true, state: facts.hasShift ? 'DONE' : 'MISSING', hint: facts.hasShift ? 'Assigned.' : 'Assign a shift in the Shift tab.' },
     { key: 'LOGIN', label: 'Login account', required: false, counted: false, state: facts.hasLogin ? 'DONE' : 'MISSING', hint: facts.hasLogin ? 'Has a login.' : 'Created at Confirm joining.' },
   ];
 };

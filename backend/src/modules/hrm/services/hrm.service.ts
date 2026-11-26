@@ -14,6 +14,8 @@ import { HrmAuthorizationError, HrmConflictError, HrmHttpError, HrmNotFoundError
 import { buildPayrollReadiness } from '../payroll-readiness';
 import { parseHrmInput, schemas } from '../validation';
 import { istToday } from '../istDate';
+import { reportingManagerWhere } from '../managerCandidates';
+import { activeChargeWhere } from '../additionalChargeRules';
 import { assertEmployeeWritable, assertNotOwnRecord } from '../employeeGuards';
 import { getActiveScopes, getEmployeeScopeEverWhere, getHrmPermissions } from '../access';
 import { HRM_PERMISSIONS, hasAllIndiaScope, hasHrmPermission } from '../security';
@@ -151,11 +153,16 @@ export const listEmployees = async (actor: Actor, rawQuery: unknown) => {
   };
   const kycFilter = query.kyc === 'complete' ? kycComplete : query.kyc === 'pending' ? { NOT: kycComplete } : {};
   const searchDigits = (query.search ?? '').replace(/\D/g, '');
+  // KYC and "reporting manager set or not" narrow the list and the tab counts alike.
+  const narrowing: Prisma.HrmEmployeeWhereInput[] = [
+    ...(Object.keys(kycFilter).length ? [kycFilter] : []),
+    ...(query.manager ? [reportingManagerWhere(query.manager, utcToday())] : []),
+  ];
   const baseWhere: Prisma.HrmEmployeeWhereInput = {
     // Records archived because the person never joined are kept (history): hidden unless asked for.
     archivedAt: query.archived === 'only' ? { not: null } : null,
-    // Scope and the KYC filter are both AND conditions (each may use OR / AND inside).
-    AND: [...(listScope ? [listScope] : []), ...(Object.keys(kycFilter).length ? [kycFilter] : [])],
+    // Scope and the narrowing filters are all AND conditions (each may use OR / AND inside).
+    AND: [...(listScope ? [listScope] : []), ...narrowing],
     ...(query.search ? {
       OR: [
         { employeeCode: { contains: query.search, mode: 'insensitive' as const } },
@@ -190,6 +197,8 @@ export const listEmployees = async (actor: Actor, rawQuery: unknown) => {
       },
     },
     documents: { where: { provider: 'SUREPASS' as const, status: 'VERIFIED' as const }, select: { providerReference: true } },
+    // Only the role name of the login (shown in employee pickers, so the right person is chosen).
+    user: { select: { customRole: { select: { name: true } } } },
     _count: { select: { bankAccounts: true } },
   };
   const orderBy = paged
@@ -208,7 +217,7 @@ export const listEmployees = async (actor: Actor, rawQuery: unknown) => {
     // Tab counts are always for the records in the directory (not archived), whichever tab is open.
     paged ? prisma.hrmEmployee.groupBy({
       by: ['status'],
-      where: { ...baseWhere, archivedAt: null, AND: [...(scopeWhere ? [scopeWhere] : []), ...(Object.keys(kycFilter).length ? [kycFilter] : [])] },
+      where: { ...baseWhere, archivedAt: null, AND: [...(scopeWhere ? [scopeWhere] : []), ...narrowing] },
       _count: { _all: true },
     }) : Promise.resolve([]),
   ]);
@@ -216,9 +225,38 @@ export const listEmployees = async (actor: Actor, rawQuery: unknown) => {
     ? await prisma.hrmEmployee.count({ where: { archivedAt: { not: null }, ...(archivedScopeWhere ? { AND: [archivedScopeWhere] } : {}) } })
     : 0;
 
+  // How many people report to each person listed (current assignments of people still with the company).
+  const reportGroups = rows.length ? await prisma.hrmEmploymentAssignment.groupBy({
+    by: ['managerEmployeeId'],
+    where: { managerEmployeeId: { in: rows.map((row) => row.id) }, ...currentAssignmentWhere(), employee: { archivedAt: null, status: { notIn: ['EXITED', 'TERMINATED'] } } },
+    _count: { _all: true },
+  }) : [];
+  const reportsOf = new Map(reportGroups.map((group) => [group.managerEmployeeId, group._count._all]));
+  // State offices each person also looks after today (additional charges), for the badges in lists and pickers.
+  const chargeGroups = rows.length ? await prisma.hrmAdditionalCharge.groupBy({
+    by: ['employeeId'],
+    where: { employeeId: { in: rows.map((row) => row.id) }, ...activeChargeWhere(istToday()) },
+    _count: { _all: true },
+  }) : [];
+  const chargesOf = new Map(chargeGroups.map((group) => [group.employeeId, group._count._all]));
+
+  // Somebody who has not started yet has no current assignment: their coming manager is shown with the start date.
+  const unstarted = rows.filter((row) => !row.assignments.length).map((row) => row.id);
+  const upcomingRows = unstarted.length ? await prisma.hrmEmploymentAssignment.findMany({
+    where: { employeeId: { in: unstarted }, status: 'ACTIVE', effectiveFrom: { gt: utcToday() } },
+    orderBy: [{ effectiveFrom: 'asc' }, { createdAt: 'desc' }],
+    select: { employeeId: true, effectiveFrom: true, managerEmployee: { select: { id: true, employeeCode: true, legalName: true } } },
+  }) : [];
+  const upcomingOf = new Map<string, (typeof upcomingRows)[number]>();
+  for (const row of upcomingRows) if (!upcomingOf.has(row.employeeId)) upcomingOf.set(row.employeeId, row);
+
   // KYC summary per employee so the directory can show what is still missing for new joiners.
-  const employees = rows.map(({ documents, _count, assignments, ...employee }) => ({
+  const employees = rows.map(({ documents, _count, assignments, user, ...employee }) => ({
     ...employee,
+    upcomingManager: upcomingOf.get(employee.id)?.managerEmployee ? { ...upcomingOf.get(employee.id)!.managerEmployee!, from: upcomingOf.get(employee.id)!.effectiveFrom } : null,
+    loginRole: user?.customRole?.name ?? null,
+    directReports: reportsOf.get(employee.id) ?? 0,
+    additionalCharges: chargesOf.get(employee.id) ?? 0,
     currentAssignment: assignments[0] ?? null,
     kyc: {
       pan: documents.some((document) => document.providerReference?.startsWith('PAN:')),

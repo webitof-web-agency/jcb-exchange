@@ -3,8 +3,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { AlertCircle, Check, Loader2, Search, X } from 'lucide-react';
 import { hrmApi, type HrmEmployee } from '@/lib/hrmApi';
-import { getAssignmentLocation, getEmployeeDisplayName, getInitials } from '@/lib/hrmDirectory';
-import { getHrmErrorMessage } from '@/lib/hrmUi';
+import { describeEmployeeOption, getAssignmentLocation, getEmployeeDisplayName, getInitials } from '@/lib/hrmDirectory';
+import { formatHrmStatus, getHrmErrorMessage } from '@/lib/hrmUi';
+import { useCloseAfterClick } from './useCloseAfterClick';
 
 /** What the dialogs need to know about a chosen person. officeUnitId tells whether they already work in a given office. */
 export interface PickedEmployee {
@@ -15,6 +16,14 @@ export interface PickedEmployee {
   location: string;
   officeUnitId: string | null;
   isOfficeManager: boolean;
+  department?: string | null;
+  officeName?: string | null;
+  officeType?: string | null;
+  directReports?: number;
+  additionalCharges?: number;
+  hasLogin?: boolean;
+  loginRole?: string | null;
+  status?: string | null;
 }
 
 export const toPickedEmployee = (employee: HrmEmployee): PickedEmployee => ({
@@ -25,12 +34,36 @@ export const toPickedEmployee = (employee: HrmEmployee): PickedEmployee => ({
   location: getAssignmentLocation(employee.currentAssignment),
   officeUnitId: employee.currentAssignment?.officeUnit?.id ?? null,
   isOfficeManager: Boolean(employee.currentAssignment?.isOfficeManager),
+  department: employee.currentAssignment?.orgUnit?.name ?? null,
+  officeName: employee.currentAssignment?.officeUnit?.name ?? null,
+  officeType: employee.currentAssignment?.officeUnit?.type ?? null,
+  directReports: employee.directReports ?? 0,
+  additionalCharges: employee.additionalCharges ?? 0,
+  hasLogin: Boolean((employee as HrmEmployee & { userId?: string | null }).userId),
+  loginRole: employee.loginRole ?? null,
+  status: employee.status,
 });
 
 /** Only people who can work and manage are offered. */
 const PICKABLE_STATUSES = 'ACTIVE,ONBOARDING,ON_LEAVE,NOTICE_PERIOD';
 
-const subtitleOf = (employee: PickedEmployee) => [employee.employeeCode, employee.designation, employee.location].filter(Boolean).join(' · ');
+/** One person in the picker: who, what they do, and whether they manage others. */
+function PersonSummary({ person }: { person: PickedEmployee }) {
+  const text = describeEmployeeOption(person);
+  return (
+    <span className="min-w-0 flex-1">
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="truncate text-sm font-semibold text-slate-900">{person.name}</span>
+        {text.badge ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-800">{text.badge}</span> : null}
+        {text.states ? <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">{text.states}</span> : null}
+        {text.reports ? <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">{text.reports}</span> : null}
+        {text.status ? <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{formatHrmStatus(text.status)}</span> : null}
+      </span>
+      <span className="block truncate text-xs font-medium text-slate-700">{text.job}</span>
+      <span className="block truncate text-[11px] text-slate-500">{text.detail}</span>
+    </span>
+  );
+}
 
 /**
  * Search-as-you-type employee selector (server side search, debounced). The list opens under the field instead of
@@ -71,6 +104,7 @@ export default function HrmEmployeePicker({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const changeButtonRef = useRef<HTMLButtonElement | null>(null);
   const refocusInput = useRef(false);
+  const leave = useCloseAfterClick(wrapperRef);
 
   // Debounced server search while the list is open. The first page (no text) loads at once.
   useEffect(() => {
@@ -137,10 +171,7 @@ export default function HrmEmployeePicker({
     return (
       <div className={`flex items-center gap-3 rounded-lg border bg-white px-3 py-2 ${invalid ? 'border-rose-300' : 'border-slate-200'}`}>
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800" aria-hidden="true">{getInitials(value.name)}</span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-slate-900">{value.name}</span>
-          <span className="block truncate text-xs text-slate-500">{subtitleOf(value)}</span>
-        </span>
+        <PersonSummary person={value} />
         {disabled ? null : (
           <button
             ref={changeButtonRef}
@@ -159,7 +190,7 @@ export default function HrmEmployeePicker({
   return (
     <div
       ref={wrapperRef}
-      onBlur={(event) => { if (!wrapperRef.current?.contains(event.relatedTarget as Node | null)) setOpen(false); }}
+      onBlur={(event) => { if (!wrapperRef.current?.contains(event.relatedTarget as Node | null)) leave(() => setOpen(false)); }}
     >
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -187,7 +218,7 @@ export default function HrmEmployeePicker({
       </div>
       {open ? (
         <div className="mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <ul id={listId} role="listbox" aria-label={ariaLabel ?? 'Employees'} className="max-h-56 overflow-y-auto py-1">
+          <ul id={listId} role="listbox" aria-label={ariaLabel ?? 'Employees'} className="custom-scrollbar max-h-72 overflow-y-auto py-1">
             {error ? (
               <li role="presentation" className="flex items-start gap-2 px-3 py-2.5 text-xs font-medium text-rose-700">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -207,10 +238,7 @@ export default function HrmEmployeePicker({
                   className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${index === activeIndex ? 'bg-amber-50' : ''}`}
                 >
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600" aria-hidden="true">{getInitials(employee.name)}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-slate-900">{employee.name}{employee.isOfficeManager ? <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-800">Manager</span> : null}</span>
-                    <span className="block truncate text-xs text-slate-500">{subtitleOf(employee)}</span>
-                  </span>
+                  <PersonSummary person={employee} />
                   {index === activeIndex ? <Check className="h-4 w-4 shrink-0 text-amber-600" /> : null}
                 </li>
               ))}

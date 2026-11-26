@@ -2,6 +2,10 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../../../lib/prisma';
 import { assertAssignmentTargetAccess, assertEmployeeAccess, getAccessibleEmployeeIds, getHrmPermissions } from '../access';
 import { assertNotOwnRecord } from '../employeeGuards';
+import { openChargeWhere } from '../additionalChargeRules';
+import { countActiveChargeHolders, endChargesInTx, lockOfficeCharges, type EndedCharge } from '../chargeLifecycle';
+import { applyManagerAccess, applyRoleChange, planManagerAccess, planOutgoingRole } from './managerAccess.service';
+import { abilitiesOf, mayManageState } from '../accessGrant';
 import { writeHrmAudit } from '../audit';
 import { designationKey, resolveDesignationForWrite } from './designation.service';
 import { HrmAuthorizationError, HrmConflictError, HrmHttpError, HrmNotFoundError } from '../errors';
@@ -10,7 +14,7 @@ import {
   getPivotAssignment, lockEmployeeAssignments, MAX_BACKDATE_DAYS, openAssignmentWhere, parseDay, STATE_MANAGER_DESIGNATION,
   syncOfficePrimaryManager, toDay, utcToday, WORKING_STATUSES, type Actor, type AssignmentChanges, type PivotAssignment, type Tx,
 } from '../officeAssignments';
-import { deriveOfficeUnitId, ensureStateOffice, findActiveHeadOffice, resolveHeadOffice } from '../officeUnits';
+import { deriveOfficeUnitId, ensureStateOffice, findActiveStateOffice, findDefaultHeadOffice, requireHeadOffice } from '../officeUnits';
 import { endScopesOnExit, syncPlacementScopes } from '../accessProvisioning';
 import { kindOfUnit } from '../organisationCodes';
 import { HRM_PERMISSIONS, hasHrmPermission } from '../security';
@@ -78,11 +82,9 @@ const resolveDestination = async (
     if (options.sameOffice?.stateId && options.sameOffice.cityId) {
       return { office, kind, stateId: options.sameOffice.stateId, cityId: options.sameOffice.cityId as number | null };
     }
-    const fallback = office.stateId && office.cityId ? null : await resolveHeadOffice();
-    const stateId = office.stateId ?? fallback?.stateId;
-    const cityId = office.cityId ?? fallback?.cityId;
-    if (!stateId || !cityId) throw new HrmHttpError(409, 'HEAD_OFFICE_LOCATION_MISSING', 'The head office has no location. Set it up on the Organisation page first.');
-    return { office, kind, stateId, cityId: cityId as number | null };
+    // Never another office's place: the same rule as adding somebody to a head office.
+    if (!office.stateId || !office.cityId) throw new HrmHttpError(409, 'HEAD_OFFICE_LOCATION_MISSING', `“${office.name}” has no state and city. Set them on the HRM Organisation page first.`);
+    return { office, kind, stateId: office.stateId, cityId: office.cityId as number | null };
   }
   if (kind !== 'STATE') throw new HrmHttpError(400, 'OFFICE_NOT_FOUND', 'Only the head office or a state office can be chosen here.');
   // Somebody who already works in this office keeps their city unless a new one is chosen.
@@ -129,7 +131,8 @@ const officeIsVacant = async (tx: Tx, officeUnitId: string | null | undefined) =
       employee: { status: { in: [...WORKING_STATUSES] }, archivedAt: null },
     },
   });
-  return managers === 0;
+  // Somebody holding an additional charge of the state covers it too.
+  return managers === 0 && (await countActiveChargeHolders(tx, officeUnitId, WORKING_STATUSES)) === 0;
 };
 
 type MoveInput = {
@@ -145,6 +148,10 @@ type MoveInput = {
   designationInherited?: boolean | undefined;
   reason?: string | null | undefined;
   action: string;
+  /** Additional charges of this person to end with the move. */
+  endChargeIds?: string[] | undefined;
+  /** End other people's charges of the destination office (it gets its own manager). */
+  endOfficeCharges?: boolean | undefined;
 };
 
 /**
@@ -186,6 +193,18 @@ const moveEmployee = async (tx: Tx, actor: Actor, input: MoveInput) => {
   if (destination.office.id !== previous.officeUnitId) await syncOfficePrimaryManager(tx, destination.office.id);
   // A State Manager's own-state access (placement scope) follows them to the new office / role.
   await syncPlacementScopes(tx, input.employeeId, parseDay(input.effectiveFrom), actor.userId);
+
+  // Additional charges that end with this move: the new office is now their posting; the ones HR ticked; and, when
+  // the office gets its own manager, other people's charges of it. Each runs until the day before.
+  const lastDay = addDays(parseDay(input.effectiveFrom), -1);
+  await lockOfficeCharges(tx, destination.office.id);
+  const chargesEnded: EndedCharge[] = await endChargesInTx(tx, actor, { where: { employeeId: input.employeeId, officeUnitId: destination.office.id }, lastDay, reason: 'Posted at this office' });
+  if (input.endChargeIds?.length) {
+    chargesEnded.push(...await endChargesInTx(tx, actor, { where: { employeeId: input.employeeId, id: { in: input.endChargeIds } }, lastDay, reason: input.reason?.trim() || 'Ended with a change of posting' }));
+  }
+  if (input.endOfficeCharges && isOfficeManager) {
+    chargesEnded.push(...await endChargesInTx(tx, actor, { where: { officeUnitId: destination.office.id, NOT: { employeeId: input.employeeId } }, lastDay, reason: 'The office has its own manager now' }));
+  }
   const vacatedOfficeId = previous.isOfficeManager && (previous.officeUnitId !== destination.office.id || !isOfficeManager) && (await officeIsVacant(tx, previous.officeUnitId))
     ? previous.officeUnitId : null;
 
@@ -194,7 +213,7 @@ const moveEmployee = async (tx: Tx, actor: Actor, input: MoveInput) => {
     to: { officeUnitId: destination.office.id, isOfficeManager, designation },
     effectiveFrom: input.effectiveFrom, reason: input.reason ?? null,
   }, undefined, tx);
-  return { employee, assignment: created, previous, vacatedOfficeId, destination };
+  return { employee, assignment: created, previous, vacatedOfficeId, destination, chargesEnded };
 };
 
 /** The employee's newest assignment, for the checks that run before the transaction. */
@@ -205,6 +224,18 @@ const latestAssignment = async (employeeId: string) => {
   });
   if (!row) throw new HrmHttpError(409, 'NO_OPEN_ASSIGNMENT', 'This employee has no assignment yet. Use “Add assignment” on their profile first.');
   return row;
+};
+
+/** Charges ended by choice with a move are ones the caller could end directly (their states). */
+const assertMayEndCharges = async (actor: Actor, where: Prisma.HrmAdditionalChargeWhereInput) => {
+  const charges = await prisma.hrmAdditionalCharge.findMany({
+    where: { AND: [where, openChargeWhere(utcToday())] },
+    select: { officeUnit: { select: { name: true, stateId: true } } },
+  });
+  if (!charges.length) return;
+  const abilities = await abilitiesOf(actor);
+  const outside = charges.filter((charge) => !mayManageState(abilities, charge.officeUnit.stateId)).map((charge) => charge.officeUnit.name);
+  if (outside.length) throw new HrmAuthorizationError(`You cannot end the additional charge of ${[...new Set(outside)].join(', ')}: it is outside your HRM access.`);
 };
 
 /** The scope check for the place a person is moved to (the caller's own scope must still cover it). */
@@ -222,20 +253,59 @@ export const transferEmployee = async (actor: Actor, employeeId: string, rawInpu
   const probe = await resolveDestination(prisma, input, { requireCity: false });
   const current = await latestAssignment(employeeId);
   await assertDestinationInScope(actor, probe, input.orgUnitId ?? current.orgUnitId, input.managerEmployeeId);
+  if (input.access?.grantStateAccess && probe.kind !== 'STATE') {
+    throw new HrmHttpError(400, 'ACCESS_NEEDS_STATE', 'State access is given with a transfer to a state office.');
+  }
+  if (input.endChargeIds?.length) await assertMayEndCharges(actor, { employeeId, id: { in: input.endChargeIds } });
+  const accessPlan = await planManagerAccess(actor, employeeId, probe.stateId, input.access);
 
-  const result = await prisma.$transaction((tx) => moveEmployee(tx, actor, {
-    employeeId,
-    toOfficeUnitId: input.toOfficeUnitId,
-    cityId: input.cityId,
-    orgUnitId: input.orgUnitId,
-    effectiveFrom: input.effectiveFrom,
-    managerEmployeeId: input.managerEmployeeId,
-    isOfficeManager: input.isOfficeManager,
-    designation: input.designation,
-    reason: input.reason,
-    action: 'TRANSFERRED',
-  }), { timeout: 20000, maxWait: 5000 });
-  return { assignment: result.assignment, vacatedOfficeId: result.vacatedOfficeId };
+  const result = await prisma.$transaction(async (tx) => {
+    const moved = await moveEmployee(tx, actor, {
+      employeeId,
+      toOfficeUnitId: input.toOfficeUnitId,
+      cityId: input.cityId,
+      orgUnitId: input.orgUnitId,
+      effectiveFrom: input.effectiveFrom,
+      managerEmployeeId: input.managerEmployeeId,
+      isOfficeManager: input.isOfficeManager,
+      designation: input.designation,
+      reason: input.reason,
+      action: 'TRANSFERRED',
+      endChargeIds: input.endChargeIds,
+    });
+    const access = await applyManagerAccess(tx, actor, accessPlan, parseDay(input.effectiveFrom), 'HRM_TRANSFER');
+    return { ...moved, access };
+  }, { timeout: 20000, maxWait: 5000 });
+  return { assignment: result.assignment, vacatedOfficeId: result.vacatedOfficeId, access: result.access, chargesEnded: result.chargesEnded };
+};
+
+/**
+ * Change manager: only who the person reports to changes (office, department and designation stay). Like every other
+ * change it is a new assignment from that day, so who they reported to before stays in the history.
+ */
+export const changeReportingManager = async (actor: Actor, employeeId: string, rawInput: unknown) => {
+  const input = parseHrmInput(schemas.changeReportingManager, rawInput);
+  await requirePermissions(actor, [[HRM_PERMISSIONS.ASSIGNMENTS_MANAGE, 'hrm.assignments.manage']], 'Changing the reporting manager');
+  await assertEmployeeAccess({ ...actor, employeeId });
+  await assertNotOwnRecord(actor, employeeId, 'Changing the reporting manager');
+
+  return prisma.$transaction(async (tx) => {
+    await lockEmployeeAssignments(tx, employeeId);
+    await loadWorkingEmployee(tx, employeeId);
+    const pivot = await getPivotAssignment(tx, employeeId);
+    if (pivot.managerEmployeeId === input.managerEmployeeId) {
+      throw new HrmHttpError(400, 'MANAGER_UNCHANGED', input.managerEmployeeId ? 'They already report to this person.' : 'They have no reporting manager already.');
+    }
+    await checkManager(tx, employeeId, input.managerEmployeeId);
+    const { created } = await applyAssignmentChange(tx, actor, {
+      pivot, newFrom: parseDay(input.effectiveFrom), changes: { managerEmployeeId: input.managerEmployeeId }, reason: input.reason ?? null, action: 'REPORTING_MANAGER_CHANGED',
+    });
+    await syncOfficePrimaryManager(tx, pivot.officeUnitId);
+    await audit(actor, 'HRM_EMPLOYEE', employeeId, 'REPORTING_MANAGER_CHANGED',
+      { managerEmployeeId: input.managerEmployeeId, effectiveFrom: input.effectiveFrom, reason: input.reason ?? null },
+      { managerEmployeeId: pivot.managerEmployeeId }, tx);
+    return { assignment: created };
+  }, { timeout: 20000, maxWait: 5000 });
 };
 
 /**
@@ -260,19 +330,28 @@ export const appointOfficeManager = async (actor: Actor, officeUnitId: string, r
     ? input.managerEmployeeId
     : (national.length === 1 && national[0]!.id !== input.employeeId ? national[0]!.id : current.managerEmployeeId);
   await assertDestinationInScope(actor, probe, current.orgUnitId, managerEmployeeId);
+  if (input.endChargeIds?.length) await assertMayEndCharges(actor, { employeeId: input.employeeId, id: { in: input.endChargeIds } });
+  if (input.endOfficeCharges) await assertMayEndCharges(actor, { officeUnitId, NOT: { employeeId: input.employeeId } });
+  const accessPlan = await planManagerAccess(actor, input.employeeId, office.stateId!, input.access);
 
-  const result = await prisma.$transaction((tx) => moveEmployee(tx, actor, {
-    employeeId: input.employeeId,
-    toOfficeUnitId: officeUnitId,
-    cityId: input.cityId,
-    effectiveFrom: input.effectiveFrom,
-    managerEmployeeId,
-    isOfficeManager: true,
-    designation: input.designation ?? STATE_MANAGER_DESIGNATION,
-    reason: input.reason,
-    action: 'APPOINTED_OFFICE_MANAGER',
-  }), { timeout: 20000, maxWait: 5000 });
-  return { assignment: result.assignment, vacatedOfficeId: result.vacatedOfficeId };
+  const result = await prisma.$transaction(async (tx) => {
+    const moved = await moveEmployee(tx, actor, {
+      employeeId: input.employeeId,
+      toOfficeUnitId: officeUnitId,
+      cityId: input.cityId,
+      effectiveFrom: input.effectiveFrom,
+      managerEmployeeId,
+      isOfficeManager: true,
+      designation: input.designation ?? STATE_MANAGER_DESIGNATION,
+      reason: input.reason,
+      action: 'APPOINTED_OFFICE_MANAGER',
+      endChargeIds: input.endChargeIds,
+      endOfficeCharges: input.endOfficeCharges,
+    });
+    const access = await applyManagerAccess(tx, actor, accessPlan, parseDay(input.effectiveFrom), 'HRM_APPOINTMENT');
+    return { ...moved, access };
+  }, { timeout: 20000, maxWait: 5000 });
+  return { assignment: result.assignment, vacatedOfficeId: result.vacatedOfficeId, access: result.access, chargesEnded: result.chargesEnded };
 };
 
 /** People (current or upcoming) who report to this employee, by the assignment that names them. */
@@ -358,6 +437,8 @@ const deactivateInTx = async (tx: Tx, actor: Actor, employeeId: string, input: D
   });
   const officeIds = [...new Set(open.map((row) => row.officeUnitId).filter((value): value is string => Boolean(value)))];
   const wasManagerOf = open.filter((row) => row.isOfficeManager && row.officeUnitId).map((row) => row.officeUnitId!);
+  // Offices this person covers through an additional charge: they may be left without a manager too.
+  const charged = (await tx.hrmAdditionalCharge.findMany({ where: { employeeId, ...openChargeWhere(today) }, select: { officeUnitId: true } })).map((row) => row.officeUnitId);
 
   if (input.outcome === 'EXITED') {
     // Leaving: assignments that had started end on the last day, those that never started are cancelled.
@@ -397,6 +478,8 @@ const deactivateInTx = async (tx: Tx, actor: Actor, employeeId: string, input: D
     }
   }
 
+  // Leaving: every additional charge ends on the last day (with its access).
+  const chargesEnded = input.outcome === 'EXITED' ? await endChargesInTx(tx, actor, { where: { employeeId }, lastDay: effective, reason: input.reason }) : [];
   // Leaving: every HRM access scope of their login ends on the last day.
   if (input.outcome === 'EXITED' && employee.userId) await endScopesOnExit(tx, employee.userId, effective);
   if (input.outcome === 'EXITED') {
@@ -407,13 +490,13 @@ const deactivateInTx = async (tx: Tx, actor: Actor, employeeId: string, input: D
   // A manager stops being one of their offices' managers.
   for (const officeId of officeIds) await syncOfficePrimaryManager(tx, officeId);
   const vacatedOfficeIds: string[] = [];
-  for (const officeId of new Set(wasManagerOf)) if (await officeIsVacant(tx, officeId)) vacatedOfficeIds.push(officeId);
+  for (const officeId of new Set([...wasManagerOf, ...charged])) if (await officeIsVacant(tx, officeId)) vacatedOfficeIds.push(officeId);
 
   await audit(actor, 'HRM_EMPLOYEE', employeeId, input.outcome === 'EXITED' ? 'DEACTIVATED_EXITED' : 'DEACTIVATED_SUSPENDED', {
     outcome: input.outcome, effectiveDate: input.effectiveDate, reason: input.reason,
-    reportsMoved: reportEmployees.size, approvalsMoved: approvals.count, loginDisabled,
+    reportsMoved: reportEmployees.size, approvalsMoved: approvals.count, loginDisabled, chargesEnded: chargesEnded.length,
   }, { status: employee.status }, tx);
-  return { employeeCode: employee.employeeCode, reportsMoved: reportEmployees.size, loginDisabled, vacatedOfficeIds };
+  return { employeeCode: employee.employeeCode, reportsMoved: reportEmployees.size, loginDisabled, vacatedOfficeIds, chargesEnded };
 };
 
 /** Deactivate: the person leaves the company or is put on hold, with their reports and login taken care of. */
@@ -495,6 +578,13 @@ export const replaceOfficeManager = async (actor: Actor, officeUnitId: string, r
     const outgoingNow = await latestAssignment(input.outgoingEmployeeId);
     await assertDestinationInScope(actor, outgoingProbe, input.outgoing.orgUnitId ?? outgoingNow.orgUnitId, undefined);
   }
+  if (input.outgoing.action === 'DEACTIVATE' && input.outgoingRoleId !== undefined) {
+    throw new HrmHttpError(400, 'ROLE_NOT_NEEDED', 'A deactivated person keeps no role change: their login is switched off.');
+  }
+  if (input.endChargeIds?.length) await assertMayEndCharges(actor, { employeeId: input.incomingEmployeeId, id: { in: input.endChargeIds } });
+  if (input.endOfficeCharges) await assertMayEndCharges(actor, { officeUnitId, NOT: { employeeId: input.incomingEmployeeId } });
+  const incomingAccess = await planManagerAccess(actor, input.incomingEmployeeId, office.stateId!, input.access);
+  const outgoingRole = await planOutgoingRole(actor, input.outgoingEmployeeId, input.outgoingRoleId);
 
   return prisma.$transaction(async (tx) => {
     // Both people are locked in a fixed order, so two replacements touching the same people cannot deadlock.
@@ -539,7 +629,10 @@ export const replaceOfficeManager = async (actor: Actor, officeUnitId: string, r
       designationInherited: true,
       reason: input.reason,
       action: 'APPOINTED_OFFICE_MANAGER',
+      endChargeIds: input.endChargeIds,
+      endOfficeCharges: input.endOfficeCharges,
     });
+    const access = await applyManagerAccess(tx, actor, incomingAccess, parseDay(input.effectiveFrom), 'HRM_REPLACEMENT');
 
     for (const row of localReports) await assertNoReportingCycle(tx, row.employeeId, input.incomingEmployeeId);
     const moved = await repointReports(tx, actor, localReports, input.incomingEmployeeId);
@@ -568,13 +661,15 @@ export const replaceOfficeManager = async (actor: Actor, officeUnitId: string, r
       outgoingResult = { action: 'DEACTIVATE', ...result };
     }
 
+    if (outgoingRole) await applyRoleChange(tx, actor, outgoingRole.userId, outgoingRole.roleChange, 'HRM_REPLACEMENT');
+
     await audit(actor, 'HRM_ORG_UNIT', officeUnitId, 'MANAGER_REPLACED', {
       outgoingEmployeeId: input.outgoingEmployeeId, outgoingCode: outgoingEmployee.employeeCode, incomingEmployeeId: input.incomingEmployeeId,
       effectiveFrom: input.effectiveFrom, reportsMoved: moved, outgoing: outgoingResult,
     }, undefined, tx);
     await syncOfficePrimaryManager(tx, officeUnitId);
     // If the replacement managed another state until now, that state is reported as vacated too.
-    return { assignment: incoming.assignment, reportsMoved: moved, outgoing: outgoingResult, vacatedOfficeId: incoming.vacatedOfficeId };
+    return { assignment: incoming.assignment, reportsMoved: moved, outgoing: outgoingResult, vacatedOfficeId: incoming.vacatedOfficeId, access, outgoingRoleChanged: Boolean(outgoingRole), chargesEnded: incoming.chargesEnded };
   }, { timeout: 30000, maxWait: 5000 });
 };
 
@@ -594,7 +689,18 @@ export const getLifecycleContext = async (actor: Actor, employeeId: string) => {
     where: { employeeId, isOfficeManager: true, ...currentAssignmentWhere(utcToday()) },
     select: { officeUnit: { select: { id: true, name: true } } },
   });
+  const charges = await prisma.hrmAdditionalCharge.findMany({
+    where: { employeeId, ...openChargeWhere(utcToday()) },
+    select: { id: true, officeUnitId: true, effectiveFrom: true, effectiveTo: true, officeUnit: { select: { name: true, stateId: true } } },
+    orderBy: { effectiveFrom: 'asc' },
+  });
+  const abilities = charges.length ? await abilitiesOf(actor) : null;
   return {
+    charges: charges.map((charge) => ({
+      id: charge.id, officeUnitId: charge.officeUnitId, officeName: charge.officeUnit.name,
+      effectiveFrom: toDay(charge.effectiveFrom), effectiveTo: charge.effectiveTo ? toDay(charge.effectiveTo) : null,
+      canEnd: Boolean(abilities && mayManageState(abilities, charge.officeUnit.stateId)),
+    })),
     employee: { id: employee.id, employeeCode: employee.employeeCode, name: employee.preferredName || employee.legalName, status: employee.status, hasLogin: Boolean(employee.userId), hasAssignment },
     directReports: reports.map((row) => ({ id: row.employee.id, employeeCode: row.employee.employeeCode, name: row.employee.preferredName || row.employee.legalName })),
     managerOf: managerOf.flatMap((row) => (row.officeUnit ? [row.officeUnit] : [])),
@@ -614,13 +720,23 @@ export const addAssignment = async (actor: Actor, employeeId: string, rawInput: 
   await assertNotOwnRecord(actor, employeeId, 'Adding an assignment');
   if (input.status && input.status !== 'ACTIVE') throw new HrmHttpError(400, 'ASSIGNMENT_STATUS', 'A new assignment is active from its start date. Use Transfer to change an existing one.');
   if (input.effectiveTo) throw new HrmHttpError(400, 'ASSIGNMENT_END_DATE', 'An assignment ends when the next one starts (transfer or deactivate), not with an end date.');
-  if (Boolean(input.stateId) !== Boolean(input.cityId) && input.cityId) throw new HrmHttpError(400, 'LOCATION_INVALID', 'Select the state together with the city.');
+  // A head office posting takes its place from the chosen head office; a state office posting is that state's office,
+  // whatever the city. A request without a location type keeps the older rule (the head office city means head office).
+  const headOffice = input.locationType === 'HEAD_OFFICE' ? await requireHeadOffice(prisma, input.headOfficeUnitId) : null;
+  const asStateOffice = input.locationType === 'STATE_OFFICE';
+  const placeStateId = headOffice ? headOffice.stateId : input.stateId ?? null;
+  const placeCityId = headOffice ? headOffice.cityId : input.cityId ?? null;
+  if (asStateOffice && (!placeStateId || !placeCityId)) throw new HrmHttpError(400, 'LOCATION_INVALID', 'Select the state and the city.');
+  if (!input.locationType && Boolean(input.stateId) !== Boolean(input.cityId) && input.cityId) throw new HrmHttpError(400, 'LOCATION_INVALID', 'Select the state together with the city.');
+  const targetOfficeId = headOffice ? headOffice.id
+    : asStateOffice ? (await findActiveStateOffice(prisma, placeStateId!))?.id ?? null
+      : await deriveOfficeUnitId(prisma, placeStateId, placeCityId);
 
   const permissions = await getHrmPermissions(actor.userId, actor.role);
   const canManageOrg = hasHrmPermission(permissions, HRM_PERMISSIONS.ORG_MANAGE);
   await assertAssignmentTargetAccess({
     userId: actor.userId, role: actor.role,
-    target: { orgUnitId: input.orgUnitId, officeUnitId: await deriveOfficeUnitId(prisma, input.stateId, input.cityId), stateId: input.stateId ?? null, managerEmployeeId: input.managerEmployeeId ?? null },
+    target: { orgUnitId: input.orgUnitId, officeUnitId: targetOfficeId, stateId: placeStateId, managerEmployeeId: input.managerEmployeeId ?? null },
   });
 
   const newFrom = parseDay(input.effectiveFrom);
@@ -637,8 +753,8 @@ export const addAssignment = async (actor: Actor, employeeId: string, rawInput: 
     await checkManager(tx, employeeId, input.managerEmployeeId);
     if (input.approvalManagerId) await assertEligibleManager(tx, input.approvalManagerId, employeeId);
 
-    let stateId = input.stateId ?? null;
-    let cityId = input.cityId ?? null;
+    let stateId = placeStateId;
+    let cityId = placeCityId;
     if (stateId && cityId) {
       const city = await tx.city.findFirst({ where: { id: cityId, stateId, state: { country: { iso2: 'IN' } } }, select: { id: true } });
       if (!city) throw new HrmHttpError(400, 'LOCATION_INVALID', 'The selected city does not belong to the selected state.');
@@ -647,12 +763,12 @@ export const addAssignment = async (actor: Actor, employeeId: string, rawInput: 
       if (!state) throw new HrmHttpError(400, 'STATE_NOT_FOUND', 'The selected state was not found.');
     } else { stateId = null; cityId = null; }
 
-    // The office: the head office when the place is the head office city, otherwise that state's office.
-    let officeUnitId: string | null = null;
-    if (stateId) {
-      const headOffice = await findActiveHeadOffice(tx);
-      officeUnitId = headOffice && cityId && headOffice.stateId === stateId && headOffice.cityId === cityId
-        ? headOffice.id
+    // The office: the chosen head office, or the state's office.
+    let officeUnitId: string | null = headOffice?.id ?? null;
+    if (!headOffice && stateId) {
+      const inHeadOfficeCity = !asStateOffice ? await findDefaultHeadOffice(tx) : null;
+      officeUnitId = inHeadOfficeCity && cityId && inHeadOfficeCity.stateId === stateId && inHeadOfficeCity.cityId === cityId
+        ? inHeadOfficeCity.id
         : (await ensureStateOffice(tx, actor, stateId, canManageOrg)).unit.id;
     }
 
@@ -694,6 +810,11 @@ export const addAssignment = async (actor: Actor, employeeId: string, rawInput: 
     }
     await syncOfficePrimaryManager(tx, previousOfficeId);
     await syncPlacementScopes(tx, employeeId, newFrom, actor.userId);
+    // Posted at an office they held as an additional charge: the charge ends the day before.
+    if (officeUnitId) {
+      await lockOfficeCharges(tx, officeUnitId);
+      await endChargesInTx(tx, actor, { where: { employeeId, officeUnitId }, lastDay: addDays(newFrom, -1), reason: 'Posted at this office' });
+    }
     return { assignment };
   }, { timeout: 20000, maxWait: 5000 });
 };

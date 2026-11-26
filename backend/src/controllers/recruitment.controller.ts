@@ -50,6 +50,20 @@ import {
   recordOfferAcceptance,
   validateCandidateAcceptance,
 } from '../services/offerAcceptance.service';
+import { signedCopyContentType } from '../services/recruitmentEmail.service';
+import { signedLetterUrlOf } from '../utils/offerAcceptanceEvidence';
+import { describeRecruitmentReach, getRecruitmentReach, requestReach, resolveJobPlace } from '../services/recruitmentReach.service';
+import {
+  applicationReachWhere,
+  candidateReachWhere,
+  filterOfferDocuments,
+  interviewReachWhere,
+  jobReachWhere,
+  limitOfferActivity,
+  offerReachWhere,
+  placeInReach,
+  type RecruitmentReach,
+} from '../utils/recruitmentReachRules';
 import { getOfferFormOptions as loadOfferFormOptions, resolveOfferPlacement, searchOfferReportingManagers, type OfferPlacement } from '../modules/hrm/services/offerPlacement.service';
 import {
   annualCtcFrom,
@@ -79,11 +93,21 @@ const getOfferResponse = async (token: string) => {
   return { offer, payload };
 };
 
+/** The creator of an offer is told about it only while the offer is still in their recruitment places. */
+const creatorStillCovers = async (offerId: string, creator: { id: string; role: string }) => {
+  const reach = await getRecruitmentReach({ userId: creator.id, role: creator.role });
+  return reach.all || (await prisma.offer.count({ where: { AND: [{ id: offerId }, offerReachWhere(reach)] } })) > 0;
+};
+
 const notifyOfferResponse = async (offer: { id: string; candidate: { fullName: string }; job: { title: string }; createdById: string | null }, status: 'ACCEPTED' | 'DECLINED' | 'EXPIRED') => {
-  const recipients = await prisma.user.findMany({
+  const everyone = await prisma.user.findMany({
     where: { status: 'ACTIVE', OR: [{ role: 'SUPER_ADMIN' }, ...(offer.createdById ? [{ id: offer.createdById }] : [])] },
-    select: { id: true },
+    select: { id: true, role: true },
   });
+  const recipients: Array<{ id: string }> = [];
+  for (const user of everyone) {
+    if (user.role === 'SUPER_ADMIN' || (await creatorStillCovers(offer.id, user))) recipients.push(user);
+  }
   await Promise.all(recipients.map((recipient) => {
     const dedupeKey = `${offer.id}:response:${status}:${recipient.id}`;
     return prisma.notification.upsert({
@@ -153,9 +177,10 @@ const dispatchOfferAcceptedMessages = async (offer: AcceptedOfferForMessages) =>
   });
   try {
     const superAdmins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN', status: 'ACTIVE' }, select: { id: true, mobile: true, whatsappNumber: true, email: true } });
-    const creator = offer.createdById && !superAdmins.some((user) => user.id === offer.createdById)
-      ? await prisma.user.findFirst({ where: { id: offer.createdById, status: 'ACTIVE' }, select: { id: true, mobile: true, whatsappNumber: true, email: true } })
+    const found = offer.createdById && !superAdmins.some((user) => user.id === offer.createdById)
+      ? await prisma.user.findFirst({ where: { id: offer.createdById, status: 'ACTIVE' }, select: { id: true, role: true, mobile: true, whatsappNumber: true, email: true } })
       : null;
+    const creator = found && (await creatorStillCovers(offer.id, found)) ? found : null;
     for (const [user, recipientType] of [...superAdmins.map((user) => [user, 'SUPER_ADMIN'] as const), ...(creator ? [[creator, 'RECRUITER'] as const] : [])]) {
       void dispatchRecruitmentWhatsApp({
         eventCode: 'RECRUITMENT_OFFER_ACCEPTED_HR',
@@ -281,7 +306,21 @@ const buildPublicOfferView = async (offer: Prisma.OfferGetPayload<{ include: { c
       place: offer.acceptedPlace,
       acceptedAt: offer.respondedAt,
       certificateAvailable: Boolean(offer.acceptanceCertificateUrl),
+      // The signed offer letter: a PDF (shown on the page) or the uploaded photo / scan.
+      signedLetterType: (await signedLetterFileOf(offer))?.mimeType ?? null,
     } : null,
+  };
+};
+
+/** The stored name and content type of an offer's signed letter; null when there is none. */
+const signedLetterFileOf = async (offer: { signedLetterUrl?: string | null; signatureFileUrl?: string | null; acceptanceMethod?: string | null; application: { applicationRef: string } }) => {
+  const url = signedLetterUrlOf(offer);
+  if (!url) return null;
+  const document = await prisma.candidateDocument.findFirst({ where: { fileUrl: url }, select: { fileName: true, mimeType: true } });
+  return {
+    url,
+    fileName: document?.fileName || `Offer_Letter_Signed_${offer.application.applicationRef}.pdf`,
+    mimeType: signedCopyContentType(document) ?? 'application/pdf',
   };
 };
 
@@ -338,6 +377,18 @@ export const getPublicOfferCertificate = async (req: Request, res: Response, nex
   }
 };
 
+/** The signed offer letter, for the candidate who accepted (shown on the page, or downloaded with ?download=1). */
+export const getPublicOfferSignedLetter = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const response = await getOfferResponse(getParamString(req.params.token));
+    const file = response && response.offer.status === 'ACCEPTED' ? await signedLetterFileOf(response.offer) : null;
+    if (!file) return res.status(404).json({ success: false, error: 'The signed offer letter is not available.' });
+    await streamOfferFile(req, res, file.url, file.fileName, file.mimeType, req.query.download === '1' ? 'attachment' : 'inline');
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getPublicOfferPdf = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const token = getParamString(req.params.token);
@@ -386,6 +437,7 @@ export const respondToPublicOffer = async (req: Request, res: Response, next: Ne
           ipAddress: req.ip ?? null,
           userAgent: req.get('user-agent') ?? null,
           file,
+          signatureImage: checked.value.method === 'TYPED' ? checked.typed : checked.value.method === 'DRAWN' ? checked.drawn : null,
         });
       } catch (error) {
         if (error instanceof OfferAcceptanceConflict) return res.status(409).json({ success: false, error: error.message });
@@ -589,9 +641,12 @@ const dispatchNewApplicationInternalAlerts = async ({
     if (!job.createdById || superAdminIds.has(job.createdById)) return;
     const recruiter = await prisma.user.findFirst({
       where: { id: job.createdById, status: 'ACTIVE' },
-      select: { mobile: true, whatsappNumber: true, email: true },
+      select: { id: true, role: true, mobile: true, whatsappNumber: true, email: true },
     });
     if (!recruiter) return;
+    // Somebody who created the job but no longer covers its state is not told about its applicants.
+    const reach = await getRecruitmentReach({ userId: recruiter.id, role: recruiter.role });
+    if (!reach.all && !(await prisma.job.count({ where: { AND: [{ id: job.id }, jobReachWhere(reach)] } }))) return;
     void dispatchRecruitmentWhatsApp({
       eventCode: 'RECRUITMENT_NEW_APPLICATION_RECRUITER',
       relatedEntityType: 'JOB_APPLICATION',
@@ -606,9 +661,29 @@ const dispatchNewApplicationInternalAlerts = async ({
   }
 };
 
-const getStageUsageCounts = async () => {
+/** The filter of a list narrowed to the viewer's places (nothing is added for an all-India viewer). */
+const narrowed = <W extends object>(reach: RecruitmentReach, where: W, limit: (reach: RecruitmentReach) => W): W =>
+  (reach.all ? where : { AND: [where, limit(reach)] } as unknown as W);
+
+const OUT_OF_REACH = { success: false, code: 'RECRUITMENT_OUT_OF_REACH' } as const;
+const OUTSIDE_PLACE_MESSAGE = 'That place is outside your recruitment access. Choose one of your states.';
+
+/** The offer files of some applications, split into the offers the viewer may see and those they may not. */
+const splitOfferFiles = async (reach: RecruitmentReach, applicationIds: string[]) => {
+  if (reach.all || !applicationIds.length) return { visible: [], hidden: [] };
+  const select = { id: true, applicationId: true, offerLetterUrl: true, signatureFileUrl: true, acceptanceCertificateUrl: true, signedLetterUrl: true } as const;
+  const [all, visible] = await Promise.all([
+    prisma.offer.findMany({ where: { applicationId: { in: applicationIds } }, select }),
+    prisma.offer.findMany({ where: { AND: [{ applicationId: { in: applicationIds } }, offerReachWhere(reach)] }, select: { id: true } }),
+  ]);
+  const seen = new Set(visible.map((offer) => offer.id));
+  return { visible: all.filter((offer) => seen.has(offer.id)), hidden: all.filter((offer) => !seen.has(offer.id)) };
+};
+
+const getStageUsageCounts = async (where: Prisma.JobApplicationWhereInput = {}) => {
   const grouped = await prisma.jobApplication.groupBy({
     by: ['currentStage'],
+    where,
     _count: { currentStage: true },
   });
 
@@ -1100,8 +1175,23 @@ export const applyForJob = async (req: Request, res: Response, next: NextFunctio
 
 // ==================== RECRUITMENT ADMIN WORKSPACE ====================
 
+/** Which states the caller sees in recruitment (the banner and the forms use it). */
+export const getMyRecruitmentReach = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.status(200).json({ success: true, reach: await describeRecruitmentReach(await requestReach(req, res)) });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getRecruitmentDashboardStats = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const reach = await requestReach(req, res);
+    const jobs = jobReachWhere(reach);
+    const applications = applicationReachWhere(reach);
+    const interviews = interviewReachWhere(reach);
+    const offers = offerReachWhere(reach);
+    const inStage = (currentStage: string) => prisma.jobApplication.count({ where: { AND: [{ currentStage }, applications] } });
     const [
       activeJobs,
       totalApplications,
@@ -1116,15 +1206,16 @@ export const getRecruitmentDashboardStats = async (req: Request, res: Response, 
       appsByJobRaw,
       appsByDeptRaw,
     ] = await Promise.all([
-      prisma.job.count({ where: { status: 'PUBLISHED' } }),
-      prisma.jobApplication.count(),
-      prisma.jobApplication.count({ where: { currentStage: 'NEW' } }),
-      prisma.jobApplication.count({ where: { currentStage: 'UNDER_REVIEW' } }),
-      prisma.interview.count({ where: { status: 'SCHEDULED' } }),
-      prisma.jobApplication.count({ where: { currentStage: 'SELECTED' } }),
-      prisma.offer.count({ where: { status: 'SENT' } }),
-      prisma.jobApplication.count({ where: { currentStage: 'HIRED' } }),
+      prisma.job.count({ where: { AND: [{ status: 'PUBLISHED' }, jobs] } }),
+      prisma.jobApplication.count({ where: applications }),
+      inStage('NEW'),
+      inStage('UNDER_REVIEW'),
+      prisma.interview.count({ where: { AND: [{ status: 'SCHEDULED' }, interviews] } }),
+      inStage('SELECTED'),
+      prisma.offer.count({ where: { AND: [{ status: 'SENT' }, offers] } }),
+      inStage('HIRED'),
       prisma.jobApplication.findMany({
+        where: applications,
         take: 6,
         orderBy: { appliedAt: 'desc' },
         include: {
@@ -1133,7 +1224,7 @@ export const getRecruitmentDashboardStats = async (req: Request, res: Response, 
         },
       }),
       prisma.interview.findMany({
-        where: { status: 'SCHEDULED' },
+        where: { AND: [{ status: 'SCHEDULED' }, interviews] },
         take: 5,
         orderBy: { scheduledAt: 'asc' },
         include: {
@@ -1144,12 +1235,14 @@ export const getRecruitmentDashboardStats = async (req: Request, res: Response, 
       }),
       prisma.jobApplication.groupBy({
         by: ['jobId'],
+        where: applications,
         _count: { id: true },
         take: 6,
         orderBy: { _count: { id: 'desc' } },
       }),
       prisma.job.groupBy({
         by: ['departmentId'],
+        where: jobs,
         _count: { id: true },
       }),
     ]);
@@ -1241,9 +1334,12 @@ export const getAdminJobs = async (req: Request, res: Response, next: NextFuncti
       ];
     }
 
+    const reach = await requestReach(req, res);
+    const scopedWhere = narrowed(reach, where, jobReachWhere);
+
     if (compact === 'true' || compact === '1') {
       const jobs = await prisma.job.findMany({
-        where,
+        where: scopedWhere,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limitNum,
@@ -1258,7 +1354,7 @@ export const getAdminJobs = async (req: Request, res: Response, next: NextFuncti
 
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({
-        where,
+        where: scopedWhere,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limitNum,
@@ -1272,6 +1368,8 @@ export const getAdminJobs = async (req: Request, res: Response, next: NextFuncti
           workMode: true,
           locationCity: true,
           locationState: true,
+          hrmStateId: true,
+          hrmLocationType: true,
           status: true,
           postedAt: true,
           department: { select: { id: true, name: true, code: true } },
@@ -1283,7 +1381,7 @@ export const getAdminJobs = async (req: Request, res: Response, next: NextFuncti
           },
         },
       }),
-      prisma.job.count({ where }),
+      prisma.job.count({ where: scopedWhere }),
     ]);
 
     const departments = await prisma.jobDepartment.findMany({
@@ -1310,12 +1408,9 @@ export const getAdminJobs = async (req: Request, res: Response, next: NextFuncti
 export const getAdminJobById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const lookup = getParamString(req.params.id);
-    const jobLookup = await prisma.job.findFirst({
-      where: {
-        OR: [{ id: lookup }, { slug: lookup }],
-      },
-      select: { id: true },
-    });
+    // The id wins over a slug, so one record is meant.
+    const jobLookup = (await prisma.job.findUnique({ where: { id: lookup }, select: { id: true } }))
+      ?? (await prisma.job.findUnique({ where: { slug: lookup }, select: { id: true } }));
 
     if (!jobLookup) {
       return res.status(404).json({ success: false, error: 'Job posting not found.' });
@@ -1530,6 +1625,17 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
       });
     }
 
+    const place = await resolveJobPlace(body);
+    if ('error' in place) return res.status(400).json({ success: false, error: place.error });
+    const reach = await requestReach(req, res);
+    if (!placeInReach(reach, { locationType: place.hrmLocationType, stateId: place.hrmStateId })) {
+      return res.status(403).json({ ...OUT_OF_REACH, error: OUTSIDE_PLACE_MESSAGE });
+    }
+
+    // A slug that looks like a record id could stand in for another job in the detail address.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(body.slug ?? '').trim())) {
+      return res.status(400).json({ success: false, error: 'The job address (slug) cannot look like a record id. Use words.' });
+    }
     const slug = body.slug?.trim() || generateJobSlug(body.title, body.locationCity);
     const count = await prisma.job.count();
     const jobCode = body.jobCode?.trim() || `JOB-${(count + 101).toString().padStart(4, '0')}`;
@@ -1546,6 +1652,8 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
         locationCity: body.locationCity.trim(),
         locationState: body.locationState.trim(),
         locationAddress: body.locationAddress?.trim() || null,
+        hrmStateId: place.hrmStateId,
+        hrmLocationType: place.hrmLocationType,
         minExperience: body.minExperience ? parseFloat(body.minExperience) : 0,
         maxExperience: body.maxExperience ? parseFloat(body.maxExperience) : null,
         minSalary: body.minSalary ? parseFloat(body.minSalary) : null,
@@ -1636,6 +1744,13 @@ export const updateJob = async (req: Request, res: Response, next: NextFunction)
       return res.status(404).json({ success: false, error: 'Job posting not found.' });
     }
 
+    const place = await resolveJobPlace(body, existingJob);
+    if ('error' in place) return res.status(400).json({ success: false, error: place.error });
+    const reach = await requestReach(req, res);
+    if (!placeInReach(reach, { locationType: place.hrmLocationType, stateId: place.hrmStateId })) {
+      return res.status(403).json({ ...OUT_OF_REACH, error: OUTSIDE_PLACE_MESSAGE });
+    }
+
     const updatedJob = await prisma.job.update({
       where: { id },
       data: {
@@ -1646,6 +1761,8 @@ export const updateJob = async (req: Request, res: Response, next: NextFunction)
         workMode: (body.workMode as WorkMode) || existingJob.workMode,
         locationCity: body.locationCity?.trim() || existingJob.locationCity,
         locationState: body.locationState?.trim() || existingJob.locationState,
+        hrmStateId: place.hrmStateId,
+        hrmLocationType: place.hrmLocationType,
         locationAddress: body.locationAddress?.trim() !== undefined ? body.locationAddress.trim() : existingJob.locationAddress,
         minExperience: body.minExperience !== undefined ? parseFloat(body.minExperience) : existingJob.minExperience,
         maxExperience: body.maxExperience !== undefined ? (body.maxExperience ? parseFloat(body.maxExperience) : null) : existingJob.maxExperience,
@@ -1758,6 +1875,8 @@ export const duplicateJob = async (req: Request, res: Response, next: NextFuncti
         locationCity: sourceJob.locationCity,
         locationState: sourceJob.locationState,
         locationAddress: sourceJob.locationAddress,
+        hrmStateId: sourceJob.hrmStateId,
+        hrmLocationType: sourceJob.hrmLocationType,
         minExperience: sourceJob.minExperience,
         maxExperience: sourceJob.maxExperience,
         minSalary: sourceJob.minSalary,
@@ -1948,9 +2067,12 @@ export const getAdminApplications = async (req: Request, res: Response, next: Ne
       ];
     }
 
+    const reach = await requestReach(req, res);
+    const scopedWhere = narrowed(reach, where, applicationReachWhere);
+
     if (compact === 'true' || compact === '1') {
       const applications = await prisma.jobApplication.findMany({
-        where,
+        where: scopedWhere,
         orderBy: { appliedAt: 'desc' },
         skip,
         take: limitNum,
@@ -1971,7 +2093,7 @@ export const getAdminApplications = async (req: Request, res: Response, next: Ne
     if (view === 'pipeline') {
       const [applications, total] = await Promise.all([
         prisma.jobApplication.findMany({
-          where,
+          where: scopedWhere,
           orderBy: { appliedAt: 'desc' },
           skip,
           take: limitNum,
@@ -1992,7 +2114,7 @@ export const getAdminApplications = async (req: Request, res: Response, next: Ne
             job: { select: { id: true, title: true } },
           },
         }),
-        prisma.jobApplication.count({ where }),
+        prisma.jobApplication.count({ where: scopedWhere }),
       ]);
 
       return res.status(200).json({
@@ -2009,7 +2131,7 @@ export const getAdminApplications = async (req: Request, res: Response, next: Ne
 
     const [applications, total] = await Promise.all([
       prisma.jobApplication.findMany({
-        where,
+        where: scopedWhere,
         orderBy: { appliedAt: 'desc' },
         skip,
         take: limitNum,
@@ -2054,7 +2176,7 @@ export const getAdminApplications = async (req: Request, res: Response, next: Ne
           assignedRecruiter: { select: { id: true, name: true, email: true } },
         },
       }),
-      prisma.jobApplication.count({ where }),
+      prisma.jobApplication.count({ where: scopedWhere }),
     ]);
 
     const shouldIncludeMeta = includeMeta === 'true' || includeMeta === '1';
@@ -2074,7 +2196,7 @@ export const getAdminApplications = async (req: Request, res: Response, next: Ne
                   isTerminal: true,
                 },
               }),
-              getStageUsageCounts(),
+              getStageUsageCounts(applicationReachWhere(reach)),
             ]);
 
             return rawStages.map((stage) => serializeApplicationStage(stage, usageCounts.get(stage.code) || 0));
@@ -2106,18 +2228,17 @@ export const getAdminApplications = async (req: Request, res: Response, next: Ne
 export const getAdminApplicationById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const lookup = getParamString(req.params.id);
-    const applicationLookup = await prisma.jobApplication.findFirst({
-      where: {
-        OR: [{ id: lookup }, { applicationRef: lookup }],
-      },
-      select: { id: true },
-    });
+    // The id wins over a reference, so one record is meant.
+    const applicationLookup = (await prisma.jobApplication.findUnique({ where: { id: lookup }, select: { id: true } }))
+      ?? (await prisma.jobApplication.findUnique({ where: { applicationRef: lookup }, select: { id: true } }));
 
     if (!applicationLookup) {
       return res.status(404).json({ success: false, error: 'Application record not found.' });
     }
 
     const id = applicationLookup.id;
+    // A state-limited viewer sees only the offers and the candidate's other applications of their own places.
+    const reach = await requestReach(req, res);
 
     const application = await prisma.jobApplication.findUnique({
       where: { id },
@@ -2125,7 +2246,7 @@ export const getAdminApplicationById = async (req: Request, res: Response, next:
         candidate: {
           include: {
             applications: {
-              where: { id: { not: id } },
+              where: { AND: [{ id: { not: id } }, applicationReachWhere(reach)] },
               include: { job: { select: { title: true, jobCode: true } } },
             },
           },
@@ -2161,6 +2282,7 @@ export const getAdminApplicationById = async (req: Request, res: Response, next:
           },
         },
         offers: {
+          where: offerReachWhere(reach),
           orderBy: { createdAt: 'desc' },
         },
         activityLogs: {
@@ -2180,9 +2302,10 @@ export const getAdminApplicationById = async (req: Request, res: Response, next:
       ? (await prisma.hrmEmployee.findMany({ where: { id: { in: hrmIds } }, select: { id: true, employeeCode: true } })).map((row) => [row.id, row.employeeCode])
       : []);
 
+    const offerFiles = await splitOfferFiles(reach, [id]);
     res.status(200).json({
       success: true,
-      application: { ...application, offers: application.offers.map((offer) => ({ ...offer, hrmEmployeeCode: offer.hrmEmployeeId ? codes.get(offer.hrmEmployeeId) ?? null : null })) },
+      application: { ...application, documents: filterOfferDocuments(application.documents, offerFiles.visible, offerFiles.hidden), activityLogs: reach.all ? application.activityLogs : limitOfferActivity(application.activityLogs, offerFiles.hidden), offers: application.offers.map((offer) => ({ ...offer, hrmEmployeeCode: offer.hrmEmployeeId ? codes.get(offer.hrmEmployeeId) ?? null : null })) },
     });
   } catch (error) {
     next(error);
@@ -2304,6 +2427,16 @@ export const assignRecruiter = async (req: Request, res: Response, next: NextFun
     const id = getParamString(req.params.id);
     const { recruiterId } = req.body;
 
+    if (recruiterId) {
+      // The person assigned must be somebody who can open this application.
+      const recruiter = await prisma.user.findFirst({ where: { id: String(recruiterId), role: { in: ['SUPER_ADMIN', 'ADMIN', 'EMPLOYEE'] } }, select: { id: true, role: true, name: true } });
+      if (!recruiter) return res.status(400).json({ success: false, error: 'The selected recruiter was not found.' });
+      const theirs = await getRecruitmentReach({ userId: recruiter.id, role: recruiter.role });
+      if (!theirs.all && !(await prisma.jobApplication.count({ where: { AND: [{ OR: [{ id }, { applicationRef: id }] }, applicationReachWhere(theirs)] } }))) {
+        return res.status(400).json({ success: false, error: `${recruiter.name || 'That person'} has no recruitment access to this application's state.` });
+      }
+    }
+
     const application = await prisma.jobApplication.update({
       where: { id },
       data: { assignedRecruiterId: recruiterId || null },
@@ -2335,6 +2468,14 @@ export const deleteApplication = async (req: Request, res: Response, next: NextF
 
     if (!application) {
       return res.status(404).json({ success: false, error: 'Application record not found.' });
+    }
+    // Deleting takes the offers, interviews and notes with it: seeing it only through an offer is not enough.
+    const reach = await requestReach(req, res);
+    if (!reach.all) {
+      const ownJob = await prisma.job.count({ where: { AND: [{ id: application.jobId }, jobReachWhere(reach)] } });
+      if (!ownJob || (await splitOfferFiles(reach, [id])).hidden.length) {
+        return res.status(403).json({ ...OUT_OF_REACH, error: 'Only somebody who covers this job and every offer on it can delete the application.' });
+      }
     }
 
     await prisma.$transaction([
@@ -2400,9 +2541,13 @@ export const getAdminCandidates = async (req: Request, res: Response, next: Next
       ];
     }
 
+    const reach = await requestReach(req, res);
+    const scopedWhere = narrowed(reach, where, candidateReachWhere);
+    const theirApplications = applicationReachWhere(reach);
+
     const [candidates, total] = await Promise.all([
       prisma.candidate.findMany({
-        where,
+        where: scopedWhere,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limitNum,
@@ -2420,6 +2565,7 @@ export const getAdminCandidates = async (req: Request, res: Response, next: Next
           inTalentPool: true,
           createdAt: true,
           applications: {
+            where: theirApplications,
             take: 2,
             orderBy: { appliedAt: 'desc' },
             select: {
@@ -2431,10 +2577,10 @@ export const getAdminCandidates = async (req: Request, res: Response, next: Next
               job: { select: { title: true, jobCode: true } },
             },
           },
-          _count: { select: { applications: true } },
+          _count: { select: { applications: { where: theirApplications } } },
         },
       }),
-      prisma.candidate.count({ where }),
+      prisma.candidate.count({ where: scopedWhere }),
     ]);
 
     res.status(200).json({
@@ -2456,34 +2602,45 @@ export const getAdminCandidateById = async (req: Request, res: Response, next: N
   try {
     const id = getParamString(req.params.id);
 
+    // A state-limited viewer sees the person with only their own places' applications and what belongs to them.
+    const reach = await requestReach(req, res);
+    const theirIds = reach.all ? null : (await prisma.jobApplication.findMany({ where: { AND: [{ candidateId: id }, applicationReachWhere(reach)] }, select: { id: true } })).map((row) => row.id);
+    const ofTheirs = theirIds ? { where: { applicationId: { in: theirIds } } } : {};
+
     const candidate = await prisma.candidate.findUnique({
       where: { id },
       include: {
         applications: {
+          ...(theirIds ? { where: { id: { in: theirIds } } } : {}),
           orderBy: { appliedAt: 'desc' },
           include: {
             job: { include: { department: true } },
             assignedRecruiter: { select: { name: true } },
           },
         },
-        documents: true,
+        documents: { ...ofTheirs },
         notes: {
+          ...ofTheirs,
           orderBy: { createdAt: 'desc' },
           include: { author: { select: { name: true, email: true } } },
         },
         ratings: {
+          ...ofTheirs,
           orderBy: { createdAt: 'desc' },
           include: { evaluator: { select: { name: true, email: true } } },
         },
         interviews: {
+          ...ofTheirs,
           orderBy: { scheduledAt: 'desc' },
           include: { job: { select: { title: true } }, interviewer: { select: { name: true } } },
         },
         offers: {
+          where: offerReachWhere(reach),
           orderBy: { createdAt: 'desc' },
           include: { job: { select: { title: true } } },
         },
         activityLogs: {
+          ...ofTheirs,
           orderBy: { createdAt: 'desc' },
           include: { actor: { select: { name: true } } },
         },
@@ -2494,9 +2651,10 @@ export const getAdminCandidateById = async (req: Request, res: Response, next: N
       return res.status(404).json({ success: false, error: 'Candidate record not found.' });
     }
 
+    const offerFiles = await splitOfferFiles(reach, theirIds ?? []);
     res.status(200).json({
       success: true,
-      candidate,
+      candidate: { ...candidate, documents: filterOfferDocuments(candidate.documents, offerFiles.visible, offerFiles.hidden), activityLogs: reach.all ? candidate.activityLogs : limitOfferActivity(candidate.activityLogs, offerFiles.hidden) },
     });
   } catch (error) {
     next(error);
@@ -2834,9 +2992,12 @@ export const getAdminInterviews = async (req: Request, res: Response, next: Next
       select: { id: true, fullName: true, email: true, mobile: true },
     };
 
+    const reach = await requestReach(req, res);
+    const scopedWhere = narrowed(reach, where, interviewReachWhere);
+
     const [interviewsRaw, total] = await Promise.all([
       prisma.interview.findMany({
-        where,
+        where: scopedWhere,
         orderBy: { scheduledAt: 'asc' },
         skip,
         take: limitNum,
@@ -2883,40 +3044,52 @@ export const getAdminInterviews = async (req: Request, res: Response, next: Next
               recommendation: true,
               strengths: true,
               notes: true,
+              interviewerId: true,
               interviewer: { select: { name: true } },
             },
           },
         },
       }),
-      prisma.interview.count({ where }),
+      prisma.interview.count({ where: scopedWhere }),
     ]);
+    // Interviews the viewer only takes (another state's application) show no ratings or other people's feedback.
+    const openApplications = reach.all ? null : new Set((await prisma.jobApplication.findMany({
+      where: { AND: [{ id: { in: interviewsRaw.map((interview) => interview.application.id) } }, applicationReachWhere(reach)] },
+      select: { id: true },
+    })).map((row) => row.id));
 
-    const interviews = interviewsRaw.map((interview) => ({
-      id: interview.id,
-      interviewType: interview.type,
-      scheduledAt: interview.scheduledAt,
-      durationMinutes: interview.durationMinutes,
-      meetingUrl: interview.meetingUrl,
-      meetingLocation: interview.location,
-      status: interview.status,
-      interviewerName: interview.interviewer?.name || null,
-      interviewerEmail: interview.interviewer?.email || null,
-      notes: interview.notes,
-      application: {
-        ...interview.application,
-        candidate: interview.candidate,
-        job: interview.job,
-      },
-      ratings: interview.application.ratings,
-      feedback: interview.feedback.map((item) => ({
-        id: item.id,
-        interviewerName: item.interviewer?.name || 'Interviewer',
-        rating: item.overallRating,
-        recommendation: item.recommendation,
-        strengths: item.strengths,
-        comments: item.notes,
-      })),
-    }));
+    const interviews = interviewsRaw.map((raw) => {
+      const own = openApplications && !openApplications.has(raw.application.id);
+      const interview = own
+        ? { ...raw, application: { ...raw.application, ratings: [] }, feedback: raw.feedback.filter((item) => item.interviewerId === reach.userId) }
+        : raw;
+      return {
+        id: interview.id,
+        interviewType: interview.type,
+        scheduledAt: interview.scheduledAt,
+        durationMinutes: interview.durationMinutes,
+        meetingUrl: interview.meetingUrl,
+        meetingLocation: interview.location,
+        status: interview.status,
+        interviewerName: interview.interviewer?.name || null,
+        interviewerEmail: interview.interviewer?.email || null,
+        notes: interview.notes,
+        application: {
+          ...interview.application,
+          candidate: interview.candidate,
+          job: interview.job,
+        },
+        ratings: interview.application.ratings,
+        feedback: interview.feedback.map((item) => ({
+          id: item.id,
+          interviewerName: item.interviewer?.name || 'Interviewer',
+          rating: item.overallRating,
+          recommendation: item.recommendation,
+          strengths: item.strengths,
+          comments: item.notes,
+        })),
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -2961,6 +3134,10 @@ export const scheduleInterview = async (req: Request, res: Response, next: NextF
 
     if (!application) {
       return res.status(404).json({ success: false, error: 'Application not found.' });
+    }
+    const reach = await requestReach(req, res);
+    if (!reach.all && !(await prisma.jobApplication.count({ where: { AND: [{ id: application.id }, applicationReachWhere(reach)] } }))) {
+      return res.status(404).json({ ...OUT_OF_REACH, error: 'Application not found.' });
     }
 
     const interview = await prisma.interview.create({
@@ -3262,6 +3439,7 @@ const readOfferHrmFields = async (
     hrmOrgUnitId: body.hrmOrgUnitId,
     designation: offerData.designation,
     locationType: body.locationType,
+    headOfficeUnitId: body.headOfficeUnitId,
     stateId: body.stateId,
     cityId: body.cityId,
     isOfficeManager: body.isOfficeManager,
@@ -3301,6 +3479,7 @@ const offerHrmColumns = (fields: OfferHrmFields, keepExistingPlacement: boolean)
   ...(fields.placement || !keepExistingPlacement ? {
     hrmOrgUnitId: fields.placement?.hrmOrgUnitId ?? null,
     locationType: fields.placement?.locationType ?? null,
+    headOfficeUnitId: fields.placement?.headOfficeUnitId ?? null,
     stateId: fields.placement?.stateId ?? null,
     cityId: fields.placement?.cityId ?? null,
     isOfficeManager: fields.placement?.isOfficeManager ?? false,
@@ -3419,6 +3598,12 @@ export const downloadOfferAcceptanceFile = async (req: Request, res: Response, n
       await streamOfferFile(req, res, offer.acceptanceCertificateUrl, `Offer_Acceptance_${offer.application.applicationRef}.pdf`, 'application/pdf', 'attachment');
       return;
     }
+    if (kind === 'signed-letter') {
+      const file = await signedLetterFileOf(offer);
+      if (!file) return res.status(404).json({ success: false, error: 'No signed offer letter is stored for this acceptance.' });
+      await streamOfferFile(req, res, file.url, file.fileName, file.mimeType, 'attachment');
+      return;
+    }
     if (kind === 'signature') {
       const document = offer.signatureFileUrl
         ? await prisma.candidateDocument.findFirst({ where: { fileUrl: offer.signatureFileUrl }, select: { fileName: true, mimeType: true } })
@@ -3434,20 +3619,20 @@ export const downloadOfferAcceptanceFile = async (req: Request, res: Response, n
 };
 
 /** HRM masters for the offer form (department, designation, states, head office, managers). */
-export const getOfferFormOptions = async (_req: Request, res: Response, next: NextFunction) => {
+export const getOfferFormOptions = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    res.status(200).json({ success: true, options: await loadOfferFormOptions() });
+    res.status(200).json({ success: true, options: await loadOfferFormOptions(await requestReach(req, res)) });
   } catch (error) {
     next(error);
   }
 };
 
-/** Working employees the new joiner could report to. */
+/** Working employees the new joiner could report to (suggested, that office's team, head office). */
 export const getOfferManagerOptions = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const search = typeof req.query.search === 'string' ? req.query.search : '';
-    res.status(200).json({ success: true, managers: await searchOfferReportingManagers(search) });
+    res.status(200).json({ success: true, ...(await searchOfferReportingManagers(req.query, await requestReach(req, res))) });
   } catch (error) {
+    if (error instanceof HrmHttpError) return res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
     next(error);
   }
 };
@@ -3477,13 +3662,16 @@ export const getAdminOffers = async (req: Request, res: Response, next: NextFunc
       ];
     }
 
+    const reach = await requestReach(req, res);
+    const scopedWhere = narrowed(reach, where, offerReachWhere);
+
     const selectCandidateBasic = {
       select: { id: true, fullName: true, email: true, mobile: true },
     };
 
     const [offersRaw, total, statusGroups] = await Promise.all([
       prisma.offer.findMany({
-        where,
+        where: scopedWhere,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limitNum,
@@ -3503,6 +3691,7 @@ export const getAdminOffers = async (req: Request, res: Response, next: NextFunc
           additionalTerms: true,
           hrmOrgUnitId: true,
           locationType: true,
+          headOfficeUnitId: true,
           stateId: true,
           cityId: true,
           isOfficeManager: true,
@@ -3517,6 +3706,7 @@ export const getAdminOffers = async (req: Request, res: Response, next: NextFunc
           documentHash: true,
           acceptanceCertificateUrl: true,
           signatureFileUrl: true,
+          signedLetterUrl: true,
           hrmHandoffStatus: true,
           hrmHandoffError: true,
           hrmHandoffAttempts: true,
@@ -3528,9 +3718,9 @@ export const getAdminOffers = async (req: Request, res: Response, next: NextFunc
           application: { select: { id: true, applicationRef: true, currentStage: true } },
         },
       }),
-      prisma.offer.count({ where }),
+      prisma.offer.count({ where: scopedWhere }),
       // Counts for the status chips, for the same search (all statuses).
-      prisma.offer.groupBy({ by: ['status'], where: search ? { OR: where.OR! } : {}, _count: { _all: true } }),
+      prisma.offer.groupBy({ by: ['status'], where: narrowed(reach, search ? { OR: where.OR! } : {}, offerReachWhere), _count: { _all: true } }),
     ]);
     const hrmIds = offersRaw.map((offer) => offer.hrmEmployeeId).filter((value): value is string => Boolean(value));
     const hrmCodes = new Map(hrmIds.length
@@ -3557,6 +3747,7 @@ export const getAdminOffers = async (req: Request, res: Response, next: NextFunc
       placement: offer.hrmOrgUnitId ? {
         hrmOrgUnitId: offer.hrmOrgUnitId,
         locationType: offer.locationType,
+        headOfficeUnitId: offer.headOfficeUnitId,
         stateId: offer.stateId,
         cityId: offer.cityId,
         isOfficeManager: offer.isOfficeManager,
@@ -3572,6 +3763,7 @@ export const getAdminOffers = async (req: Request, res: Response, next: NextFunc
         documentHash: offer.documentHash,
         hasCertificate: Boolean(offer.acceptanceCertificateUrl),
         hasSignatureFile: Boolean(offer.signatureFileUrl),
+        hasSignedLetter: Boolean(signedLetterUrlOf(offer)),
       } : null,
       // Where the accepted offer stands in HRM (pre-joining record), for the "Open in HRM" / Retry actions.
       hrm: offer.status === 'ACCEPTED' ? {
@@ -3675,6 +3867,10 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
     if (!application) {
       return res.status(404).json({ success: false, error: 'Application record not found.' });
     }
+    const reach = await requestReach(req, res);
+    if (!reach.all && !(await prisma.jobApplication.count({ where: { AND: [{ id: application.id }, applicationReachWhere(reach)] } }))) {
+      return res.status(404).json({ ...OUT_OF_REACH, error: 'Application record not found.' });
+    }
 
     let submittedOfferData: Partial<OfferLetterData> = {};
     if (typeof req.body.offerData === 'string' && req.body.offerData.trim()) {
@@ -3726,6 +3922,12 @@ export const createOffer = async (req: Request, res: Response, next: NextFunctio
     }
     const hrmFields = await readOfferHrmFields(req.body as Record<string, unknown>, offerData);
     if ('error' in hrmFields) return res.status(400).json({ success: false, error: hrmFields.error });
+    // Where the offer posts the candidate (an offer without a placement follows its job) must be the caller's.
+    if (!placeInReach(reach, hrmFields.placement
+      ? { locationType: hrmFields.placement.locationType, stateId: hrmFields.placement.stateId }
+      : { locationType: application.job.hrmLocationType, stateId: application.job.hrmStateId })) {
+      return res.status(403).json({ ...OUT_OF_REACH, error: OUTSIDE_PLACE_MESSAGE });
+    }
 
     const fileName = `Offer_Letter_${application.applicationRef}_${offerData.employeeName.replace(/[^a-z0-9]+/gi, '_')}.pdf`;
     const uploadedDriveFile = await uploadFileToDrive(
@@ -3884,6 +4086,14 @@ export const updateOfferStatus = async (req: Request, res: Response, next: NextF
     }
     if (status === 'SENT' && !offer.offerLetterUrl) {
       return res.status(400).json({ success: false, error: 'A generated PDF offer letter is required before sending.' });
+    }
+    if (status === 'SENT' && offer.locationType === 'HEAD_OFFICE' && offer.headOfficeUnitId) {
+      // A letter never goes out for a head office that is gone, or that has moved since the letter was made.
+      const office = await prisma.hrmOrgUnit.findFirst({ where: { id: offer.headOfficeUnitId, type: 'HEAD_OFFICE', isActive: true }, select: { stateId: true, cityId: true } });
+      const problem = !office
+        ? 'The head office on this offer is switched off or removed.'
+        : office.stateId !== offer.stateId || office.cityId !== offer.cityId ? 'The head office on this offer has moved to another place.' : null;
+      if (problem) return res.status(409).json({ success: false, error: `${problem} Edit the offer, check the head office and send it again.`, code: 'HEAD_OFFICE_CHANGED' });
     }
     const rawReason = typeof req.body?.reason === 'string' ? req.body.reason : typeof req.body?.declineReason === 'string' ? req.body.declineReason : '';
     const reason = rawReason.trim().slice(0, 1000);
@@ -4071,6 +4281,14 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
     }
     const hrmFields = await readOfferHrmFields(req.body as Record<string, unknown>, offerData, { components: readStoredComponents(existing.salaryComponents) });
     if ('error' in hrmFields) return res.status(400).json({ success: false, error: hrmFields.error });
+    // The place the offer will post the candidate to after this edit must be the caller's.
+    const reach = await requestReach(req, res);
+    const newPlace = hrmFields.placement
+      ? { locationType: hrmFields.placement.locationType, stateId: hrmFields.placement.stateId }
+      : existing.locationType
+        ? { locationType: existing.locationType, stateId: existing.stateId }
+        : { locationType: existing.application.job.hrmLocationType, stateId: existing.application.job.hrmStateId };
+    if (!placeInReach(reach, newPlace)) return res.status(403).json({ ...OUT_OF_REACH, error: OUTSIDE_PLACE_MESSAGE });
 
     let offerLetterUrl = existing.offerLetterUrl;
     let offerLetterFileName = existing.offerLetterFileName;
@@ -4236,6 +4454,7 @@ export const getRecruitmentSettings = async (req: Request, res: Response, next: 
   try {
     await ensureDefaultRecruitmentData();
     const section = typeof req.query.section === 'string' ? req.query.section : 'all';
+    const reach = await requestReach(req, res);
 
     const fetchDepartments = () => prisma.jobDepartment.findMany({
       orderBy: { name: 'asc' },
@@ -4244,7 +4463,7 @@ export const getRecruitmentSettings = async (req: Request, res: Response, next: 
         name: true,
         code: true,
         description: true,
-        _count: { select: { jobs: true } },
+        _count: { select: { jobs: { where: jobReachWhere(reach) } } },
       },
     });
     const fetchStages = async () => {
@@ -4261,7 +4480,7 @@ export const getRecruitmentSettings = async (req: Request, res: Response, next: 
             isTerminal: true,
           },
         }),
-        getStageUsageCounts(),
+        getStageUsageCounts(applicationReachWhere(reach)),
       ]);
 
       return stages.map((stage) => serializeApplicationStage(stage, usageCounts.get(stage.code) || 0));
@@ -4499,6 +4718,7 @@ export const getAdminDepartments = async (req: Request, res: Response, next: Nex
       ];
     }
 
+    const reach = await requestReach(req, res);
     const departments = await prisma.jobDepartment.findMany({
       where,
       orderBy: { name: 'asc' },
@@ -4510,7 +4730,7 @@ export const getAdminDepartments = async (req: Request, res: Response, next: Nex
             code: true,
             description: true,
             createdAt: true,
-            _count: { select: { jobs: true } },
+            _count: { select: { jobs: { where: jobReachWhere(reach) } } },
           },
     });
 

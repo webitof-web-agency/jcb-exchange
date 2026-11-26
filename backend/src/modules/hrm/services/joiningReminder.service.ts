@@ -3,7 +3,8 @@ import { dispatchRecruitmentWhatsApp } from '../../../services/whatsappIntegrati
 import { dispatchRecruitmentSms } from '../../../services/smsIntegration.service';
 import { enqueueConfiguredEmail } from '../../../services/recruitmentEmail.service';
 import { getEmployeeScopeWhere } from '../access';
-import { listCurrentOfficeManagers } from '../officeAssignments';
+import { activeChargeWhere } from '../additionalChargeRules';
+import { listCurrentOfficeManagers, WORKING_STATUSES } from '../officeAssignments';
 import { buildChecklist, checklistProgress } from '../onboardingChecklist';
 import {
   JOINING_REMINDER_STATUSES,
@@ -121,7 +122,7 @@ const hrContactsByJoiner = async (joinerIds: string[]) => {
   return { byJoiner, failed };
 };
 
-/** The logins of the current managers of the state office (or of the state's offices when only the state is known). */
+/** The logins of the current managers (posted or on additional charge) of the state office, or of the state's offices. */
 const stateManagerContacts = async (target: StateOfficeTarget, today: Date): Promise<StaffContact[]> => {
   const officeIds = 'officeUnitId' in target
     ? [target.officeUnitId]
@@ -130,6 +131,12 @@ const stateManagerContacts = async (target: StateOfficeTarget, today: Date): Pro
   for (const officeId of officeIds) {
     for (const row of await listCurrentOfficeManagers(prisma, officeId, today)) managerIds.add(row.employeeId);
   }
+  // Whoever holds an additional charge of the office hears about its joiners too.
+  const holders = officeIds.length ? await prisma.hrmAdditionalCharge.findMany({
+    where: { officeUnitId: { in: officeIds }, ...activeChargeWhere(today), employee: { status: { in: [...WORKING_STATUSES] }, archivedAt: null } },
+    select: { employeeId: true },
+  }) : [];
+  for (const row of holders) managerIds.add(row.employeeId);
   if (!managerIds.size) return [];
   const rows = await prisma.hrmEmployee.findMany({ where: { id: { in: [...managerIds] }, userId: { not: null } }, select: { user: { select: contactSelect } } });
   return rows.flatMap((row) => (row.user ? [row.user] : []));

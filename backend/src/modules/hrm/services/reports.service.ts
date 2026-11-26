@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../../../lib/prisma';
 import { getActiveScopes, getEmployeeScopeDuringWhere, getEmployeeScopeWhere, getHrmPermissions } from '../access';
 import { istToday } from '../istDate';
+import { activeChargeWhere } from '../additionalChargeRules';
 import { casePlacementFilter, caseScope } from './onboarding.service';
 import { currentAssignmentWhere, utcToday, WORKING_STATUSES } from '../officeAssignments';
 import { HRM_PERMISSIONS, hasAllIndiaScope, hasHrmPermission } from '../security';
@@ -159,10 +160,15 @@ export const getReportSummary = async (actor: Actor, rawQuery: unknown) => {
         select: { employeeId: true },
         take: 1,
       },
+      additionalCharges: {
+        where: { ...activeChargeWhere(today), employee: { status: { in: [...WORKING_STATUSES] }, archivedAt: null } },
+        select: { employeeId: true },
+        take: 1,
+      },
     },
     orderBy: { name: 'asc' },
   });
-  const vacantStates = offices.filter((office) => !office.officeAssignments.length).map((office) => ({ officeId: office.id, office: office.name, state: office.state?.name ?? null }));
+  const vacantStates = offices.filter((office) => !office.officeAssignments.length && !office.additionalCharges.length).map((office) => ({ officeId: office.id, office: office.name, state: office.state?.name ?? null }));
 
   const personRow = (row: { id: string; employeeCode: string; legalName: string; preferredName: string | null; assignments: Array<{ designation: string; state: { name: string } | null }> }) => ({
     id: row.id, employeeCode: row.employeeCode, name: row.preferredName || row.legalName,

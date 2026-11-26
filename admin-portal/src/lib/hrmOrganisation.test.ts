@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { HrmOrganisation, HrmOrganisationUnit } from './hrmApi';
+import { officeCoverageLabel } from './hrmLifecycle';
 import {
-  addCustomDepartment, buildStateRows, countStateRows, departmentsOf, describeSetupResult, describeSkippedState, describeStateOfficesResult,
+  addCustomDepartment, describeDepartmentUse, filterDepartments, buildStateRows, countStateRows, departmentsOf, describeSetupResult, describeSkippedState, describeStateOfficesResult,
   filterStateRows, formatManagerNames, getHrmBase, groupOrganisation, officeHref, statesWithoutOffice, summariseOrganisation,
 } from './hrmOrganisation';
 
@@ -50,7 +51,7 @@ test('search looks at name, code, state, city, managers and head office', () => 
 
 test('summary counts coverage from the active state offices and keeps the unplaced staff from the server', () => {
   assert.deepEqual(summariseOrganisation(organisation), {
-    headOffice: units[0], departments: 1, stateOffices: 2, totalStates: 5, covered: 1, vacant: 1, joiningSoon: 0, notSetUp: 3,
+    headOffice: units[0], departments: 1, stateOffices: 2, totalStates: 5, covered: 1, vacant: 1, coveredByCharge: 0, joiningSoon: 0, notSetUp: 3,
     staffInStates: 7, staffInHeadOffice: 4, unplacedStaff: 3, inactive: 1,
   });
   const noCoverage = { ...organisation, coverage: undefined } as unknown as HrmOrganisation;
@@ -133,6 +134,14 @@ test('a custom department is trimmed and repeats are refused', () => {
   assert.deepEqual(addCustomDepartment(['Sales'], '  Legal   Team '), { names: ['Sales', 'Legal Team'], error: '' });
   assert.match(addCustomDepartment(['Sales'], 'sales').error, /already/);
   assert.match(addCustomDepartment([], 'x').error, /at least 2/);
+  assert.match(addCustomDepartment([], '<script>').error, /cannot contain/);
+  assert.match(addCustomDepartment([], '--').error, /letter or number/);
+  assert.deepEqual(addCustomDepartment([], ' Field\u202e  Ops\u0007 ').names, ['Field Ops']);
+  assert.equal(addCustomDepartment([], 'मानव संसाधन').error, '');
+  assert.deepEqual(describeDepartmentUse({ currentEmployees: 2, totalAssignments: 5, openOffers: 1, accessScopes: 1 }), ['2 employees', '1 open offer', 'HRM access']);
+  assert.deepEqual(describeDepartmentUse({ currentEmployees: 0, totalAssignments: 1, openOffers: 0, accessScopes: 0 }), ['Employee records']);
+  assert.deepEqual(describeDepartmentUse({ currentEmployees: 0, totalAssignments: 0, openOffers: 0, accessScopes: 0 }), []);
+  assert.deepEqual(filterDepartments([{ name: 'Sales', code: 'DEPT-SALES' }, { name: 'Accounts', code: 'DEPT-ACC' }], 'acc').map((row) => row.name), ['Accounts']);
 });
 
 test('a vacant state office with a State Manager joining is counted as joining soon and lists who is coming', () => {
@@ -143,4 +152,15 @@ test('a vacant state office with a State Manager joining is counted as joining s
   const vacantRow = buildStateRows(withJoining).find((row) => row.status === 'VACANT');
   assert.deepEqual(vacantRow?.upcomingManagers, [joining]);
   assert.ok(buildStateRows(withJoining).filter((row) => row.status !== 'VACANT').every((row) => row.upcomingManagers.length === 0));
+});
+
+test('a state covered only by an additional charge counts as covered and names who looks after it', () => {
+  const holder = { id: 'e7', employeeCode: 'EMP-0007', name: 'Meena', until: null };
+  const charged = { ...organisation, units: organisation.units.map((item) => (item.coverage === 'VACANT' ? { ...item, coverage: 'COVERED' as const, chargeHolders: [holder] } : item)) } as HrmOrganisation;
+  const summary = summariseOrganisation(charged);
+  assert.deepEqual([summary.covered, summary.vacant, summary.coveredByCharge], [2, 0, 1]);
+  const row = buildStateRows(charged).find((item) => item.chargeHolders.length);
+  assert.equal(row?.status, 'COVERED');
+  assert.deepEqual(filterStateRows(buildStateRows(charged), 'COVERED', 'meena').map((item) => item.chargeHolders[0]?.name), ['Meena']);
+  assert.equal(officeCoverageLabel({ kind: 'STATE', isActive: true }, 0, 1), 'Covered (additional charge)');
 });

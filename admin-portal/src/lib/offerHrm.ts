@@ -1,3 +1,5 @@
+import type { ManagerOptions } from './hrmManagers';
+import { headOfficeProblem, selectedHeadOffice, type HrmHeadOffice } from './hrmHeadOffice';
 import api from './api';
 import type { OfferLetterFormData } from './offerLetter';
 import { hasPermission } from './permissionUtils';
@@ -19,13 +21,15 @@ export type OfferFormOptions = {
   departments: Array<{ id: string; code: string; name: string }>;
   designations: Array<{ id: string; name: string }>;
   states: Array<{ id: number; name: string; hasOffice: boolean; officeSwitchedOff: boolean }>;
-  headOffice: { id: string; name: string; stateId: number | null; cityId: number | null } | null;
+  /** Every head office, the default one first; empty when none is set up or outside the caller's places. */
+  headOffices: HrmHeadOffice[];
+  /** Where the caller may post a candidate (a state-limited recruiter); null stateIds = every state. */
+  places?: { headOffice: boolean; stateIds: number[] | null };
   nationalOperationsManagers: Array<{ id: string; employeeCode: string; name: string }>;
   employmentTypes: OfferEmploymentType[];
   stateManagerDesignation: string;
 };
 
-export type OfferManagerOption = { id: string; employeeCode: string; name: string; designation: string | null };
 export type CityOption = { id: number; name: string };
 
 export type SalaryComponentRow = {
@@ -39,6 +43,8 @@ export type SalaryComponentRow = {
 export type OfferHrmForm = {
   hrmOrgUnitId: string;
   locationType: OfferLocationType | '';
+  /** Head office postings: the chosen head office. */
+  headOfficeUnitId: string;
   /** Kept as strings for the selects; '' = not chosen. */
   stateId: string;
   cityId: string;
@@ -53,6 +59,7 @@ export type OfferHrmForm = {
 export type StoredOfferPlacement = {
   hrmOrgUnitId: string;
   locationType: string | null;
+  headOfficeUnitId?: string | null;
   stateId: number | null;
   cityId: number | null;
   isOfficeManager: boolean;
@@ -108,6 +115,7 @@ export const statusChangeNeedsReason = (status: OfferStatus) => status === 'DECL
 export const createEmptyOfferHrmForm = (): OfferHrmForm => ({
   hrmOrgUnitId: '',
   locationType: '',
+  headOfficeUnitId: '',
   stateId: '',
   cityId: '',
   isOfficeManager: false,
@@ -130,6 +138,7 @@ export const offerHrmFormFromStored = (
   return {
     hrmOrgUnitId: placement?.hrmOrgUnitId ?? '',
     locationType: placement?.locationType === 'HEAD_OFFICE' || placement?.locationType === 'STATE_OFFICE' ? placement.locationType : '',
+    headOfficeUnitId: placement?.headOfficeUnitId ?? '',
     stateId: placement?.stateId ? String(placement.stateId) : '',
     cityId: placement?.cityId ? String(placement.cityId) : '',
     isOfficeManager: Boolean(placement?.isOfficeManager),
@@ -189,12 +198,12 @@ export const buildPlaceOfPosting = (
 
 // ---- checks before generating the letter ----
 
-export type OfferHrmErrors = Partial<Record<'hrmOrgUnitId' | 'designation' | 'locationType' | 'stateId' | 'cityId' | 'salaryComponents' | 'reportingManagerEmployeeId', string>>;
+export type OfferHrmErrors = Partial<Record<'hrmOrgUnitId' | 'designation' | 'locationType' | 'headOfficeUnitId' | 'stateId' | 'cityId' | 'salaryComponents' | 'reportingManagerEmployeeId', string>>;
 
 export const validateOfferHrmForm = (
   form: OfferHrmForm,
   designation: string,
-  options: Pick<OfferFormOptions, 'designations' | 'states' | 'headOffice'> | null,
+  options: Pick<OfferFormOptions, 'designations' | 'states' | 'headOffices' | 'places'> | null,
   /** How many National Operations Managers exist: with more than one, a State Manager needs a manager chosen. */
   nationalManagerCount = 0,
 ): OfferHrmErrors => {
@@ -205,11 +214,15 @@ export const validateOfferHrmForm = (
     errors.designation = 'Choose a designation from the HRM list.';
   }
   if (!form.locationType) errors.locationType = 'Choose Head office or State office.';
-  if (form.locationType === 'HEAD_OFFICE' && options && !options.headOffice) {
-    errors.locationType = 'The head office is not set up yet. Set it up on the HRM Organisation page, or choose State office.';
-  }
-  if (form.locationType === 'HEAD_OFFICE' && Boolean(form.stateId) !== Boolean(form.cityId)) {
-    errors.cityId = 'Select the state together with the city, or leave both empty for the head office city.';
+  if (form.locationType === 'HEAD_OFFICE' && options) {
+    if (!options.headOffices.length) {
+      errors.locationType = options.places && !options.places.headOffice
+        ? 'Head office postings are outside your recruitment access. Choose State office.'
+        : 'The head office is not set up yet. Set it up on the HRM Organisation page, or choose State office.';
+    } else {
+      const problem = headOfficeProblem(selectedHeadOffice(options.headOffices, form.headOfficeUnitId));
+      if (problem) errors.headOfficeUnitId = problem;
+    }
   }
   if (form.locationType === 'STATE_OFFICE') {
     if (!form.stateId) errors.stateId = 'Select the state.';
@@ -242,6 +255,7 @@ export const validateOfferHrmForm = (
 export const appendOfferHrmFields = (payload: FormData, form: OfferHrmForm) => {
   payload.append('hrmOrgUnitId', form.hrmOrgUnitId);
   payload.append('locationType', form.locationType);
+  payload.append('headOfficeUnitId', form.locationType === 'HEAD_OFFICE' ? form.headOfficeUnitId : '');
   payload.append('stateId', form.stateId);
   payload.append('cityId', form.cityId);
   payload.append('isOfficeManager', form.locationType === 'STATE_OFFICE' && form.isOfficeManager ? 'true' : 'false');
@@ -267,6 +281,7 @@ export const nextCustomComponentCode = (rows: readonly SalaryComponentRow[]) => 
 export const storedPlacementFromOffer = (offer: {
   hrmOrgUnitId?: string | null;
   locationType?: string | null;
+  headOfficeUnitId?: string | null;
   stateId?: number | null;
   cityId?: number | null;
   isOfficeManager?: boolean | null;
@@ -277,6 +292,7 @@ export const storedPlacementFromOffer = (offer: {
   return {
     hrmOrgUnitId: offer.hrmOrgUnitId,
     locationType: offer.locationType ?? null,
+    headOfficeUnitId: offer.headOfficeUnitId ?? null,
     stateId: offer.stateId ?? null,
     cityId: offer.cityId ?? null,
     isOfficeManager: Boolean(offer.isOfficeManager),
@@ -509,6 +525,8 @@ export type StoredOfferAcceptance = {
   documentHash: string | null;
   hasCertificate: boolean;
   hasSignatureFile: boolean;
+  /** The signed offer letter (signed on the link, uploaded, or recorded by HR). */
+  hasSignedLetter?: boolean;
 };
 
 export const ACCEPTANCE_METHOD_LABELS: Record<AcceptanceMethod, string> = {
@@ -693,7 +711,8 @@ export const offerHrmApi = {
   runHrmHandoff: (offerId: string) =>
     api.post<{ success: boolean; result: OfferHrmHandoffResult }>(`/recruitment/admin/offers/${encodeURIComponent(offerId)}/hrm-handoff`),
   getFormOptions: () => api.get<{ success: boolean; options: OfferFormOptions }>('/recruitment/admin/offers/form-options'),
-  searchManagers: (search: string) => api.get<{ success: boolean; managers: OfferManagerOption[] }>('/recruitment/admin/offers/manager-options', { params: { search } }),
+  /** The reporting manager list, limited to the recruiter's places (see lib/hrmManagers.ts). */
+  getManagerOptions: (params: Record<string, string>) => api.get<ManagerOptions>('/recruitment/admin/offers/manager-options', { params }),
   getCities: (stateId: number | string) => api.get<CityOption[]>(`/locations/cities/${stateId}`),
   changeStatus: (offerId: string, status: OfferStatus, reason?: string) =>
     api.patch(`/recruitment/admin/offers/${encodeURIComponent(offerId)}/status`, { status, ...(reason ? { reason } : {}) }),
@@ -705,7 +724,7 @@ export const offerHrmApi = {
     api.post<OfferSendResponse>(`/recruitment/admin/offers/${encodeURIComponent(offerId)}/resend`, { channels: [...channels] }),
   acceptOffline: (offerId: string, payload: FormData) =>
     api.post(`/recruitment/admin/offers/${encodeURIComponent(offerId)}/accept-offline`, payload, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  downloadAcceptanceFile: (offerId: string, kind: 'certificate' | 'signature') =>
+  downloadAcceptanceFile: (offerId: string, kind: 'certificate' | 'signature' | 'signed-letter') =>
     api.get<Blob>(`/recruitment/admin/offers/${encodeURIComponent(offerId)}/acceptance/${kind}`, { responseType: 'blob' }),
 };
 

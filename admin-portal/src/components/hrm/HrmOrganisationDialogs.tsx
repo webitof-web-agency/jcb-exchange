@@ -1,20 +1,33 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Building2, Landmark, Loader2, MapPin, Plus, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Landmark, Loader2, MapPin, Plus } from 'lucide-react';
 import api from '@/lib/api';
 import SearchableSelect from '@/components/ui/SearchableSelect';
-import { hrmApi, type HrmCreateUnitPayload, type HrmOrganisation, type HrmOrganisationUnit, type HrmStateOfficesResult } from '@/lib/hrmApi';
-import { addCustomDepartment, describeSetupResult, describeSkippedState, describeStateOfficesResult, SUGGESTED_HEAD_OFFICE_DEPARTMENTS, statesWithoutOffice } from '@/lib/hrmOrganisation';
+import { hrmApi, type HrmOrganisation, type HrmOrganisationUnit, type HrmStateOfficesResult } from '@/lib/hrmApi';
+import { cleanUnitName, describeSetupResult, describeSkippedState, describeStateOfficesResult, statesWithoutOffice, unitNameProblem } from '@/lib/hrmOrganisation';
 import { getHrmErrorMessage } from '@/lib/hrmUi';
 import HrmModal from './HrmModal';
+import { DefaultStar } from './HrmHeadOfficeField';
 
 type Done = (message: string) => void;
-type UnitKind = HrmCreateUnitPayload['kind'];
 type CityOption = { id: number; name: string };
 
 const inputClass = (error?: string) =>
   `h-10 w-full rounded-lg border bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 disabled:bg-slate-50 ${error ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-100' : 'border-slate-200 focus:border-amber-400 focus:ring-amber-100'}`;
+
+/** "Default head office" tick. The default is moved by ticking another office, so a ticked one cannot be unticked. */
+function DefaultTick({ id, checked, onChange, locked, hint }: { id: string; checked: boolean; onChange?: (value: boolean) => void; locked?: boolean; hint: string }) {
+  return (
+    <label htmlFor={id} className={`flex items-start gap-2.5 rounded-xl border p-3 ${locked ? 'cursor-default border-slate-200 bg-slate-50' : 'cursor-pointer border-slate-200 hover:border-amber-300'}`}>
+      <input id={id} type="checkbox" checked={checked} disabled={locked} onChange={(event) => onChange?.(event.target.checked)} className="mt-0.5 h-4 w-4 rounded accent-amber-500" />
+      <span>
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">Default head office <DefaultStar /></span>
+        <span className="block text-xs leading-5 text-slate-500">{hint}</span>
+      </span>
+    </label>
+  );
+}
 
 function Field({ id, label, required, error, hint, children }: { id: string; label: string; required?: boolean; error?: string | undefined; hint?: string; children: React.ReactNode }) {
   return (
@@ -29,66 +42,26 @@ function Field({ id, label, required, error, hint, children }: { id: string; lab
 const cancelButton = 'h-10 rounded-xl border border-slate-200 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60';
 const primaryButton = 'inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-amber-400 px-5 text-sm font-bold text-slate-950 shadow-sm hover:bg-amber-500 disabled:opacity-60';
 
-const KINDS: Array<{ id: UnitKind; title: string; description: string; icon: typeof MapPin }> = [
-  { id: 'STATE', title: 'State office', description: 'One per state. State Managers belong here.', icon: MapPin },
-  { id: 'DEPARTMENT', title: 'Department', description: 'A function such as Finance or Sales.', icon: Building2 },
-  { id: 'HEAD_OFFICE', title: 'Head office', description: 'Another head office unit.', icon: Landmark },
-];
-
-export function AddUnitDialog({ organisation, initialKind = 'STATE', initialStateId, onClose, onDone }: { organisation: HrmOrganisation; initialKind?: UnitKind; /** Preselects the state (the "Add office" button of a state row). */ initialStateId?: number | undefined; onClose: () => void; onDone: Done }) {
-  const headOffices = useMemo(() => organisation.units.filter((unit) => unit.kind === 'HEAD_OFFICE' && unit.isActive), [organisation.units]);
-  const [kind, setKind] = useState<UnitKind>(initialKind);
+export function AddUnitDialog({ organisation, kind, initialStateId, onClose, onDone }: { organisation: HrmOrganisation; kind: 'STATE' | 'HEAD_OFFICE'; /** Preselects the state (the "Add office" button of a state row). */ initialStateId?: number | undefined; onClose: () => void; onDone: Done }) {
+  const isState = kind === 'STATE';
+  const place = usePlace(organisation, initialStateId ? String(initialStateId) : '');
+  // A state has one office, so only states without any office are offered (a switched-off one is switched on instead).
+  const stateOptions = useMemo(() => (isState ? statesWithoutOffice(organisation) : organisation.states).map((state) => ({ id: state.id, name: state.name })), [isState, organisation]);
   const [name, setName] = useState('');
-  const [stateId, setStateId] = useState(initialStateId ? String(initialStateId) : '');
-  const [cityId, setCityId] = useState('');
-  const [parentId, setParentId] = useState(headOffices.length === 1 ? headOffices[0]!.id : '');
+  const [makeDefault, setMakeDefault] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<'name' | 'stateId' | 'cityId', string>>>({});
   const [submitError, setSubmitError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [cities, setCities] = useState<Record<string, CityOption[]>>({});
-  const [citiesLoading, setCitiesLoading] = useState(false);
-
-  // A state has one office, so only states without any office are offered (a switched-off one is switched on instead).
-  const stateChoices = useMemo(
-    () => (kind === 'STATE' ? statesWithoutOffice(organisation) : organisation.states),
-    [kind, organisation],
-  );
-  const stateOptions = useMemo(() => stateChoices.map((state) => ({ id: state.id, name: state.name })), [stateChoices]);
-  const cityOptions = useMemo(() => (cities[stateId] ?? []).map((city) => ({ id: city.id, name: city.name })), [cities, stateId]);
-  const parentOptions = useMemo(() => headOffices.map((unit) => ({ id: unit.id, name: unit.name })), [headOffices]);
-  const selectedState = organisation.states.find((state) => String(state.id) === stateId);
-
-  const chooseKind = (next: UnitKind) => {
-    setKind(next);
-    setErrors({});
-    setSubmitError('');
-    setStateId('');
-    setCityId('');
-  };
-
-  const chooseState = async (id: string) => {
-    setStateId(id);
-    setCityId('');
-    setErrors((current) => ({ ...current, stateId: undefined, cityId: undefined }));
-    if (kind !== 'HEAD_OFFICE' || cities[id]) return;
-    setCitiesLoading(true);
-    try {
-      const response = await api.get<CityOption[]>(`/locations/cities/${id}`);
-      setCities((current) => ({ ...current, [id]: response.data || [] }));
-    } catch {
-      setSubmitError('Cities could not be loaded. Choose the state again to retry.');
-    } finally {
-      setCitiesLoading(false);
-    }
-  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (saving) return;
+    const cleaned = cleanUnitName(name);
     const found: typeof errors = {};
-    if (kind !== 'STATE' && name.trim().length < 2) found.name = 'Enter the name (at least 2 characters).';
-    if (kind !== 'DEPARTMENT' && !stateId) found.stateId = 'Select the state.';
-    if (kind === 'HEAD_OFFICE' && !cityId) found.cityId = 'Select the city.';
+    const problem = isState && !cleaned ? null : unitNameProblem(cleaned);
+    if (problem) found.name = problem;
+    if (!place.stateId) found.stateId = 'Select the state.';
+    if (!isState && !place.cityId) found.cityId = 'Select the city.';
     setErrors(found);
     if (Object.keys(found).length) return;
     setSaving(true);
@@ -96,14 +69,14 @@ export function AddUnitDialog({ organisation, initialKind = 'STATE', initialStat
     try {
       await hrmApi.createOrganisationUnit({
         kind,
-        ...(name.trim() ? { name: name.trim() } : {}),
-        ...(kind !== 'DEPARTMENT' ? { stateId: Number(stateId) } : {}),
-        ...(kind === 'HEAD_OFFICE' ? { cityId: Number(cityId) } : {}),
-        ...(kind === 'DEPARTMENT' && parentId ? { parentId } : {}),
+        ...(cleaned ? { name: cleaned } : {}),
+        stateId: Number(place.stateId),
+        ...(isState ? {} : { cityId: Number(place.cityId) }),
+        ...(!isState && makeDefault ? { isDefault: true } : {}),
       });
-      onDone(kind === 'STATE' ? `${selectedState?.name ?? 'State'} office added.` : `${name.trim()} added.`);
+      onDone(isState ? `${place.stateName || 'State'} office added.` : makeDefault ? `${cleaned} added as the default head office.` : `${cleaned} added.`);
     } catch (error) {
-      setSubmitError(getHrmErrorMessage(error, 'Unable to add the unit. Nothing was saved.'));
+      setSubmitError(getHrmErrorMessage(error, 'Unable to add the office. Nothing was saved.'));
     } finally {
       setSaving(false);
     }
@@ -111,8 +84,8 @@ export function AddUnitDialog({ organisation, initialKind = 'STATE', initialStat
 
   return (
     <HrmModal
-      title="Add to organisation"
-      description="Add a state office, a department or a head office unit. You can add more at any time."
+      title={isState ? 'Add state office' : 'Add head office unit'}
+      description={isState ? 'One office per state. State Managers belong here.' : 'Another head office, with its own state and city.'}
       onClose={onClose}
       busy={saving}
       error={submitError}
@@ -121,46 +94,16 @@ export function AddUnitDialog({ organisation, initialKind = 'STATE', initialStat
         <button type="submit" form="hrm-add-unit-form" disabled={saving} className={primaryButton}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{saving ? 'Adding…' : 'Add'}</button>
       </>}
     >
-      <form id="hrm-add-unit-form" onSubmit={submit} noValidate className="space-y-5">
-        <div role="radiogroup" aria-label="What are you adding?" className="grid gap-2 sm:grid-cols-3">
-          {KINDS.map(({ id, title, description, icon: Icon }) => {
-            const selected = kind === id;
-            return (
-              <button key={id} type="button" role="radio" aria-checked={selected} onClick={() => chooseKind(id)} className={`flex flex-col items-start gap-2 rounded-xl border p-3 text-left transition ${selected ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-100' : 'border-slate-200 bg-white hover:border-amber-200 hover:bg-slate-50'}`}>
-                <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${selected ? 'bg-amber-400 text-slate-950' : 'bg-slate-100 text-slate-500'}`}><Icon className="h-4 w-4" /></span>
-                <span><span className="block text-sm font-bold text-slate-900">{title}</span><span className="mt-0.5 block text-xs leading-4 text-slate-500">{description}</span></span>
-              </button>
-            );
-          })}
-        </div>
-
-        {kind !== 'DEPARTMENT' ? (
-          <Field id="hrm-unit-state" label="State" required error={errors.stateId} hint={kind === 'STATE' && !stateOptions.length ? 'Every state already has a state office.' : undefined}>
-            <SearchableSelect id="hrm-unit-state" options={stateOptions} value={stateId} displayValue={stateOptions.find((state) => String(state.id) === stateId)?.name ?? ''} onChange={(option) => void chooseState(String(option.id))} placeholder="Select state" disabled={!stateOptions.length} className="w-full" />
+      <form id="hrm-add-unit-form" onSubmit={submit} noValidate className="space-y-4">
+        {isState ? (
+          <Field id="hrm-unit-state" label="State" required error={errors.stateId} hint={stateOptions.length ? undefined : 'Every state already has a state office.'}>
+            <SearchableSelect id="hrm-unit-state" options={stateOptions} value={place.stateId} displayValue={place.stateName} onChange={(option) => { place.chooseState(String(option.id), false); setErrors((current) => ({ ...current, stateId: undefined })); }} placeholder="Select state" disabled={!stateOptions.length} className="w-full" />
           </Field>
-        ) : null}
-
-        {kind === 'HEAD_OFFICE' ? (
-          <Field id="hrm-unit-city" label="City" required error={errors.cityId}>
-            <SearchableSelect id="hrm-unit-city" options={cityOptions} value={cityId} displayValue={cityOptions.find((city) => String(city.id) === cityId)?.name ?? ''} onChange={(option) => { setCityId(String(option.id)); setErrors((current) => ({ ...current, cityId: undefined })); }} placeholder={stateId ? (citiesLoading ? 'Loading cities…' : 'Select city') : 'Select state first'} disabled={!stateId} loading={citiesLoading} className="w-full" />
-          </Field>
-        ) : null}
-
-        <Field
-          id="hrm-unit-name"
-          label={kind === 'STATE' ? 'Office name' : kind === 'DEPARTMENT' ? 'Department name' : 'Head office name'}
-          required={kind !== 'STATE'}
-          error={errors.name}
-          hint={kind === 'STATE' ? `Optional. Leave empty to use “${selectedState?.name ?? 'State'} State Office”.` : undefined}
-        >
-          <input id="hrm-unit-name" value={name} onChange={(event) => { setName(event.target.value); setErrors((current) => ({ ...current, name: undefined })); }} placeholder={kind === 'STATE' ? `${selectedState?.name ?? 'Gujarat'} State Office` : kind === 'DEPARTMENT' ? 'e.g. Finance & Accounts' : 'e.g. Raipur Head Office'} maxLength={160} autoComplete="off" aria-invalid={Boolean(errors.name)} className={inputClass(errors.name)} />
+        ) : <PlaceFields place={place} errors={{ ...(place.stateId ? {} : { stateId: errors.stateId }), ...(place.cityId ? {} : { cityId: errors.cityId }) }} idPrefix="hrm-unit" />}
+        <Field id="hrm-unit-name" label={isState ? 'Office name' : 'Head office name'} required={!isState} error={errors.name} hint={isState ? `Optional. Leave empty to use “${place.stateName || 'State'} State Office”.` : undefined}>
+          <input id="hrm-unit-name" value={name} onChange={(event) => { setName(event.target.value); setErrors((current) => ({ ...current, name: undefined })); }} placeholder={isState ? `${place.stateName || 'Gujarat'} State Office` : 'e.g. City Head Office'} maxLength={160} autoComplete="off" aria-invalid={Boolean(errors.name)} className={inputClass(errors.name)} />
         </Field>
-
-        {kind === 'DEPARTMENT' && headOffices.length ? (
-          <Field id="hrm-unit-parent" label="Head office" hint="The department belongs to this head office.">
-            <SearchableSelect id="hrm-unit-parent" options={parentOptions} value={parentId} displayValue={parentOptions.find((unit) => unit.id === parentId)?.name ?? ''} onChange={(option) => setParentId(String(option.id))} placeholder="Select head office" clearable onClear={() => setParentId('')} className="w-full" />
-          </Field>
-        ) : null}
+        {isState ? null : <DefaultTick id="hrm-unit-default" checked={makeDefault} onChange={setMakeDefault} hint="Forms choose it first, and it is used wherever no head office is chosen. The current default loses the mark." />}
       </form>
     </HrmModal>
   );
@@ -266,38 +209,84 @@ export function AddStateOfficesDialog({ organisation, onClose, onDone }: { organ
   );
 }
 
+/** State and city pickers fed by the location master (cities are loaded once per state). */
+function usePlace(organisation: HrmOrganisation, initialStateId = '', initialCityId = '') {
+  const [stateId, setStateId] = useState(initialStateId);
+  const [cityId, setCityId] = useState(initialCityId);
+  const [cities, setCities] = useState<Record<string, CityOption[]>>({});
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
+  const loadCities = useCallback(async (id: string) => {
+    if (!id) return;
+    setLoading(true);
+    setLoadError('');
+    try {
+      const response = await api.get<CityOption[]>(`/locations/cities/${id}`);
+      setCities((current) => ({ ...current, [id]: response.data || [] }));
+    } catch {
+      setLoadError('Cities could not be loaded. Choose the state again to retry.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (!initialStateId) return undefined;
+    const timer = window.setTimeout(() => void loadCities(initialStateId), 0);
+    return () => window.clearTimeout(timer);
+  }, [initialStateId, loadCities]);
+
+  const chooseState = (id: string, withCities = true) => {
+    setStateId(id);
+    setCityId('');
+    if (withCities && !cities[id]) void loadCities(id);
+  };
+  return {
+    stateId, cityId, setCityId, chooseState, loading, loadError,
+    stateOptions: organisation.states.map((state) => ({ id: state.id, name: state.name })),
+    cityOptions: (cities[stateId] ?? []).map((city) => ({ id: city.id, name: city.name })),
+    stateName: organisation.states.find((state) => String(state.id) === stateId)?.name ?? '',
+    cityName: (cities[stateId] ?? []).find((city) => String(city.id) === cityId)?.name ?? '',
+  };
+}
+
+function PlaceFields({ place, errors, idPrefix, fallbackCityName = '' }: { place: ReturnType<typeof usePlace>; errors: { stateId?: string; cityId?: string }; idPrefix: string; fallbackCityName?: string }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Field id={`${idPrefix}-state`} label="State" required error={errors.stateId}>
+        <SearchableSelect id={`${idPrefix}-state`} options={place.stateOptions} value={place.stateId} displayValue={place.stateName} onChange={(option) => place.chooseState(String(option.id))} placeholder="Select state" className="w-full" />
+      </Field>
+      <Field id={`${idPrefix}-city`} label="City" required error={errors.cityId || place.loadError || undefined}>
+        <SearchableSelect id={`${idPrefix}-city`} options={place.cityOptions} value={place.cityId} displayValue={place.cityName || (place.cityId ? fallbackCityName : '')} onChange={(option) => place.setCityId(String(option.id))} placeholder={place.stateId ? (place.loading ? 'Loading cities…' : 'Select city') : 'Select state first'} disabled={!place.stateId} loading={place.loading} className="w-full" />
+      </Field>
+    </div>
+  );
+}
+
 export function HeadOfficeSetupDialog({ organisation, onClose, onDone }: { organisation: HrmOrganisation; onClose: () => void; onDone: Done }) {
-  const location = organisation.headOfficeLocation;
-  // The same department list the Add employee form uses (one table). Departments that already exist are shown as
-  // added (they are attached to the head office, never created twice); only new names count as "will be created".
-  const existingDepartments = organisation.units.filter((unit) => unit.kind === 'DEPARTMENT');
-  const existingKeys = new Set(existingDepartments.map((unit) => unit.name.trim().toLowerCase()));
-  const isExisting = (name: string) => existingKeys.has(name.trim().toLowerCase());
-  const [selected, setSelected] = useState<string[]>(SUGGESTED_HEAD_OFFICE_DEPARTMENTS.filter((name) => !existingKeys.has(name.trim().toLowerCase())));
-  const [custom, setCustom] = useState<string[]>([]);
-  const [draft, setDraft] = useState('');
-  const [draftError, setDraftError] = useState('');
+  const place = usePlace(organisation);
+  const [officeName, setOfficeName] = useState('');
+  const [errors, setErrors] = useState<{ stateId?: string; cityId?: string; name?: string }>({});
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const all = [...SUGGESTED_HEAD_OFFICE_DEPARTMENTS.filter((name) => !isExisting(name)), ...custom];
-  const toCreate = all.filter((name) => selected.includes(name) && !isExisting(name));
+  const departments = organisation.units.filter((unit) => unit.kind === 'DEPARTMENT' && unit.isActive).length;
 
-  const addDraft = () => {
-    const result = addCustomDepartment([...all, ...existingDepartments.map((unit) => unit.name)], draft);
-    if (result.error) { setDraftError(result.error); return; }
-    const name = result.names[result.names.length - 1]!;
-    setCustom((current) => [...current, name]);
-    setSelected((current) => [...current, name]);
-    setDraft('');
-    setDraftError('');
-  };
-
-  const submit = async () => {
-    if (saving || !location) return;
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (saving) return;
+    const cleaned = cleanUnitName(officeName);
+    const problem = cleaned ? unitNameProblem(cleaned) : null;
+    const found = {
+      ...(place.stateId ? {} : { stateId: 'Select the state.' }),
+      ...(place.cityId ? {} : { cityId: 'Select the city.' }),
+      ...(problem ? { name: problem } : {}),
+    };
+    setErrors(found);
+    if (Object.keys(found).length) return;
     setSaving(true);
     setSubmitError('');
     try {
-      const response = await hrmApi.setupHeadOffice({ departments: toCreate });
+      const response = await hrmApi.setupHeadOffice({ ...(cleaned ? { name: cleaned } : {}), stateId: Number(place.stateId), cityId: Number(place.cityId), departments: [] });
       onDone(describeSetupResult(response.data));
     } catch (error) {
       setSubmitError(getHrmErrorMessage(error, 'Unable to set up the head office. Nothing was saved.'));
@@ -309,71 +298,57 @@ export function HeadOfficeSetupDialog({ organisation, onClose, onDone }: { organ
   return (
     <HrmModal
       title="Set up head office"
-      description="Creates the Raipur head office and the departments you choose. You can add or switch off departments later."
+      description="Choose where the head office is. You can change the name and place later."
       onClose={onClose}
       busy={saving}
       size="lg"
       error={submitError}
       footer={<>
         <button type="button" onClick={onClose} disabled={saving} className={cancelButton}>Cancel</button>
-        <button type="button" onClick={() => void submit()} disabled={saving || !location} className={primaryButton}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Landmark className="h-4 w-4" />}{saving ? 'Setting up…' : 'Set up head office'}</button>
+        <button type="submit" form="hrm-ho-setup-form" disabled={saving} className={primaryButton}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Landmark className="h-4 w-4" />}{saving ? 'Setting up…' : 'Set up head office'}</button>
       </>}
     >
-      {location ? (
-        <p className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600"><MapPin className="h-3.5 w-3.5 text-amber-600" /> Location: <strong className="font-semibold text-slate-800">{location.cityName}, {location.stateName}</strong></p>
-      ) : (
-        <p role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">Raipur, Chhattisgarh is missing from the location master, so the head office cannot be set up yet.</p>
-      )}
-      <fieldset className="mt-5">
-        <legend className="text-sm font-bold text-slate-900">Departments</legend>
-        <p className="mt-0.5 text-xs text-slate-500">Untick what you do not need. Departments already added (for example from Add employee) are kept and attached to the head office.</p>
-        {existingDepartments.length ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {existingDepartments.map((unit) => <span key={unit.id} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${unit.isActive ? 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200' : 'bg-slate-100 text-slate-500'}`}>{unit.name} · {unit.isActive ? 'already added' : 'switched off'}</span>)}
-          </div>
-        ) : null}
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {all.map((name) => {
-            const checked = selected.includes(name);
-            return (
-              <label key={name} className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition ${checked ? 'border-amber-300 bg-amber-50/60 text-slate-900' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                <input type="checkbox" checked={checked} onChange={() => setSelected((current) => (checked ? current.filter((value) => value !== name) : [...current, name]))} className="h-4 w-4 rounded accent-amber-500" />
-                <span className="min-w-0 flex-1 truncate">{name}</span>
-                {custom.includes(name) ? <button type="button" aria-label={`Remove ${name}`} onClick={(event) => { event.preventDefault(); setCustom((current) => current.filter((value) => value !== name)); setSelected((current) => current.filter((value) => value !== name)); }} className="rounded p-0.5 text-slate-400 hover:text-rose-600"><X className="h-3.5 w-3.5" /></button> : null}
-              </label>
-            );
-          })}
-        </div>
-        <div className="mt-3 flex gap-2">
-          <input value={draft} onChange={(event) => { setDraft(event.target.value); setDraftError(''); }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addDraft(); } }} placeholder="Add another department" aria-label="Add another department" data-no-autofocus maxLength={160} className={`${inputClass(draftError)} h-9`} />
-          <button type="button" onClick={addDraft} className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"><Plus className="h-3.5 w-3.5" /> Add</button>
-        </div>
-        {draftError ? <p role="alert" className="mt-1 text-xs font-medium text-rose-600">{draftError}</p> : null}
-        <p className="mt-3 text-xs text-slate-500">{toCreate.length ? `${toCreate.length} new department${toCreate.length === 1 ? '' : 's'} will be created` : 'No new department will be created'}{existingDepartments.length ? `; ${existingDepartments.length} already added stay as they are` : ''}.</p>
-      </fieldset>
+      <form id="hrm-ho-setup-form" onSubmit={submit} noValidate className="space-y-4">
+        <PlaceFields place={place} errors={{ ...(place.stateId ? {} : { stateId: errors.stateId }), ...(place.cityId ? {} : { cityId: errors.cityId }) }} idPrefix="hrm-ho" />
+        <Field id="hrm-ho-name" label="Head office name" error={errors.name} hint="Optional. Leave empty to use the city name.">
+          <input id="hrm-ho-name" value={officeName} onChange={(event) => { setOfficeName(event.target.value); setErrors((current) => ({ ...current, name: undefined })); }} placeholder={place.cityName ? `${place.cityName} Head Office` : 'City Head Office'} maxLength={160} autoComplete="off" aria-invalid={Boolean(errors.name)} className={inputClass(errors.name)} />
+        </Field>
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+          {departments ? `Your ${departments} department${departments === 1 ? '' : 's'} will be linked to this head office. ` : ''}Departments are added, renamed and deleted in the Departments section of this page.
+        </p>
+        <DefaultTick id="hrm-ho-default" checked locked hint="The first head office is the default one." />
+      </form>
     </HrmModal>
   );
 }
 
-export function RenameUnitDialog({ unit, onClose, onDone }: { unit: HrmOrganisationUnit; onClose: () => void; onDone: Done }) {
+/** Edit a unit: its name, and for a head office also its state and city. */
+export function RenameUnitDialog({ organisation, unit, onClose, onDone }: { organisation: HrmOrganisation; unit: HrmOrganisationUnit; onClose: () => void; onDone: Done }) {
+  const isHeadOffice = unit.kind === 'HEAD_OFFICE';
+  const place = usePlace(organisation, isHeadOffice && unit.state ? String(unit.state.id) : '', isHeadOffice && unit.city ? String(unit.city.id) : '');
   const [name, setName] = useState(unit.name);
+  const [makeDefault, setMakeDefault] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [placeErrors, setPlaceErrors] = useState<{ cityId?: string }>({});
   const [serverError, setServerError] = useState('');
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const next = name.trim();
-    if (next.length < 2) { setError('Enter the name (at least 2 characters).'); return; }
-    if (next === unit.name) { onClose(); return; }
+    const next = cleanUnitName(name);
+    const problem = unitNameProblem(next);
+    if (problem) { setError(problem); return; }
+    if (isHeadOffice && place.stateId && !place.cityId) { setPlaceErrors({ cityId: 'Select the city.' }); return; }
+    const moved = isHeadOffice && Boolean(place.cityId) && (place.stateId !== String(unit.state?.id ?? '') || place.cityId !== String(unit.city?.id ?? ''));
+    if (next === unit.name && !moved && !makeDefault) { onClose(); return; }
     setSaving(true);
     setError('');
     setServerError('');
     try {
-      await hrmApi.updateOrganisationUnit(unit.id, { name: next });
-      onDone(`Renamed to ${next}.`);
+      await hrmApi.updateOrganisationUnit(unit.id, { ...(next !== unit.name ? { name: next } : {}), ...(moved ? { stateId: Number(place.stateId), cityId: Number(place.cityId) } : {}), ...(makeDefault ? { isDefault: true as const } : {}) });
+      onDone(makeDefault ? `${next} is now the default head office.` : `${next} saved.`);
     } catch (requestError) {
-      setServerError(getHrmErrorMessage(requestError, 'Unable to rename the unit.'));
+      setServerError(getHrmErrorMessage(requestError, 'Unable to save the changes.'));
     } finally {
       setSaving(false);
     }
@@ -381,47 +356,66 @@ export function RenameUnitDialog({ unit, onClose, onDone }: { unit: HrmOrganisat
 
   return (
     <HrmModal
-      title="Rename"
+      title={isHeadOffice ? 'Edit head office' : unit.kind === 'STATE' ? 'Edit state office' : 'Rename'}
       description={`Code ${unit.code} stays the same, so nothing linked to it changes.`}
       onClose={onClose}
       busy={saving}
-      size="sm"
+      size={isHeadOffice ? 'lg' : 'sm'}
       error={serverError}
       footer={<>
         <button type="button" onClick={onClose} disabled={saving} className={cancelButton}>Cancel</button>
         <button type="submit" form="hrm-rename-unit-form" disabled={saving} className={primaryButton}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{saving ? 'Saving…' : 'Save'}</button>
       </>}
     >
-      <form id="hrm-rename-unit-form" onSubmit={submit} noValidate>
+      <form id="hrm-rename-unit-form" onSubmit={submit} noValidate className="space-y-4">
         <Field id="hrm-rename-name" label="Name" required error={error || undefined}>
           <input id="hrm-rename-name" value={name} onChange={(event) => { setName(event.target.value); setError(''); setServerError(''); }} maxLength={160} autoComplete="off" className={inputClass(error)} />
         </Field>
+        {isHeadOffice ? (
+          <>
+            <PlaceFields place={place} errors={place.cityId ? {} : placeErrors} idPrefix="hrm-edit-ho" fallbackCityName={unit.city?.name ?? ''} />
+            <p className="text-xs leading-5 text-slate-500">New postings at this head office use the new place. Existing records keep the place they have.</p>
+            <DefaultTick
+              id="hrm-edit-ho-default"
+              checked={Boolean(unit.isDefault) || makeDefault}
+              locked={Boolean(unit.isDefault) || !unit.isActive}
+              onChange={setMakeDefault}
+              hint={unit.isDefault ? 'This is the default. To change it, edit another head office and tick this there.' : unit.isActive ? 'Forms choose it first, and it is used wherever no head office is chosen.' : 'Switch this head office on to make it the default.'}
+            />
+          </>
+        ) : null}
       </form>
     </HrmModal>
   );
 }
 
 /**
- * Delete a department for good. Only a department nobody was ever placed in (and no open offer or access uses) can be
- * deleted; otherwise the server says why and the department is switched off instead, so history stays readable.
+ * Delete an office for good. Only one that nobody was ever placed in (and no HRM access uses) can be deleted;
+ * otherwise the server says why and it is switched off instead, so history stays readable. Departments stay.
  */
-export function DeleteUnitDialog({ unit, departmentNames = [], onClose, onDone }: { unit: HrmOrganisationUnit; departmentNames?: string[]; onClose: () => void; onDone: Done }) {
-  const isDepartment = unit.kind === 'DEPARTMENT';
+export function DeleteUnitDialog({ unit, departmentCount = 0, moveTo, onClose, onDone }: { unit: HrmOrganisationUnit; departmentCount?: number; /** The default head office its departments move to. */ moveTo?: string | undefined; onClose: () => void; onDone: Done }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const submit = async () => {
     setSaving(true);
     setError('');
     try {
-      const response = await hrmApi.deleteOrganisationUnit(unit.id);
-      const removed = response.data.departmentsDeleted ?? [];
-      onDone(removed.length ? `${unit.name} and ${removed.length} department${removed.length === 1 ? '' : 's'} deleted.` : `${unit.name} deleted.`);
+      await hrmApi.deleteOrganisationUnit(unit.id);
+      onDone(`${unit.name} deleted.`);
     } catch (requestError) {
       setError(getHrmErrorMessage(requestError, `Unable to delete ${unit.name}.`));
     } finally {
       setSaving(false);
     }
   };
+  if (unit.employeeCount > 0) {
+    return (
+      <HrmModal title={`${unit.name} is in use`} onClose={onClose} size="sm" footer={<button type="button" onClick={onClose} className={cancelButton}>Close</button>}>
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium leading-6 text-amber-900">{unit.employeeCount} employee{unit.employeeCount === 1 ? ' works' : 's work'} from this office. Transfer them first (open the office to see them).</p>
+        <p className="mt-3 text-sm leading-6 text-slate-600">An office people have worked from keeps its history, so it can be switched off but not deleted.</p>
+      </HrmModal>
+    );
+  }
   return (
     <HrmModal
       title={`Delete ${unit.name}?`}
@@ -435,22 +429,14 @@ export function DeleteUnitDialog({ unit, departmentNames = [], onClose, onDone }
       </>}
     >
       <p className="text-sm leading-6 text-slate-600">
-        {isDepartment
-          ? 'The department is removed completely and is no longer offered anywhere (Add employee, offers, filters).'
-          : `The ${unit.kind === 'HEAD_OFFICE' ? 'head office' : 'office'} is removed completely.`}
-        {' '}This works only when nobody has ever been placed there and no HRM access or open offer uses it. Otherwise it cannot be deleted: switch it off instead so the history stays correct.
+        It is removed completely. This works only when nobody has ever been placed there and no HRM access uses it. Otherwise switch it off instead, so the history stays correct.
       </p>
-      {departmentNames.length ? (
-        <div className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-800">
-          <p className="font-semibold">These departments are deleted with it ({departmentNames.length}):</p>
-          <p className="mt-1">{departmentNames.join(', ')}</p>
-        </div>
-      ) : null}
+      {departmentCount ? <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">Its {departmentCount} department{departmentCount === 1 ? ' stays' : 's stay'} in the company list and {moveTo ? `${departmentCount === 1 ? 'moves' : 'move'} to the default head office, “${moveTo}”.` : 'will link to the next head office you set up.'}</p> : null}
     </HrmModal>
   );
 }
 
-export function ToggleUnitDialog({ unit, onClose, onDone }: { unit: HrmOrganisationUnit; onClose: () => void; onDone: Done }) {
+export function ToggleUnitDialog({ unit, departmentCount = 0, moveTo, onClose, onDone }: { unit: HrmOrganisationUnit; departmentCount?: number; /** The default head office its departments move to. */ moveTo?: string | undefined; onClose: () => void; onDone: Done }) {
   const switchingOff = unit.isActive;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -482,9 +468,10 @@ export function ToggleUnitDialog({ unit, onClose, onDone }: { unit: HrmOrganisat
     >
       <p className="text-sm leading-6 text-slate-600">
         {switchingOff
-          ? 'It will no longer be offered when adding employees. Existing records and history are kept, and you can switch it on again. A unit that still has employees or active sub-units cannot be switched off.'
+          ? `It will no longer be offered when adding employees. History is kept and you can switch it on again. An office that still has employees cannot be switched off${unit.kind === 'HEAD_OFFICE' ? '.' : '; departments are not affected.'}`
           : 'It will be offered again when adding employees.'}
       </p>
+      {switchingOff && departmentCount ? <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">Its {departmentCount} department{departmentCount === 1 ? '' : 's'} will {moveTo ? `move to the default head office, “${moveTo}”.` : 'stay in the company list, linked to no head office.'}</p> : null}
     </HrmModal>
   );
 }

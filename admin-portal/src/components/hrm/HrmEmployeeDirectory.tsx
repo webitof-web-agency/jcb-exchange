@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Building2, ChevronRight, Download, LayoutGrid, List, Loader2, Mail, Phone, Plus, RefreshCw, Search, UserRound, Users, X } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Building2, ChevronDown, ChevronRight, Download, LayoutGrid, List, Loader2, Mail, Phone, Plus, RefreshCw, Search, UserRound, Users, X } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import HistoryPagination from '@/components/ui/HistoryPagination';
@@ -19,6 +19,7 @@ import {
   employeesToCsv,
   getAvatarTone,
   getAssignmentLocation,
+  describeEmployeeOption,
   getEmployeeDisplayName,
   getInitials,
   getTabCount,
@@ -33,6 +34,7 @@ import {
 import { formatHrmDate, formatHrmStatus, getHrmErrorMessage, getHrmStatusClass, hasHrmPermission, HRM_EMPLOYEE_MANAGE_PERMISSIONS } from '@/lib/hrmUi';
 import { describeHrmReachProblem } from '@/lib/hrmAccess';
 import HrmAddEmployeeDialog from './HrmAddEmployeeDialog';
+import HrmChangeStatusDialog from './HrmChangeStatusDialog';
 import HrmKycChips from './HrmKycChips';
 
 type Portal = 'admin' | 'employee';
@@ -61,14 +63,69 @@ function StatusChip({ status }: { status: string }) {
   return <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${getHrmStatusClass(status)}`}>{formatHrmStatus(status)}</span>;
 }
 
+/** The status chip. With permission it is also the control that opens "Change status" (it does not open the profile). */
+function StatusControl({ employee, onChange }: { employee: HrmEmployee; onChange?: (() => void) | undefined }) {
+  if (!onChange) return <StatusChip status={employee.status} />;
+  const label = formatHrmStatus(employee.status);
+  return (
+    <button type="button" onClick={(event) => { event.stopPropagation(); onChange(); }} aria-label={`${label}. Change status of ${getEmployeeDisplayName(employee)}`} title="Change status" className={`inline-flex h-7 cursor-pointer items-center gap-1 whitespace-nowrap rounded-full pl-3 pr-2 text-xs font-semibold ring-1 transition hover:shadow-md hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 ${getHrmStatusClass(employee.status)}`}>
+      {label}
+      <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+    </button>
+  );
+}
+
+const emptyText = 'text-xs italic text-slate-500';
+
+/** Who they report to; for somebody not started yet, the coming manager with the date. */
+function ReportingTo({ employee }: { employee: HrmEmployee }) {
+  const current = employee.currentAssignment?.managerEmployee;
+  if (current) return <>{current.legalName}</>;
+  const coming = employee.upcomingManager;
+  if (coming) return <><span className="block">{coming.legalName}</span><span className="block text-xs text-slate-500">from {formatHrmDate(coming.from)}</span></>;
+  return <span className={emptyText} title={employee.currentAssignment ? 'No reporting manager on their assignment' : 'They have no assignment yet'}>Not set</span>;
+}
+
+/** Only what is on file: a missing email or mobile leaves no placeholder line. */
+function ContactSummary({ employee }: { employee: HrmEmployee }) {
+  if (!employee.workEmail && !employee.mobile) return <span className={emptyText}>Not added</span>;
+  return (
+    <div className="min-w-0 space-y-1">
+      {employee.workEmail ? <p className="flex items-center gap-1.5 text-sm text-slate-700" title={employee.workEmail}><Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" /><span className="truncate">{employee.workEmail}</span></p> : null}
+      {employee.mobile ? <p className="flex items-center gap-1.5 text-sm text-slate-700"><Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" /><span className="truncate">{employee.mobile}</span></p> : null}
+    </div>
+  );
+}
+
+/** State / office manager and the extra states looked after (additional charges), so managers stand out in the list. */
+function ManagerBadges({ employee }: { employee: HrmEmployee }) {
+  const assignment = employee.currentAssignment;
+  const text = describeEmployeeOption({ employeeCode: employee.employeeCode, isOfficeManager: Boolean(assignment?.isOfficeManager), officeType: assignment?.officeUnit?.type ?? null, additionalCharges: employee.additionalCharges ?? 0 });
+  if (!text.badge && !text.states) return null;
+  return (
+    <p className="mt-0.5 flex flex-wrap gap-1">
+      {text.badge ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-800">{text.badge}</span> : null}
+      {text.states ? <span title="State offices looked after as an additional charge" className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">{text.states}</span> : null}
+    </p>
+  );
+}
+
 function AssignmentSummary({ employee }: { employee: HrmEmployee }) {
   const assignment = employee.currentAssignment;
-  if (!assignment) return <span className="text-xs italic text-slate-500" title="No active assignment yet">Not assigned</span>;
+  if (!assignment) {
+    return (
+      <div className="min-w-0">
+        <span className="text-xs italic text-slate-500" title="No active assignment yet">Not assigned</span>
+        <ManagerBadges employee={employee} />
+      </div>
+    );
+  }
   return (
     <div className="min-w-0">
       <p className="truncate text-sm font-medium text-slate-800">{assignment.designation}</p>
       <p className="truncate text-xs text-slate-500">{assignment.orgUnit?.name ?? '—'}{assignment.employmentType ? ` · ${formatHrmStatus(assignment.employmentType)}` : ''}</p>
       {getAssignmentLocation(assignment) ? <p className="truncate text-xs text-slate-500">{getAssignmentLocation(assignment)}</p> : null}
+      <ManagerBadges employee={employee} />
     </div>
   );
 }
@@ -85,7 +142,7 @@ function SortHeader({ label, column, filters, onSort, className = '' }: { label:
   );
 }
 
-function EmployeeCard({ employee, href, portal }: { employee: HrmEmployee; href: string; portal: Portal }) {
+function EmployeeCard({ employee, href, portal, onChangeStatus }: { employee: HrmEmployee; href: string; portal: Portal; onChangeStatus?: (() => void) | undefined }) {
   return (
     <li className="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-amber-300 hover:shadow-md">
       <div className="flex items-start gap-3">
@@ -94,17 +151,18 @@ function EmployeeCard({ employee, href, portal }: { employee: HrmEmployee; href:
           <Link href={href} className="block truncate font-bold text-slate-950 after:absolute after:inset-0 after:rounded-2xl group-hover:text-amber-700">{getEmployeeDisplayName(employee)}</Link>
           <p className="text-xs text-slate-500">{employee.employeeCode}</p>
         </div>
-        <StatusChip status={employee.status} />
+        <div className={onChangeStatus ? 'relative z-10' : undefined}><StatusControl employee={employee} onChange={onChangeStatus} /></div>
       </div>
       <div className="mt-3 space-y-1.5 text-xs text-slate-600">
+        <ManagerBadges employee={employee} />
         <p className="flex items-center gap-2"><UserRound className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate">{employee.currentAssignment?.designation ?? 'Not assigned'}</span></p>
-        <p className="flex items-center gap-2"><Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate">{employee.currentAssignment?.orgUnit?.name ?? '—'}{getAssignmentLocation(employee.currentAssignment) ? ` · ${getAssignmentLocation(employee.currentAssignment)}` : ''}</span></p>
-        <p className="flex items-center gap-2"><Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate">{employee.workEmail ?? '—'}</span></p>
-        <p className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate">{employee.mobile ?? '—'}</span></p>
+        {employee.currentAssignment ? <p className="flex items-center gap-2"><Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate">{[employee.currentAssignment.orgUnit?.name, getAssignmentLocation(employee.currentAssignment)].filter(Boolean).join(' · ')}</span></p> : null}
+        {employee.workEmail ? <p className="flex items-center gap-2"><Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate">{employee.workEmail}</span></p> : null}
+        {employee.mobile ? <p className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate">{employee.mobile}</span></p> : null}
       </div>
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
         <div className="relative z-10"><HrmKycChips portal={portal} employeeId={employee.id} kyc={employee.kyc} /></div>
-        <span className="text-[11px] text-slate-500">Joined {formatHrmDate(employee.joinedOn)}</span>
+        <span className="text-[11px] text-slate-500">{employee.joinedOn ? `Joined ${formatHrmDate(employee.joinedOn)}` : 'Joining date not set'}</span>
       </div>
     </li>
   );
@@ -161,6 +219,8 @@ export default function HrmEmployeeDirectory({ portal }: { portal: Portal }) {
   }
 
   const [showCreate, setShowCreate] = useState(false);
+  /** The employee whose "Change status" dialog is open. */
+  const [statusFor, setStatusFor] = useState<string | null>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const sectionRef = useRef<HTMLElement | null>(null);
 
@@ -226,6 +286,7 @@ export default function HrmEmployeeDirectory({ portal }: { portal: Portal }) {
   const designationOptions = useMemo(() => (data?.facets?.designations ?? []).map((name) => ({ id: name, name })), [data?.facets?.designations]);
   const typeOptions = useMemo(() => EMPLOYMENT_TYPE_OPTIONS.map((value) => ({ id: value, name: formatHrmStatus(value) })), []);
   const kycOptions = useMemo(() => [{ id: 'complete', name: 'KYC complete' }, { id: 'pending', name: 'KYC pending' }], []);
+  const managerOptions = useMemo(() => [{ id: 'missing', name: 'Manager not set' }, { id: 'assigned', name: 'Manager set' }], []);
 
   const clearAll = () => {
     setSearchText('');
@@ -300,9 +361,8 @@ export default function HrmEmployeeDirectory({ portal }: { portal: Portal }) {
   const toolbarSelect = 'w-full sm:w-44';
 
   return (
-    <main className="min-h-full bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+    <main className="w-full space-y-4">
+      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">People operations</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Employee directory</h1>
@@ -363,6 +423,7 @@ export default function HrmEmployeeDirectory({ portal }: { portal: Portal }) {
               <SearchableSelect options={designationOptions} value={filters.designation} onChange={(option) => { if (!isPlaceholderOption(option.id)) update({ designation: String(option.id) }); }} placeholder="Designation" size="sm" clearable onClear={() => update({ designation: '' })} className={toolbarSelect} disabled={!designationOptions.length && !filters.designation} />
               <SearchableSelect options={typeOptions} value={filters.employmentType} onChange={(option) => { if (!isPlaceholderOption(option.id)) update({ employmentType: String(option.id) }); }} placeholder="Employment type" size="sm" clearable onClear={() => update({ employmentType: '' })} className={toolbarSelect} />
               <SearchableSelect options={kycOptions} value={filters.kyc} onChange={(option) => { if (!isPlaceholderOption(option.id)) update({ kyc: option.id === 'complete' ? 'complete' : 'pending' }); }} placeholder="KYC status" size="sm" clearable onClear={() => update({ kyc: '' })} className={toolbarSelect} />
+              <SearchableSelect options={managerOptions} value={filters.manager} onChange={(option) => { if (!isPlaceholderOption(option.id)) update({ manager: option.id === 'assigned' ? 'assigned' : 'missing' }); }} placeholder="Reporting manager" size="sm" searchable={false} clearable onClear={() => update({ manager: '' })} className={toolbarSelect} />
               <SearchableSelect options={[...SORT_OPTIONS]} value={`${filters.sort}:${filters.order}`} displayValue={SORT_OPTIONS.find((option) => option.id === `${filters.sort}:${filters.order}`)?.name ?? 'Sort'} onChange={(option) => { const [sort, order] = String(option.id).split(':'); if (sort && order) update({ sort: sort as DirectorySort, order: order === 'asc' ? 'asc' : 'desc' }); }} placeholder="Sort by" size="sm" searchable={false} className={`${toolbarSelect} ${showCards ? '' : 'md:hidden'}`} />
               {anyFilter ? (
                 <button type="button" onClick={clearAll} className="inline-flex h-9 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-amber-700 hover:bg-amber-50">
@@ -434,14 +495,11 @@ export default function HrmEmployeeDirectory({ portal }: { portal: Portal }) {
                             </div>
                           </td>
                           <td className="max-w-[16rem] px-4 py-3"><AssignmentSummary employee={employee} /></td>
-                          <td className="hidden px-4 py-3 text-slate-600 xl:table-cell">{employee.currentAssignment?.managerEmployee?.legalName ?? '—'}</td>
-                          <td className="hidden max-w-[14rem] px-4 py-3 lg:table-cell">
-                            <p className="truncate text-slate-700">{employee.workEmail ?? '—'}</p>
-                            <p className="text-xs text-slate-500">{employee.mobile ?? ''}</p>
-                          </td>
-                          <td className="px-4 py-3"><StatusChip status={employee.status} /></td>
+                          <td className="hidden px-4 py-3 text-slate-700 xl:table-cell"><ReportingTo employee={employee} /></td>
+                          <td className="hidden max-w-[16rem] px-4 py-3 lg:table-cell"><ContactSummary employee={employee} /></td>
+                          <td className="px-4 py-3"><StatusControl employee={employee} onChange={canAddEmployee ? () => setStatusFor(employee.id) : undefined} /></td>
                           <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}><HrmKycChips portal={portal} employeeId={employee.id} kyc={employee.kyc} /></td>
-                          <td className="hidden whitespace-nowrap px-4 py-3 text-slate-600 xl:table-cell">{formatHrmDate(employee.joinedOn)}</td>
+                          <td className="hidden whitespace-nowrap px-4 py-3 text-slate-600 xl:table-cell">{employee.joinedOn ? formatHrmDate(employee.joinedOn) : <span className={emptyText}>Not set</span>}</td>
                           <td className="px-2 py-3 text-slate-300"><ChevronRight className="h-4 w-4" /></td>
                         </tr>
                       ))}
@@ -450,7 +508,7 @@ export default function HrmEmployeeDirectory({ portal }: { portal: Portal }) {
                 </div>
               ) : null}
               <ul className={`grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3 ${showCards ? '' : 'md:hidden'}`}>
-                {employees.map((employee) => <EmployeeCard key={employee.id} employee={employee} href={profileHref(employee)} portal={portal} />)}
+                {employees.map((employee) => <EmployeeCard key={employee.id} employee={employee} href={profileHref(employee)} portal={portal} onChangeStatus={canAddEmployee ? () => setStatusFor(employee.id) : undefined} />)}
               </ul>
             </div>
           )}
@@ -471,7 +529,13 @@ export default function HrmEmployeeDirectory({ portal }: { portal: Portal }) {
           ) : null}
         </section>
 
-      </div>
+      {statusFor ? (
+        <HrmChangeStatusDialog
+          employeeId={statusFor}
+          onClose={() => setStatusFor(null)}
+          onChanged={(message) => { if (message) toast.success(message); setReloadKey((value) => value + 1); }}
+        />
+      ) : null}
 
       {showCreate && canAddEmployee ? <HrmAddEmployeeDialog portal={portal} allIndia={data?.reach?.allIndia} onClose={closeCreate} onCreated={handleCreated} onListsChanged={handleListsChanged} /> : null}
     </main>

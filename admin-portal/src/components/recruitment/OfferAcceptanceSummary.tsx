@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
-import { Award, CheckCircle2, Download, Loader2 } from 'lucide-react';
+import { Award, CheckCircle2, Download, FileSignature, Loader2 } from 'lucide-react';
 import {
   apiErrorMessage,
   describeAcceptanceMethod,
@@ -27,8 +27,11 @@ const fileNameFrom = (disposition: unknown, fallback: string) => {
   return match?.[1] || fallback;
 };
 
+type DownloadKind = 'certificate' | 'signature' | 'signed-letter';
+
 /**
- * How an accepted offer was accepted, with downloads of the acceptance certificate and the signed copy / signature.
+ * How an accepted offer was accepted, with downloads of the signed offer letter, the acceptance certificate and (for a
+ * drawn signature) the signature image.
  * The downloads (GET /recruitment/admin/offers/:id/acceptance/:kind) need recruitment.offers.read: pass
  * `canDownload={false}` for viewers without it (for example an application reviewer).
  */
@@ -43,9 +46,11 @@ export default function OfferAcceptanceSummary({
   acceptance: StoredOfferAcceptance;
   canDownload?: boolean;
 }) {
-  const [downloading, setDownloading] = useState<'certificate' | 'signature' | null>(null);
+  const [downloading, setDownloading] = useState<DownloadKind | null>(null);
+  // A scan is the signed letter itself: no second button for the same file.
+  const showSignature = acceptance.hasSignatureFile && (acceptance.method === 'DRAWN' || !acceptance.hasSignedLetter);
 
-  const download = async (kind: 'certificate' | 'signature') => {
+  const download = async (kind: DownloadKind) => {
     if (downloading) return;
     setDownloading(kind);
     try {
@@ -53,7 +58,9 @@ export default function OfferAcceptanceSummary({
       const url = URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      link.download = fileNameFrom(response.headers?.['content-disposition'], kind === 'certificate' ? `Offer_Acceptance_${applicationRef}.pdf` : `Offer_Signature_${applicationRef}.${extensionForType((response.data as Blob)?.type)}`);
+      const extension = extensionForType((response.data as Blob)?.type);
+      const fallback = kind === 'certificate' ? `Offer_Acceptance_${applicationRef}.pdf` : kind === 'signed-letter' ? `Offer_Letter_Signed_${applicationRef}.${extension}` : `Offer_Signature_${applicationRef}.${extension}`;
+      link.download = fileNameFrom(response.headers?.['content-disposition'], fallback);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -80,16 +87,21 @@ export default function OfferAcceptanceSummary({
           <dd className="font-mono font-bold" title={acceptance.documentHash ?? undefined}>{shortHash(acceptance.documentHash)}</dd>
         </div>
       </dl>
-      {!canDownload && (acceptance.hasCertificate || acceptance.hasSignatureFile) ? (
+      {!canDownload && (acceptance.hasCertificate || acceptance.hasSignatureFile || acceptance.hasSignedLetter) ? (
         <p className="mt-3 text-[11px] font-semibold text-emerald-800">Downloading the acceptance files needs the recruitment.offers.read permission.</p>
       ) : null}
       {canDownload ? <div className="mt-3 flex flex-wrap gap-2">
+        {acceptance.hasSignedLetter ? (
+          <button type="button" onClick={() => void download('signed-letter')} disabled={Boolean(downloading)} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-800 disabled:opacity-60">
+            {downloading === 'signed-letter' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSignature className="h-3.5 w-3.5" />} Signed offer letter
+          </button>
+        ) : null}
         {acceptance.hasCertificate ? (
-          <button type="button" onClick={() => void download('certificate')} disabled={Boolean(downloading)} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-800 disabled:opacity-60">
+          <button type="button" onClick={() => void download('certificate')} disabled={Boolean(downloading)} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-60">
             {downloading === 'certificate' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Award className="h-3.5 w-3.5" />} Download certificate
           </button>
         ) : null}
-        {acceptance.hasSignatureFile ? (
+        {showSignature ? (
           <button type="button" onClick={() => void download('signature')} disabled={Boolean(downloading)} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-60">
             {downloading === 'signature' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} {signatureFileLabel(acceptance.method)}
           </button>

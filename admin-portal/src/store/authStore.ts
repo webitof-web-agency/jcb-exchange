@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isSameSessionUser } from '../lib/sameData';
 
 export interface User {
   id: string;
@@ -45,6 +46,9 @@ interface AuthState {
   // Kept for shared listing forms; the portal has no public auth modal.
   setAuthModalOpen: (_open: boolean, _mode?: 'login' | 'register') => void;
 }
+
+/** Keeps the current user object when nothing about it changed, so screens do not reload on every session check. */
+const keepIfSame = (current: User | null, next: User) => (current && isSameSessionUser(current, next) ? current : next);
 
 // Helper to safely get from localStorage
 const getLocalStorage = (key: string) => {
@@ -101,13 +105,13 @@ export const useAuthStore = create<AuthState>((set) => {
     refreshSession: (token, user) => {
       localStorage.setItem('portal_token', token);
       localStorage.setItem('portal_user', JSON.stringify(user));
-      set({ token, user, isAuthenticated: true, hasHydrated: true });
+      set((state) => ({ token, user: keepIfSame(state.user, user), isAuthenticated: true, hasHydrated: true }));
     },
     updateUser: (user) => {
       const currentToken = getLocalStorage('portal_token');
       if (currentToken) {
         localStorage.setItem('portal_user', JSON.stringify(user));
-        set({ token: currentToken, user, isAuthenticated: true, hasHydrated: true });
+        set((state) => ({ token: currentToken, user: keepIfSame(state.user, user), isAuthenticated: true, hasHydrated: true }));
       }
     },
     logout: () => {

@@ -1,4 +1,5 @@
 import type { HrmLocationType, HrmOnboardExistingPayload, HrmOnboardPayload, HrmProfileDetails } from './hrmApi';
+import type { ManagerSelection } from './hrmManagers';
 
 /** NEW creates the login together with the employee; EXISTING links a login that was created on the Users page. */
 export type OnboardMode = 'NEW' | 'EXISTING';
@@ -18,50 +19,30 @@ export type OnboardForm = {
   orgUnitId: string;
   employmentType: string;
   locationType: HrmLocationType;
+  /** Head office postings: the chosen head office ('' = the default one). */
+  headOfficeUnitId: string;
+  /** State office postings only. */
   stateId: string;
   cityId: string;
   /** Manager of the state office (State Manager). Only meaningful for a state office. */
   isOfficeManager: boolean;
-  /**
-   * Who a State Manager reports to when there is more than one National Operations Manager (then HR has to choose;
-   * with exactly one the server applies it). '' = not chosen. Sent as managerEmployeeId.
-   */
-  nationalManagerId: string;
   /** Optional profile details (the "More details" section). */
   preferredName: string;
   dateOfBirth: string;
   personalEmail: string;
 };
 
-export type OnboardErrors = Partial<Record<keyof OnboardForm, string>>;
+/** A box of the form. The reporting manager is held beside the form (lib/hrmManagers.ts ManagerSelection). */
+export type OnboardField = keyof OnboardForm | 'managerEmployeeId';
+export type OnboardErrors = Partial<Record<OnboardField, string>>;
 
-/** The head office's own place (Raipur, Chhattisgarh): what a head office employee gets unless another one is chosen. */
-export type DefaultLocation = { stateId: number; cityId: number } | null;
-
-export const createEmptyOnboardForm = (today: string, locationType: HrmLocationType = 'HEAD_OFFICE', defaultLocation: DefaultLocation = null): OnboardForm => ({
+export const createEmptyOnboardForm = (today: string, locationType: HrmLocationType = 'HEAD_OFFICE', headOfficeUnitId = ''): OnboardForm => ({
   fullName: '', mobile: '', email: '', password: '', customRoleId: '', userId: '',
   joiningDate: today, designation: '', orgUnitId: '', employmentType: 'FULL_TIME',
-  locationType,
-  stateId: locationType === 'HEAD_OFFICE' && defaultLocation ? String(defaultLocation.stateId) : '',
-  cityId: locationType === 'HEAD_OFFICE' && defaultLocation ? String(defaultLocation.cityId) : '',
+  locationType, headOfficeUnitId, stateId: '', cityId: '',
   isOfficeManager: false,
-  nationalManagerId: '',
   preferredName: '', dateOfBirth: '', personalEmail: '',
 });
-
-/**
- * The state and city to show after the work location is switched. The head office starts on its default place; a state
- * office starts empty unless the person already picked a place that is not just the head office default.
- */
-export const locationAfterSwitch = (
-  current: Pick<OnboardForm, 'stateId' | 'cityId'>,
-  next: HrmLocationType,
-  defaultLocation: DefaultLocation,
-): Pick<OnboardForm, 'stateId' | 'cityId'> => {
-  const fallback = defaultLocation ? { stateId: String(defaultLocation.stateId), cityId: String(defaultLocation.cityId) } : { stateId: '', cityId: '' };
-  if (next === 'HEAD_OFFICE') return fallback;
-  return current.stateId === fallback.stateId && current.cityId === fallback.cityId ? { stateId: '', cityId: '' } : { stateId: current.stateId, cityId: current.cityId };
-};
 
 /** Spaces collapsed and trimmed, the way the server compares department and designation names. */
 export const normaliseName = (value: string) => value.replace(/\s+/g, ' ').trim();
@@ -195,12 +176,16 @@ export const validateDateOfBirth = (value: string, now: Date = new Date()) => {
 
 type ValidateOptions = {
   headOfficeAvailable: boolean;
+  /** Why the chosen head office cannot be used (it has no state and city yet). */
+  headOfficeMessage?: string | null | undefined;
   /** Defaults to NEW. In EXISTING mode the login supplies name, email and password, so those are not checked. */
   mode?: OnboardMode;
   /** When set and the location is a state office, it is reported as the state's error (for example "no office yet"). */
   stateOfficeMessage?: string | null;
-  /** How many National Operations Managers exist: with more than one, a State Manager needs one chosen. */
+  /** How many National Operations Managers exist: with more than one, a State Manager needs a manager chosen. */
   nationalManagerCount?: number;
+  /** The reporting manager chosen. */
+  managerId?: string | null | undefined;
 };
 
 export const validateOnboardForm = (form: OnboardForm, options: ValidateOptions): OnboardErrors => {
@@ -222,20 +207,15 @@ export const validateOnboardForm = (form: OnboardForm, options: ValidateOptions)
   if (!form.designation.trim()) errors.designation = 'Select the designation.';
   if (!form.orgUnitId) errors.orgUnitId = 'Select the department.';
   if (form.locationType === 'HEAD_OFFICE') {
-    if (!options.headOfficeAvailable) {
-      errors.locationType = 'The head office is not set up yet. Choose State office, or set it up on the Organisation page.';
-    } else if (form.stateId && !form.cityId) {
-      errors.cityId = 'Select both the state and the city.';
-    } else if (!form.stateId && form.cityId) {
-      errors.stateId = 'Select both the state and the city.';
-    }
+    if (!options.headOfficeAvailable) errors.locationType = 'The head office is not set up yet. Choose State office, or set it up on the Organisation page.';
+    else if (options.headOfficeMessage) errors.headOfficeUnitId = options.headOfficeMessage;
   }
   if (form.locationType === 'STATE_OFFICE') {
     if (!form.stateId) errors.stateId = 'Select the state.';
     else if (options.stateOfficeMessage) errors.stateId = options.stateOfficeMessage;
     if (!form.cityId) errors.cityId = 'Select the city.';
-    if (form.isOfficeManager && (options.nationalManagerCount ?? 0) > 1 && !form.nationalManagerId) {
-      errors.nationalManagerId = 'Choose which National Operations Manager this State Manager reports to.';
+    if (form.isOfficeManager && (options.nationalManagerCount ?? 0) > 1 && !options.managerId) {
+      errors.managerEmployeeId = 'Choose who this State Manager reports to.';
     }
   }
   const dobError = validateDateOfBirth(form.dateOfBirth);
@@ -252,26 +232,27 @@ const profileDetailsPayload = (form: OnboardForm): HrmProfileDetails => ({
 });
 
 /** The office manager flag only exists for a state office. */
-const officeManagerPayload = (form: OnboardForm): { isOfficeManager?: boolean; managerEmployeeId?: string } =>
-  (form.locationType === 'STATE_OFFICE' && form.isOfficeManager
-    ? { isOfficeManager: true, ...(form.nationalManagerId ? { managerEmployeeId: form.nationalManagerId } : {}) }
-    : {});
+const officeManagerPayload = (form: OnboardForm): { isOfficeManager?: boolean } =>
+  (form.locationType === 'STATE_OFFICE' && form.isOfficeManager ? { isOfficeManager: true } : {});
 
 /**
- * The place sent to the server. A state office always sends what was picked. A head office sends a place only when both
- * the state and the city are chosen; otherwise the server uses the head office's own location.
+ * The reporting manager: the chosen person, or null when HR removed it (so the server does not put one back). With
+ * nothing chosen and nothing removed it is left out, and the server applies its own default.
  */
-const locationPayload = (form: OnboardForm): { stateId: number | null; cityId: number | null } => {
+const managerPayload = (selection: ManagerSelection | undefined): { managerEmployeeId?: string | null } => {
+  if (selection?.manager) return { managerEmployeeId: selection.manager.id };
+  return selection?.source === 'user' ? { managerEmployeeId: null } : {};
+};
+
+/** The place sent to the server: a head office posting names the head office, a state office its state and city. */
+const locationPayload = (form: OnboardForm): { headOfficeUnitId?: string; stateId: number | null; cityId: number | null } => {
   if (form.locationType === 'STATE_OFFICE') {
     return { stateId: form.stateId ? Number(form.stateId) : null, cityId: form.cityId ? Number(form.cityId) : null };
   }
-  const both = Boolean(form.stateId && form.cityId);
-  return { stateId: both ? Number(form.stateId) : null, cityId: both ? Number(form.cityId) : null };
+  return { ...(form.headOfficeUnitId ? { headOfficeUnitId: form.headOfficeUnitId } : {}), stateId: null, cityId: null };
 };
 
-// The reporting manager is not part of the add form: managerEmployeeId is left out, so the server gives a State Manager
-// the National Operations Manager by default and everybody else no manager (it can be set later with a transfer).
-export const toOnboardPayload = (form: OnboardForm): HrmOnboardPayload => ({
+export const toOnboardPayload = (form: OnboardForm, manager?: ManagerSelection): HrmOnboardPayload => ({
   fullName: form.fullName.trim(),
   email: form.email.trim(),
   mobile: normalizeMobile(form.mobile),
@@ -284,11 +265,12 @@ export const toOnboardPayload = (form: OnboardForm): HrmOnboardPayload => ({
   locationType: form.locationType,
   ...locationPayload(form),
   ...officeManagerPayload(form),
+  ...managerPayload(manager),
   ...profileDetailsPayload(form),
 });
 
 /** Payload for linking an existing login: no name, email or password, the login supplies them. */
-export const toOnboardExistingPayload = (form: OnboardForm): HrmOnboardExistingPayload => ({
+export const toOnboardExistingPayload = (form: OnboardForm, manager?: ManagerSelection): HrmOnboardExistingPayload => ({
   userId: form.userId,
   // Sent only when the login has no mobile of its own and HR typed one.
   ...(form.mobile.trim() ? { mobile: normalizeMobile(form.mobile) } : {}),
@@ -299,6 +281,7 @@ export const toOnboardExistingPayload = (form: OnboardForm): HrmOnboardExistingP
   locationType: form.locationType,
   ...locationPayload(form),
   ...officeManagerPayload(form),
+  ...managerPayload(manager),
   ...profileDetailsPayload(form),
 });
 
@@ -345,7 +328,7 @@ export type ServerFieldErrors = { fields: OnboardErrors; /** Messages for fields
  * `details: [{ path, message }]` (HrmValidationError); each message belongs to its own field, so a rejected personal
  * email is never shown on the login email. Paths this form has no box for are returned as "unmapped" for the banner.
  */
-export const extractFieldErrors = (error: unknown, allowed: ReadonlyArray<keyof OnboardForm>): ServerFieldErrors => {
+export const extractFieldErrors = (error: unknown, allowed: ReadonlyArray<OnboardField>): ServerFieldErrors => {
   const details = (error as { response?: { data?: { details?: unknown } } } | null)?.response?.data?.details;
   const fields: OnboardErrors = {};
   const unmapped: string[] = [];
@@ -354,9 +337,8 @@ export const extractFieldErrors = (error: unknown, allowed: ReadonlyArray<keyof 
     if (!detail || typeof detail !== 'object') continue;
     const { path, message } = detail as { path?: unknown; message?: unknown };
     if (typeof message !== 'string' || !message) continue;
-    // The server names the reporting manager managerEmployeeId; this form keeps it as nationalManagerId.
     const segment = Array.isArray(path) ? String(path[0] ?? '') : typeof path === 'string' ? path.split('.')[0] : '';
-    const key = segment ? ((segment === 'managerEmployeeId' ? 'nationalManagerId' : segment) as keyof OnboardForm) : undefined;
+    const key = segment ? (segment as OnboardField) : undefined;
     if (key && allowed.includes(key)) {
       if (!fields[key]) fields[key] = message;
     } else {
@@ -370,18 +352,13 @@ export const extractFieldErrors = (error: unknown, allowed: ReadonlyArray<keyof 
  * Which box a server message without field details belongs to (a duplicate email or mobile found while saving).
  * A message about the personal email is never put on the login email.
  */
-export const fieldForServerMessage = (message: string, mode: OnboardMode): keyof OnboardForm | null => {
+export const fieldForServerMessage = (message: string, mode: OnboardMode): OnboardField | null => {
+  if (/reporting manager/i.test(message)) return 'managerEmployeeId';
+  if (/selected head office|no state and city/i.test(message)) return 'headOfficeUnitId';
   if (/personal e-?mail/i.test(message)) return 'personalEmail';
   if (mode === 'NEW' && /e-?mail/i.test(message)) return 'email';
   if (/mobile/i.test(message)) return 'mobile';
   return null;
-};
-
-/** What the form says about who a State Manager reports to (the picker is gone; the server applies the default). */
-export const describeNationalManager = (managers: ReadonlyArray<{ name: string }>): { tone: 'ok' | 'warn'; text: string } => {
-  if (managers.length === 1) return { tone: 'ok', text: `Reports to ${managers[0]!.name} (National Operations Manager) by default.` };
-  if (!managers.length) return { tone: 'warn', text: 'No National Operations Manager is set yet. Until one is added, this State Manager reports to no one.' };
-  return { tone: 'warn', text: 'There are several National Operations Managers. Choose below who this State Manager reports to.' };
 };
 
 const PASSWORD_GROUPS = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '@#$%&*!?'] as const;

@@ -13,7 +13,7 @@ Is architecture mein **heavy builds GitHub Actions par parallel** chalte hain au
    - **Username:** `<your-github-username>`
    - **Password / Token:** `<generated-PAT>`
 
-*(Note: Pehli baar `docker-deploy.yml` push karega tab GHCR packages banenge; agar packages private hain to Dokploy registry login zaroori hai.)*
+*(Note: Pehli baar `docker-deploy.yml` push karega tab GHCR packages banenge. Dokploy registry login tab configure karein jab aap Dokploy se images pull karne ke liye ready hon.)*
 
 ---
 
@@ -67,6 +67,8 @@ Har app ko **Provider = Docker** (Docker Image source, NOT Git build!) par set k
 GitHub Repo → **Settings → Environments → `production`** (aur `staging` agar staging use kar rahe hain) mein ye Variables & Secrets add karein:
 
 ### Environment Variables (**Variables** tab)
+
+Ye values optional hain: workflow inke na hone par production defaults use karke images publish karta hai. Custom domain/API endpoint ho to set karein.
 | Name | Example Production Value | Required For |
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | `https://api.jcbexchange.com/api` | `frontend` & `admin-portal` |
@@ -79,6 +81,8 @@ GitHub Repo → **Settings → Environments → `production`** (aur `staging` ag
 *(Note: GitHub repository owner lowercase hona chahiye GHCR image name ke liye — `github.repository_owner` ko lowercase ensure karein ya agar aapka GitHub username/org capital letters mein hai to Dokploy mein lowercase repo owner name use karein.)*
 
 ### Environment Secrets (**Secrets** tab)
+
+Ye secrets optional hain. Inke bina GitHub image publish ko successful rakhega aur Dokploy deployment skip karega. Teeno webhook secrets set karne ke baad har successful image push Dokploy deployment automatically trigger karega.
 | Secret Name | Value |
 |---|---|
 | `DOKPLOY_BACKEND_WEBHOOK_URL` | Dokploy `jcbexchange-backend` Deploy Webhook URL |

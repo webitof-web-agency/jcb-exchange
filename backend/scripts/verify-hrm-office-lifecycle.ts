@@ -44,7 +44,7 @@ const main = async () => {
     const [gujC, mahC, rajC] = await Promise.all([cityOf(guj), cityOf(mah), cityOf(raj)]);
 
     // ---- setup
-    const setup = await org.setupHeadOffice(actor, { departments: ['ProbeOps', 'ProbeSales'] });
+    const setup = await org.setupHeadOffice(actor, { stateId: 4040, cityId: 133590, departments: ['ProbeOps', 'ProbeSales'] });
     const ho = await prisma.hrmOrgUnit.findFirstOrThrow({ where: { type: 'HEAD_OFFICE' }, select: { id: true } });
     const dept = await prisma.hrmOrgUnit.findFirstOrThrow({ where: { name: 'ProbeOps' }, select: { id: true } });
     check('head office + departments set up', setup.createdHeadOffice && setup.createdDepartments.length === 2);

@@ -159,6 +159,8 @@ export type AiToolContext = {
   userId: string;
   role: AiToolRole;
   permissions: string[];
+  /** The login sees only some states in recruitment: the assistant, which answers for the whole company, stays out of it. */
+  recruitmentRestricted?: boolean;
 };
 
 export type AiToolRequest = {
@@ -1553,11 +1555,14 @@ const definitions: PermissionedDefinition[] = [
   },
 ];
 
-const hasPermission = (context: AiToolContext, permissions: readonly string[]) =>
-  context.role === 'SUPER_ADMIN'
-  || context.role === 'ADMIN'
-  || context.permissions.includes('ALL_ACCESS')
-  || permissions.some((permission) => context.permissions.includes(permission));
+const hasPermission = (context: AiToolContext, permissions: readonly string[]) => {
+  // A tool that is only about recruitment is closed to a state-limited recruitment login, whatever its other rights.
+  if (context.recruitmentRestricted && permissions.length && permissions.every((permission) => permission.startsWith('recruitment.'))) return false;
+  return context.role === 'SUPER_ADMIN'
+    || context.role === 'ADMIN'
+    || context.permissions.includes('ALL_ACCESS')
+    || permissions.some((permission) => context.permissions.includes(permission));
+};
 
 const definitionFor = (name: string) => definitions.find((definition) => definition.name === name);
 
